@@ -9,8 +9,8 @@
 // Writes:
 //   src/data/small-bodies.json      a light index for the site: names, groups, current elements,
 //                                   the years where our position is accurate, where to find the covariance
-//   public/data/cov/N.json          covariance shards (only for orbits fitted with gravity alone, the
-//                                   ones the site draws an uncertainty cloud for), loaded when a body is picked
+//   public/data/cov/N.json          covariance shards, loaded when a body is picked: only for orbits fitted
+//                                   with gravity alone whose cloud matches Horizons' own uncertainty
 //   scripts/reference/small-bodies-horizons.json   Horizons positions and uncertainties, only for npm run check
 //
 // Current elements: JPL's standard epoch, shared by most asteroids. SBDB gives comets (and a few
@@ -27,12 +27,17 @@
 
 import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { smallBodyPosition, type SmallBodyOrbit } from '../src/astro/smallbody';
+import { sampleOrbits, cloudOffsets } from '../src/astro/uncertainty';
 
 const VALID_DEG = 1;
 const LONG_STEP_DAYS = 1826;  // about 5 years
 const LONG_STEPS = 5;         // 5 steps each way: about 25 years
 const DETAILED_SAMPLE = 60;   // besides the well-known bodies, this many random ones get the detailed checks
 const COV_SHARDS = 16;
+// A cloud is drawn only if its size is within this range of Horizons' own position uncertainty
+// (the same check runs in npm run check, with the same samples)
+const CLOUD_RATIO = [0.8, 1.25];
+const AU_KM = 149597870.7;
 
 const SBDB = 'https://ssd-api.jpl.nasa.gov/sbdb.api';
 const QUERY = 'https://ssd-api.jpl.nasa.gov/sbdb_query.api';
@@ -220,6 +225,7 @@ interface Body {
   orbit: SmallBodyOrbit; // current elements
   elementsFrom: 'SBDB' | 'Horizons';
   cov: { epoch: number; elements: Omit<SmallBodyOrbit, 'epoch'>; labels: string[]; matrix: number[][] } | null;
+  cloudRatio: number | null; // our cloud's size / Horizons' uncertainty, for gravity-only orbits
   validFrom: number;
   validTo: number;
   detailed: boolean;
@@ -259,7 +265,7 @@ for (const q of queries) {
   bodies.set(o.des, {
     pdes: o.des, key: q, name: o.kind === 'an' ? o.shortname.replace(/^\d+\s+/, '') : o.shortname || o.des, full: o.fullname.trim(), kind: o.kind,
     class: o.orbit_class?.code ?? '', neo: !!o.neo, H: element(phys, 'H'), diameter: element(phys, 'diameter'),
-    orbit, elementsFrom: 'SBDB', cov: null, validFrom: orbit.epoch, validTo: orbit.epoch, detailed: true,
+    orbit, elementsFrom: 'SBDB', cov: null, cloudRatio: null, validFrom: orbit.epoch, validTo: orbit.epoch, detailed: true,
   });
 }
 
@@ -284,7 +290,7 @@ for (const g of groups) {
     bodies.set(pdes, {
       pdes, key: null, name: label(kind, pdes, (r[col('name')] as string | null)?.trim(), full), full, kind,
       class: String(r[col('class')] ?? ''), neo: r[col('neo')] === 'Y', H: num(r[col('H')]), diameter: num(r[col('diameter')]),
-      orbit, elementsFrom: 'SBDB', cov: null, validFrom: orbit.epoch, validTo: orbit.epoch, detailed: false,
+      orbit, elementsFrom: 'SBDB', cov: null, cloudRatio: null, validFrom: orbit.epoch, validTo: orbit.epoch, detailed: false,
     });
     added++;
   }
@@ -383,11 +389,26 @@ for (const b of [...bodies.values()]) {
       const atCov = await horizonsVectors(command, b.cov.epoch, b.cov.epoch + 1, 1);
       ref.covJd = atCov.jd[0];
       ref.covPos = atCov.pos[0];
-      if (b.cov.labels.length === 6) {
+    }
+    // Every gravity-only orbit: our cloud against Horizons' own uncertainty, computed with full dynamics
+    if (b.cov?.labels.length === 6) {
+      try {
         const u = await horizonsUncertainty(command, standardEpoch);
+        const sg = { A_s: u.values.A_s, C_s: u.values.C_s, N_s: u.values.N_s };
+        if (Object.values(sg).some((v) => !Number.isFinite(v) || v <= 0)) throw new Error(`odd values ${JSON.stringify(sg)}`);
         ref.sigmaJd = standardEpoch;
-        ref.sigma = { A_s: u.values.A_s, C_s: u.values.C_s, N_s: u.values.N_s };
+        ref.sigma = sg;
         sigmaExplanation ||= u.explanation;
+        const samples = sampleOrbits(b.cov, 2000, 777);
+        if (samples.length === 2000) {
+          const off = cloudOffsets(b.cov, samples, standardEpoch);
+          const ours = Math.sqrt(off.reduce((sum, o) => sum + o.x * o.x + o.y * o.y + o.z * o.z, 0) / off.length) * AU_KM;
+          b.cloudRatio = ours / Math.hypot(sg.A_s, sg.C_s, sg.N_s);
+        } else {
+          problems.push(`${b.pdes}: covariance gives no usable samples, no cloud`);
+        }
+      } catch (err) {
+        problems.push(`${b.pdes}: no Horizons uncertainty, no cloud: ${(err as Error).message.split('\n')[0]}`);
       }
     }
     reference.push(ref);
@@ -413,8 +434,10 @@ rmSync('public/data/cov', { recursive: true, force: true });
 mkdirSync('public/data/cov', { recursive: true });
 const shards: Record<string, unknown>[] = Array.from({ length: COV_SHARDS }, () => ({}));
 const shardOf = new Map<string, number>();
+const cloudOk = (b: Body) => b.cov?.labels.length === 6 && b.cloudRatio !== null && b.cloudRatio >= CLOUD_RATIO[0] && b.cloudRatio <= CLOUD_RATIO[1];
+const rejected = list.filter((b) => b.cov?.labels.length === 6 && !cloudOk(b));
 for (const b of list) {
-  if (b.cov?.labels.length !== 6) continue;
+  if (!cloudOk(b) || !b.cov) continue;
   const k = hash(b.pdes) % COV_SHARDS;
   shardOf.set(b.pdes, k);
   const m = b.cov.matrix;
@@ -434,7 +457,8 @@ writeFileSync('src/data/small-bodies.json', JSON.stringify({
   standardEpoch,
   note: 'One row per body, columns as in "fields". Angles in degrees, q in au, tp and epoch as Julian days (TDB). '
     + `validFrom/validTo: Julian days between which our Sun-only position stays within ${VALID_DEG}° of Horizons. `
-    + 'covParams: number of fitted parameters (6 = gravity only); covShard: file in public/data/cov with its covariance.',
+    + 'covParams: number of fitted parameters (6 = gravity only); covShard: file in public/data/cov with its covariance, '
+    + `only where the uncertainty cloud is within ${CLOUD_RATIO[0]} to ${CLOUD_RATIO[1]} times Horizons' own uncertainty.`,
   fields: FIELDS_OUT,
   rows: list.map((b) => [
     b.pdes, b.key, b.name, b.full, b.kind, b.class, b.neo ? 1 : 0, b.H, round(b.diameter, 6),
@@ -456,4 +480,6 @@ writeFileSync('scripts/reference/small-bodies-horizons.json', JSON.stringify({
 const kinds = (k: string) => list.filter((b) => b.kind.startsWith(k)).length;
 console.log(`\n${list.length} bodies (${kinds('a')} asteroids, ${kinds('c')} comets), ${shardOf.size} with an uncertainty cloud, ${list.filter((b) => b.cov).length} with a covariance.`);
 console.log(`${requests} requests, ${blocked} times told to wait.`);
+console.log(`Gravity-only orbits without a cloud (${rejected.length}), our size / Horizons':`);
+for (const b of rejected) console.log(`  ${b.full}: ${b.cloudRatio === null ? 'not compared' : b.cloudRatio.toFixed(2)}`);
 if (problems.length) console.log(`Notes (${problems.length}):\n- ${problems.join('\n- ')}`);
