@@ -16,6 +16,7 @@ export interface SmallBodyOrbit {
   e: number;     // eccentricity (must be below 1 here)
   q: number;     // perihelion distance [au]
   tp: number;    // time of perihelion passage
+  dtp?: number;  // a small change to tp [days], kept apart: a Julian date near 2.5 million cannot hold it
   node: number;  // longitude of the ascending node
   peri: number;  // argument of perihelion
   i: number;     // inclination
@@ -48,7 +49,7 @@ export function smallBodyPosition(o: SmallBodyOrbit, jd: number): Vec3 {
   if (!(o.e < 1)) throw new Error('Only elliptic orbits (e < 1) are supported');
   const a = semiMajorAxis(o);
   const n = GAUSS_K / Math.pow(a, 1.5);           // mean motion [rad/day]
-  const E = solveKeplerAnyE(n * (jd - o.tp), o.e); // radians
+  const E = solveKeplerAnyE(n * ((jd - o.tp) - (o.dtp ?? 0)), o.e); // radians
   return positionAtAnomaly({ a, e: o.e, I: o.i, O: o.node, omega: o.peri, M: 0 }, E / DEG);
 }
 

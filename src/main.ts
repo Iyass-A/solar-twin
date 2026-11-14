@@ -8,10 +8,11 @@ import { VIEWS, type BodyFrame, type ViewMode } from './view/views';
 import type { Scene3D } from './view/scene3d';
 import {
   SMALL_COLORS, SMALL_GROUPS, loadSmallBodies, smallLabel, smallFullName, isValidAt, smallPosition, smallOrbitPath,
-  type SmallBody, type SmallFrame,
+  cloudSamples, hasCloud, type SmallBody, type SmallFrame,
 } from './view/smallbodies';
 import pkg from '../package.json';
-import { LANGS, detectLang, lang, langInfo, num, setLang, t, type Lang, type TextKey } from './i18n';
+import { LANGS, detectLang, lang, langInfo, num, numGrouped, setLang, t, type Lang, type TextKey } from './i18n';
+import { cloudOffsets, cloudSpread } from './astro/uncertainty';
 
 const DAY_MS = 86_400_000;
 
@@ -60,7 +61,7 @@ app.innerHTML = `
   <div class="card" id="info">
     <div class="sub" id="infoHint" data-t="infoHint"></div>
     <div id="infoBody" hidden>
-      <div class="value" id="infoName"></div>
+      <div class="value" id="infoName" dir="auto"></div>
       <div class="facts">
         <div id="rowType" hidden><span class="label" data-t="type"></span><span id="infoType"></span></div>
         <div class="sub" id="infoOutside" hidden></div>
@@ -68,7 +69,10 @@ app.innerHTML = `
         <div class="dist"><span class="label" data-t="fromEarth"></span><span id="infoEarth"></span></div>
         <div class="dist"><span class="label" data-t="lightTime"></span><span id="infoLight"></span></div>
         <div id="rowDiameter" hidden><span class="label" data-t="diameter"></span><span id="infoDiameter"></span></div>
+        <div id="rowSigma" hidden><span class="label" data-t="uncertainty"></span><span id="infoSigma"></span></div>
       </div>
+      <p class="sub cloud-note" id="infoCloud" data-t="cloudNote" hidden></p>
+      <p class="sub cloud-note" id="infoNoCloud" data-t="noCloud" hidden></p>
     </div>
   </div>
 
@@ -183,7 +187,7 @@ import('./data/small-bodies.json')
     smallBodies = loadSmallBodies(m.default);
     $('smallRows').innerHTML = smallBodies.map((b) => `
       <tr data-id="${b.id}">
-        <td id="n-${b.id}"></td>
+        <td id="n-${b.id}" dir="auto"></td>
         <td id="g-${b.id}"></td>
         <td dir="ltr" id="d-${b.id}"></td>
       </tr>`).join('');
@@ -322,6 +326,16 @@ function updateInfo(bodies: BodyFrame[], jd: number) {
   $('infoName').textContent = planet ? planet.name : smallFullName(small!, l);
   $('rowType').hidden = !small;
   $('rowDiameter').hidden = !small?.diameter || !valid;
+  const cloudShown = !!small && hasCloud(small) && valid && showSmall;
+  $('rowSigma').hidden = !cloudShown;
+  $('infoCloud').hidden = !cloudShown;
+  $('infoNoCloud').hidden = !(small?.cov && !hasCloud(small) && valid && showSmall);
+  if (cloudShown) {
+    const km = cloudSpread(cloudOffsets(small!.cov!, cloudSamples(small!), jd)).sigma * AU_KM;
+    $('infoSigma').innerHTML = km < 1
+      ? `±<span dir="ltr">${numGrouped(km * 1000)}</span> ${s.metres} (1σ)`
+      : `±<span dir="ltr">${km < 10 ? num(km, 1) : numGrouped(km)}</span> ${s.km} (1σ)`;
+  }
   $('infoOutside').hidden = valid;
   document.querySelectorAll<HTMLElement>('#infoBody .dist').forEach((el) => { el.hidden = !valid; });
   if (small) {
@@ -452,16 +466,20 @@ function frame(now: number) {
   const l = lang();
   const smalls: SmallFrame[] = [];
   let selectedOrbit: { path: ReturnType<typeof smallOrbitPath>; color: string } | null = null;
+  let cloud: { offsets: ReturnType<typeof cloudOffsets>; color: string } | null = null;
   if (showSmall) {
     for (const b of smallBodies) {
       if (!isValidAt(b, jd)) continue;
       smalls.push({ id: b.id, label: smallLabel(b, l), group: b.group, pos: smallPosition(b, jd) });
-      if (b.id === orrery.selected) selectedOrbit = { path: smallOrbitPath(b), color: SMALL_COLORS[b.group] };
+      if (b.id === orrery.selected) {
+        selectedOrbit = { path: smallOrbitPath(b), color: SMALL_COLORS[b.group] };
+        if (hasCloud(b)) cloud = { offsets: cloudOffsets(b.cov!, cloudSamples(b), jd), color: SMALL_COLORS[b.group] };
+      }
     }
   }
 
-  if (kind === '2d') orrery.draw(bodies, smalls, selectedOrbit);
-  else scene3d?.draw(bodies, smalls, selectedOrbit);
+  if (kind === '2d') orrery.draw(bodies, smalls, selectedOrbit, cloud);
+  else scene3d?.draw(bodies, smalls, selectedOrbit, cloud);
   if (!dragging) slider.valueAsNumber = (clock.ms - VALID_FROM_MS) / DAY_MS;
   if (now - lastPanels > 250) {
     lastPanels = now;

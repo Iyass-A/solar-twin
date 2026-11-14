@@ -1,7 +1,7 @@
 {
  "source": "NASA/JPL Small-Body Database (SBDB) API, https://ssd-api.jpl.nasa.gov/doc/sbdb.html",
  "sbdbVersion": "1.3",
- "fetched": "2026-11-14T17:59:23.223Z",
+ "fetched": "2026-11-14T19:25:47.751Z",
  "standardEpoch": 2461200.5,
  "note": "Angles in degrees, q in au, tp and epoch as Julian days (TDB). Covariance in au, deg, days; labels name the rows. elementsFrom tells where the current elements come from: SBDB at its standard epoch, or Horizons there. validFrom/validTo: Julian days between which our Sun-only position stays within 1° of Horizons (sampled every ~5 years).",
  "bodies": [

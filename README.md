@@ -15,6 +15,7 @@ Version 0.2, public beta.
 - **3D view.** Turn and zoom the scene, and follow a planet with the camera while time runs. Saturn's rings sit at their real tilt, and the 5,080 stars visible to the naked eye are in their true places behind.
 - **Map from above (2D)**, with all planets at compressed distances, all at true distances, or just the inner planets.
 - **Asteroids, dwarf planets and comets**: 36 well-known ones from JPL, such as Ceres, Apophis, Bennu, Pluto, Halley and Hale-Bopp, as coloured dots. Pick one to see its orbit, follow it, and read its type and size.
+- **Uncertainty clouds.** Around a picked asteroid or comet, 300 possible orbits that all fit JPL's observations show where it could really be: ±80 m for Ceres, ±110 km for 2024 YR4, nearly a million km for Arrokoth. Too small to see at this scale, the cloud is drawn enlarged and says by how much; its shape and its size in km are real.
 - **Pick a planet** to see its distance from the Sun and from Earth, and how long its light takes to reach us.
 - **Three languages.** Arabic (right to left), German and English. Add `?lang=ar`, `?lang=de` or `?lang=en` to the address to share a link in one language.
 
@@ -26,6 +27,8 @@ The largest difference is **0.20°** (Saturn, 1911); the build fails above 1°.
 The page also runs this check for the date on screen.
 
 Asteroids and comets use the same kind of Sun-only orbit, from JPL's current elements. Each build compares them with JPL Horizons every 5 years over 25 years each way, and the site shows a body only in the years where it stays within 1°. That is the whole 50 years for 14 of the 36; close encounters cut the others short (Apophis, for example, passes Earth in 2029).
+
+The uncertainty clouds are drawn from each orbit's covariance in JPL's Small-Body Database. Each build checks that the samples reproduce it (spreads within 5%, correlations within 0.05) and compares the cloud's size with Horizons' own position uncertainty, computed with full dynamics: for the 21 bodies the site draws a cloud for, it is 0.93 to 1.25 times Horizons'. Bodies whose orbit fit includes forces other than gravity (a comet's outgassing, the Yarkovsky push of sunlight; Apophis, most comets) get no cloud, because there our Sun-only samples are off by up to ten times.
 
 That is plenty for seeing where things are, but it is not meant for pointing a telescope or planning a spacecraft.
 
@@ -39,6 +42,7 @@ That is plenty for seeing where things are, but it is not meant for pointing a t
 | Equatorial to ecliptic coordinates | `src/astro/frames.ts` |
 | Saturn's pole (IAU) | `src/astro/poles.ts` |
 | Asteroid and comet orbits (Sun only, any eccentricity below 1) | `src/astro/smallbody.ts` |
+| Uncertainty clouds: possible orbits from JPL's covariance | `src/astro/uncertainty.ts` |
 | Fetching asteroid and comet data from JPL (runs on GitHub) | `scripts/fetch-small-bodies.ts`, `.github/workflows/fetch-small-bodies.yml` |
 | 2D map (canvas) | `src/view/orrery.ts` |
 | 3D scene (Three.js) and the stars | `src/view/scene3d.ts`, `src/view/stars.ts` |

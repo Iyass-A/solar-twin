@@ -385,3 +385,5 @@ details.card[open] > summary { margin-bottom: 10px; }
 details.card[hidden] { display: none; }
 
 #info [hidden] { display: none; }
+
+.cloud-note { margin: 10px 0 0; font-size: 0.8rem; line-height: 1.6; }

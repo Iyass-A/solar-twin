@@ -2,13 +2,16 @@
 // Looking down on the J2000 ecliptic from the north: x points to the
 // vernal equinox (right), y is up, planets move counter-clockwise.
 // The z coordinate (height above the ecliptic) is ignored.
-// Asteroids and comets are small dots; the selected one also gets its orbit and its name.
+// Asteroids and comets are small dots; the selected one also gets its orbit, its name and its
+// uncertainty cloud (enlarged when it is too small to see, with a label saying how much).
 
 import type { PlanetId } from '../astro/elements';
 import type { Vec3 } from '../astro/kepler';
 import { VIEWS, COLORS, radialScale, type BodyFrame, type ViewMode } from './views';
-import { langInfo, t } from '../i18n';
-import { SMALL_COLORS, type SmallFrame } from './smallbodies';
+import { langInfo, numGrouped, t } from '../i18n';
+import { SMALL_COLORS, cloudZoom, type SmallFrame } from './smallbodies';
+
+const CLOUD_PX = 14; // the cloud's 1-sigma size on screen when it has to be enlarged
 
 const DOT: Partial<Record<PlanetId, number>> = { jupiter: 6, saturn: 5.5, uranus: 4.5, neptune: 4.5 };
 
@@ -69,7 +72,8 @@ export class Orrery {
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
-  draw(bodies: BodyFrame[], smalls: SmallFrame[] = [], selectedOrbit: { path: Vec3[]; color: string } | null = null) {
+  draw(bodies: BodyFrame[], smalls: SmallFrame[] = [], selectedOrbit: { path: Vec3[]; color: string } | null = null,
+    cloud: { offsets: Vec3[]; color: string } | null = null) {
     // Hidden (3D tab), or just shown and not measured yet: the ResizeObserver catches up next frame
     if (this.w < 60 || this.h < 60) return;
     const { ctx, w, h } = this;
@@ -186,6 +190,27 @@ export class Orrery {
       }
     });
 
+    // Uncertainty cloud of the selected asteroid or comet: its offsets in pixels, enlarged if tiny
+    let cloudText: { text: string; x: number; y: number; r: number; color: string } | null = null;
+    const selNow = selectedSmall as { b: SmallFrame; x: number; y: number } | null;
+    if (cloud && selNow && cloud.offsets.length) {
+      const p = selNow.b.pos;
+      const d = cloud.offsets.map((o) => {
+        const [x, y] = project({ x: p.x + o.x, y: p.y + o.y, z: p.z + o.z });
+        return [x - selNow.x, y - selNow.y];
+      });
+      const rms = Math.sqrt(d.reduce((sum, [x, y]) => sum + x * x + y * y, 0) / d.length);
+      const zoom = cloudZoom(rms, CLOUD_PX);
+      ctx.fillStyle = cloud.color;
+      ctx.globalAlpha = 0.75;
+      for (const [x, y] of d) ctx.fillRect(selNow.x + x * zoom - 0.75, selNow.y + y * zoom - 0.75, 1.5, 1.5);
+      ctx.globalAlpha = 1;
+      cloudText = {
+        text: zoom === 1 ? t().trueSize : t().cloudZoom(numGrouped(zoom)),
+        x: selNow.x, y: selNow.y, r: Math.max(rms * zoom * 2, 8), color: cloud.color,
+      };
+    }
+
     // Planets
     const screen = bodies.map((b) => project(b.pos));
     this.lastScreen = [
@@ -217,6 +242,7 @@ export class Orrery {
     ctx.font = '13px system-ui, "Segoe UI", Tahoma, sans-serif';
     ctx.textAlign = 'left';
     const label = (id: string, name: string, x: number, y: number, color: string) => {
+      ctx.direction = /[\u0600-\u06FF]/.test(name) ? 'rtl' : 'ltr'; // "2024 YR4" keeps its order
       const tw = ctx.measureText(name).width;
       const spots: [number, number][] = [
         [8, -7], [8, 16], [-8 - tw, -7], [-8 - tw, 16], [-tw / 2, -11], [-tw / 2, 21],
@@ -236,6 +262,24 @@ export class Orrery {
     const sel = selectedSmall as { b: SmallFrame; x: number; y: number } | null;
     if (sel) label(sel.b.id, sel.b.label, sel.x, sel.y, SMALL_COLORS[sel.b.group]);
     bodies.forEach((b, i) => label(b.id, b.name, screen[i][0], screen[i][1], '#e8e8f0'));
+
+    // How much the cloud is enlarged, under or above it
+    const ct = cloudText as { text: string; x: number; y: number; r: number; color: string } | null;
+    if (ct) {
+      ctx.font = '11px system-ui, "Segoe UI", Tahoma, sans-serif';
+      const tw = ctx.measureText(ct.text).width;
+      for (const dy of [ct.r + 14, -ct.r - 6]) {
+        const box = { x0: ct.x - tw / 2 - 2, y0: ct.y + dy - 11, x1: ct.x + tw / 2 + 2, y1: ct.y + dy + 3 };
+        const inside = box.x0 >= 0 && box.y0 >= 0 && box.x1 <= w && box.y1 <= h;
+        if (inside && !taken.some((t) => overlaps(t, box))) {
+          ctx.fillStyle = ct.color;
+          ctx.globalAlpha = 0.85;
+          ctx.fillText(ct.text, ct.x - tw / 2, ct.y + dy);
+          ctx.globalAlpha = 1;
+          break;
+        }
+      }
+    }
 
     // Name of the equinox direction, above or below the arrow, wherever there is room
     ctx.font = '11px system-ui, "Segoe UI", Tahoma, sans-serif';

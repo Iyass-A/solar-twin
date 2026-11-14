@@ -6,6 +6,9 @@ import type { Lang } from '../i18n';
 
 type Names = Record<Lang, [string, string]>;
 
+/** Keep a Latin designation such as "2024 YR4" or "1P" in its own left-to-right order inside Arabic text. */
+const ltr = (s: string) => `\u2066${s}\u2069`;
+
 /** Numbered asteroid: "Eros (433)" in Arabic, "(433) Eros" in German, "433 Eros" in English. */
 function asteroid(n: string, ar: string, de: string, en = de): Names {
   return { ar: [ar, `${ar} (${n})`], de: [de, `(${n}) ${de}`], en: [en, `${n} ${en}`] };
@@ -16,7 +19,7 @@ function comet(des: string, ar: string, de: string, en = de, labelAll?: string):
   const periodic = /^\d+P$/.test(des);
   const full = (word: string, name: string) => (periodic ? `${word} ${des}/${name}` : `${word} ${name} (${des})`);
   return {
-    ar: [labelAll ?? ar, `مذنب ${ar} (${des})`],
+    ar: [labelAll ?? ar, `مذنب ${ar} (${ltr(des)})`],
     de: [labelAll ?? de, full('Komet', de)],
     en: [labelAll ?? en, full('Comet', en)],
   };
@@ -41,7 +44,7 @@ export const SMALL_BODY_NAMES: Record<string, Names> = {
   '101955': asteroid('101955', 'بينو', 'Bennu'),
   '162173': asteroid('162173', 'ريوغو', 'Ryugu'),
   '2024 YR4': {
-    ar: ['2024 YR4', 'الكويكب 2024 YR4'],
+    ar: ['2024 YR4', `الكويكب ${ltr('2024 YR4')}`],
     de: ['2024 YR4', 'Asteroid 2024 YR4'],
     en: ['2024 YR4', 'Asteroid 2024 YR4'],
   },

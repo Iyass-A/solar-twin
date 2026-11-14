@@ -7,16 +7,19 @@
 // Saturn has its rings, tilted like the real ones (IAU pole direction).
 // Behind everything: the real stars down to magnitude 6 (loaded as a separate file, see stars.ts).
 // Asteroids and comets are one layer of small dots; the selected one also gets a ball, its orbit,
-// its height line and its name, like a planet, so it can be followed too.
+// its height line and its name, like a planet, so it can be followed too, and its uncertainty cloud
+// (enlarged when too small to see, with a label saying how much).
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { PlanetId } from '../astro/elements';
 import type { Vec3 } from '../astro/kepler';
 import { SATURN_POLE } from '../astro/poles';
-import { t } from '../i18n';
+import { numGrouped, t } from '../i18n';
 import { makeStars, type StarData } from './stars';
-import { SMALL_COLORS, type SmallFrame, type SmallGroup } from './smallbodies';
+import { SMALL_COLORS, cloudZoom, type SmallFrame, type SmallGroup } from './smallbodies';
+
+const CLOUD_PX = 14; // the cloud's 1-sigma size on screen when it has to be enlarged (at least)
 import { VIEWS, COLORS, radialScale, sceneAxes, toScene, type BodyFrame, type ViewInfo, type ViewMode } from './views';
 
 const R = 100;           // scene units at the edge of the view (view.rMax)
@@ -75,6 +78,9 @@ export class Scene3D {
   private readonly planets = new Map<string, Planet>();
   private smallId: string | null = null;
   private readonly dots: THREE.Points;
+  private readonly cloud: THREE.Points;
+  private cloudLabel!: Label;
+  private cloudOnScreen: { r: number } | null = null;
   private readonly sun: THREE.Mesh;
   private readonly glow: THREE.Sprite;
   private readonly grid = new THREE.Group();
@@ -168,7 +174,11 @@ export class Scene3D {
 
     // Asteroids and comets: one layer of round dots, sized in screen pixels
     this.dots = makeDots();
-    this.scene.add(this.dots);
+    this.cloud = makeDots();
+    // The cloud is where the body could be: draw it over the ball, not hidden behind it
+    (this.cloud.material as THREE.ShaderMaterial).depthTest = false;
+    this.cloud.renderOrder = 10;
+    this.scene.add(this.dots, this.cloud);
 
     // Planets, their orbits and the drop lines to the ecliptic
     for (const id of Object.keys(COLORS) as PlanetId[]) {
@@ -216,6 +226,7 @@ export class Scene3D {
     this.resize(host);
     this.resetCamera();
     this.refreshTexts();
+    this.cloudLabel = this.label('', 'dim');
 
     // The star catalogue is its own file, so the scene shows first and the stars fade in after
     import('../data/stars.json')
@@ -327,7 +338,8 @@ export class Scene3D {
     return best;
   }
 
-  draw(bodies: BodyFrame[], smalls: SmallFrame[] = [], selectedOrbit: { path: Vec3[]; color: string } | null = null) {
+  draw(bodies: BodyFrame[], smalls: SmallFrame[] = [], selectedOrbit: { path: Vec3[]; color: string } | null = null,
+    cloud: { offsets: Vec3[]; color: string } | null = null) {
     const now = performance.now();
     const dt = Math.min((now - this.lastDraw) / 1000, 0.1);
     this.lastDraw = now;
@@ -379,6 +391,7 @@ export class Scene3D {
       p.grow = id === this.focusId ? 1 + (FOCUS_GROW - 1) * this.focusK : 1;
       p.mesh.scale.setScalar(p.px * p.grow * this.worldPerPixel(p.mesh.position));
     }
+    this.updateCloud(cloud, smalls, view3);
     const wpp = this.worldPerPixel(this.sun.position);
     this.sun.scale.setScalar(SUN_PX * wpp);
     this.glow.scale.setScalar(GLOW_PX * 2 * wpp);
@@ -389,6 +402,40 @@ export class Scene3D {
   }
 
   // ---------- Helpers ----------
+
+  /** The uncertainty cloud around the selected asteroid or comet, enlarged if it would be too small to see. */
+  private updateCloud(cloud: { offsets: Vec3[]; color: string } | null, smalls: SmallFrame[],
+    view3: (v: Vec3) => [number, number, number]) {
+    const body = this.smallId ? this.planets.get(this.smallId) : undefined;
+    const frame = smalls.find((b) => b.id === this.smallId);
+    this.cloudOnScreen = null;
+    if (!cloud || !cloud.offsets.length || !body?.mesh.visible || !frame) {
+      this.cloud.visible = false;
+      this.cloudLabel.el.style.visibility = 'hidden';
+      return;
+    }
+    // Offsets in scene units, from exact (double precision) positions, then enlarged around the body
+    const p = frame.pos;
+    const c = view3(p);
+    const d = cloud.offsets.map((o) => {
+      const q = view3({ x: p.x + o.x, y: p.y + o.y, z: p.z + o.z });
+      return [q[0] - c[0], q[1] - c[1], q[2] - c[2]];
+    });
+    const rms = Math.sqrt(d.reduce((sum, v) => sum + v[0] * v[0] + v[1] * v[1] + v[2] * v[2], 0) / d.length);
+    const px = rms / this.worldPerPixel(body.mesh.position);
+    const target = Math.max(CLOUD_PX, 2.5 * body.px * body.grow); // stay visible around a grown ball
+    const zoom = cloudZoom(px, target);
+    updateDots(this.cloud, d.map((v) => ({
+      xyz: [c[0] + v[0] * zoom, c[1] + v[1] * zoom, c[2] + v[2] * zoom] as [number, number, number],
+      color: cloud.color,
+      px: 1.2,
+    })), this.renderer.getPixelRatio());
+    this.cloud.visible = true;
+    const text = zoom === 1 ? t().trueSize : t().cloudZoom(numGrouped(zoom));
+    if (this.cloudLabel.el.textContent !== text) this.setText(this.cloudLabel, text);
+    this.cloudLabel.el.style.color = cloud.color;
+    this.cloudOnScreen = { r: Math.max(px * zoom * 2, body.px * body.grow + 4) };
+  }
 
   /** Keep the selected asteroid or comet as a full body (ball, orbit, height line, name). */
   private syncSmall(smalls: SmallFrame[], orbit: { path: Vec3[]; color: string } | null,
@@ -508,6 +555,7 @@ export class Scene3D {
   private label(text: string, cls = ''): Label {
     const el = document.createElement('span');
     el.className = cls;
+    el.dir = 'auto'; // "2024 YR4" keeps its order on an Arabic page
     this.overlay.append(el);
     const label = { el, w: 0, h: 0 };
     this.setText(label, text);
@@ -577,6 +625,16 @@ export class Scene3D {
       place(p.label, x, y, [
         [g, -h - 1], [g, 1], [-g - w, -h - 1], [-g - w, 1], [-w / 2, -h - g], [-w / 2, g],
       ], id);
+    }
+
+    // How much the uncertainty cloud is enlarged, under or above it
+    const cloudAt = this.cloudOnScreen && onScreen.find((o) => o.id === this.smallId);
+    if (cloudAt && this.cloudOnScreen) {
+      const { w, h } = measure(this.cloudLabel);
+      const r = this.cloudOnScreen.r;
+      place(this.cloudLabel, cloudAt.x, cloudAt.y, [[-w / 2, r + 4], [-w / 2, -r - 4 - h]]);
+    } else {
+      this.cloudLabel.el.style.visibility = 'hidden';
     }
 
     // Ring values and the equinox, wherever there is room

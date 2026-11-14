@@ -5,7 +5,9 @@
 - Licensed under the GNU AGPL v3.0 or later (`LICENSE`). Copyright (C) 2026 Iyass-A.
 - 36 asteroids, dwarf planets and comets from JPL, in the 3D view and on the map: coloured dots by group (dwarf planet, asteroid, near-Earth asteroid, comet), with names in all three languages. Pick one (by tapping, or in the new table) to see its orbit, its type, size and distances, and to follow it with the camera. A switch hides them.
 - Each of them shows only in the years where our Sun-only orbit stays within 1° of JPL Horizons (sampled every 5 years over 25 years each way); outside, the info panel says why.
-- The data (current orbits, plus each orbit's covariance for the coming uncertainty clouds) comes from a GitHub workflow; `npm run check` compares it with JPL Horizons.
+- The data (current orbits, plus each orbit's covariance) comes from a GitHub workflow; `npm run check` compares it with JPL Horizons.
+- Uncertainty clouds: around a picked asteroid or comet, 300 possible orbits drawn from JPL's covariance show where it could be, enlarged with a label when too small to see; the info panel gives the real size (1σ, in m or km). `npm run check` confirms the samples reproduce the covariance and that the clouds match Horizons' own uncertainty (0.93 to 1.25 times) for the 21 bodies that get one. Bodies with non-gravitational forces in their orbit fit get an explanation instead of a cloud.
+- Fixes: "2024 YR4" and comet designations keep their order inside Arabic text; very precise orbits (Bennu) no longer lose their perihelion-time uncertainty to rounding.
 - The page links to its source code, and the licence notices of three.js, Astronomy Engine and the star data are published with it (`THIRD-PARTY-LICENSES.txt`).
 
 ## v0.2.0 (14 November 2026), public beta

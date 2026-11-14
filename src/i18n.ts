@@ -78,6 +78,12 @@ export interface Strings {
   km: string;
   smallNote: string;
   outsideWindow: (from: string, to: string) => string;
+  uncertainty: string;
+  metres: string;
+  cloudNote: string;
+  noCloud: string;
+  cloudZoom: (factor: string) => string;
+  trueSize: string;
   /** Light travel time, given in minutes. */
   light: (minutes: number) => string;
 }
@@ -99,6 +105,11 @@ export function num(n: number, digits: number, l: Lang = current): string {
     formats.set(key, f);
   }
   return f.format(n);
+}
+
+/** A whole number with the language's thousands separators (20,000 / 20.000). */
+export function numGrouped(n: number, l: Lang = current): string {
+  return new Intl.NumberFormat(LANGS.find((x) => x.id === l)!.numberLocale, { maximumFractionDigits: 0 }).format(n);
 }
 
 /** Hours and whole minutes, or null below one hour (then shown as minutes with one decimal). */
@@ -201,6 +212,15 @@ const AR: Strings = {
   km: 'كم',
   smallNote: 'كل جسم بيبيّن بس بالسنين اللي حسابنا فيها دقيق، يعني أقل من درجة فرق عن حساب JPL.',
   outsideWindow: (from, to) => `حسابنا لهالجسم دقيق بس من ${from} لـ ${to}، فما منعرضه بهالتاريخ.`,
+  uncertainty: 'عدم اليقين بالموقع',
+  metres: 'م',
+  cloudNote: 'الغيمة حوالين الجسم فيها 300 مدار ممكن، كلهم بيناسبوا أرصاد JPL، فبتورجي وين ممكن يكون فعلاً. '
+    + 'شكلها بيورجي الاتجاه الأقل معرفة: غالباً على طول المدار، وللأجسام البعيدة غالباً بعدها عن الشمس. '
+    + 'الرقم هو انحراف معياري واحد (1σ) باتجاهها الأطول.',
+  noCloud: 'ما منرسم غيمة لهالجسم: عليه قوى غير الجاذبية، متل غازات المذنب أو دفشة حرارة الشمس، '
+    + 'وحسابنا ما بيشملها، فالغيمة كانت رح تطلع غلط.',
+  cloudZoom: (f) => `مكبّرة ×${f}`,
+  trueSize: 'بحجمها الحقيقي',
   light: (minutes) => {
     const hm = hoursMinutes(minutes);
     if (!hm) return `${num(minutes, 1, 'ar')} دقيقة`;
@@ -291,6 +311,15 @@ const DE: Strings = {
   km: 'km',
   smallNote: 'Jeder Körper erscheint nur in den Jahren, in denen unsere Rechnung genau ist: weniger als 1° Abweichung zur Rechnung des JPL.',
   outsideWindow: (from, to) => `Unsere Rechnung ist für diesen Körper nur von ${from} bis ${to} genau, deshalb wird er zu diesem Datum nicht gezeigt.`,
+  uncertainty: 'Positionsunsicherheit',
+  metres: 'm',
+  cloudNote: 'Die Wolke um den Körper zeigt 300 mögliche Bahnen, die alle zu den Beobachtungen des JPL passen, also wo er wirklich sein könnte. '
+    + 'Ihre Form zeigt die am wenigsten bekannte Richtung: oft entlang der Bahn, bei fernen Körpern oft ihr Abstand zur Sonne. '
+    + 'Die Zahl ist eine Standardabweichung (1σ) in ihrer längsten Richtung.',
+  noCloud: 'Für diesen Körper zeichnen wir keine Wolke: Auf ihn wirken neben der Schwerkraft weitere Kräfte, '
+    + 'etwa das Ausgasen eines Kometen oder der Schub der Sonnenwärme. Unsere Rechnung enthält sie nicht, die Wolke wäre falsch.',
+  cloudZoom: (f) => `${f}-fach vergrößert`,
+  trueSize: 'in echter Größe',
   light: (minutes) => {
     const hm = hoursMinutes(minutes);
     if (!hm) return `${num(minutes, 1, 'de')} Minuten`;
@@ -381,6 +410,15 @@ const EN: Strings = {
   km: 'km',
   smallNote: 'Each body shows only in the years where our calculation is accurate: within 1° of JPL’s.',
   outsideWindow: (from, to) => `Our calculation for this body is accurate only from ${from} to ${to}, so it is not shown at this date.`,
+  uncertainty: 'Position uncertainty',
+  metres: 'm',
+  cloudNote: 'The cloud around the body shows 300 possible orbits, all fitting JPL’s observations: where it could really be. '
+    + 'Its shape shows the least known direction: often along the orbit, and for distant bodies often their distance from the Sun. '
+    + 'The number is one standard deviation (1σ) along its longest direction.',
+  noCloud: 'No cloud for this body: forces other than gravity act on it, such as a comet’s outgassing or the push of sunlight’s heat. '
+    + 'Our calculation leaves them out, so its cloud would be wrong.',
+  cloudZoom: (f) => `enlarged ×${f}`,
+  trueSize: 'true size',
   light: (minutes) => {
     const hm = hoursMinutes(minutes);
     if (!hm) return `${num(minutes, 1, 'en')} minutes`;

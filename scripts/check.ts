@@ -16,6 +16,7 @@ import smallRef from './reference/small-bodies-horizons.json' with { type: 'json
 import { smallBodyPosition, type SmallBodyOrbit } from '../src/astro/smallbody';
 import { readFileSync } from 'node:fs';
 import { SMALL_BODY_NAMES } from '../src/data/small-body-names';
+import { sampleOrbits, cloudOffsets, type Covariance } from '../src/astro/uncertainty';
 import { STRINGS, LANGS } from '../src/i18n';
 
 const MAX_ERROR_DEG = 1;
@@ -206,7 +207,65 @@ console.log(`  covariance elements at their epoch ${worstAt.cov.v.toExponential(
 console.log(`  shown only where within 1° (sampled every 5 years): ${fullWindow} of ${sbodies.length} for all 50 years, shortest ${shortest.years.toFixed(0)} years (${shortest.who})`);
 console.log(`  ${smallOk ? 'OK' : 'FAIL'}`);
 
-// 9. Languages: every text exists in all three, and the light time reads right in each
+// 9. Uncertainty clouds: the sampled orbits must reproduce JPL's covariance (spreads and correlations)
+let cloudOk = true;
+const N_CHECK = 4000; // statistical noise on a spread: about 1 / sqrt(2 N) = 1.1%
+let worstSpread = { v: 0, who: '' }, worstCorr = { v: 0, who: '' };
+const KEYS6 = ['e', 'q', 'tp', 'node', 'peri', 'i'] as const;
+for (const b of sbodies) {
+  if (!b.cov) continue;
+  const samples = sampleOrbits(b.cov as Covariance, N_CHECK, 12345);
+  if (samples.length !== N_CHECK) { cloudOk = false; console.log(`  ${b.short}: only ${samples.length} samples`); continue; }
+  // tp: use the sampled change (dtp), which the sampler keeps apart from the Julian date
+  const X = samples.map((o) => KEYS6.map((k) => (k === 'tp' ? o.dtp ?? 0 : o[k])));
+  const mean = KEYS6.map((_, i) => X.reduce((sum, x) => sum + x[i], 0) / N_CHECK);
+  const C = b.cov.matrix;
+  for (let i = 0; i < 6; i++) {
+    for (let j = 0; j <= i; j++) {
+      const c = X.reduce((sum, x) => sum + (x[i] - mean[i]) * (x[j] - mean[j]), 0) / (N_CHECK - 1);
+      if (i === j) {
+        const ratio = Math.sqrt(c / C[i][i]);
+        const off = Math.abs(ratio - 1);
+        if (off > worstSpread.v) worstSpread = { v: off, who: `${b.short} ${KEYS6[i]}` };
+      } else {
+        // correlation from the samples against JPL's
+        const si = Math.sqrt(X.reduce((sum, x) => sum + (x[i] - mean[i]) ** 2, 0) / (N_CHECK - 1));
+        const sj = Math.sqrt(X.reduce((sum, x) => sum + (x[j] - mean[j]) ** 2, 0) / (N_CHECK - 1));
+        const off = Math.abs(c / (si * sj) - C[i][j] / Math.sqrt(C[i][i] * C[j][j]));
+        if (off > worstCorr.v) worstCorr = { v: off, who: `${b.short} ${KEYS6[i]}-${KEYS6[j]}` };
+      }
+    }
+  }
+}
+if (worstSpread.v > 0.05 || worstCorr.v > 0.05) cloudOk = false;
+
+// The cloud's size against Horizons' own position uncertainty (full dynamics, same orbit solution),
+// for the bodies the site draws a cloud for: those fitted with gravity alone (6 parameters)
+const unitV = (v: { x: number; y: number; z: number }) => { const n = Math.hypot(v.x, v.y, v.z); return { x: v.x / n, y: v.y / n, z: v.z / n }; };
+let drawn = 0, compared = 0;
+let worstRatio = { v: 1, who: '' };
+for (const b of sbodies) {
+  if (!b.cov || b.cov.labels.length !== 6) continue;
+  drawn++;
+  const r = smallRef.reference.find((x) => x.spkid === b.spkid) as { sigma?: Record<string, number | null> | null; sigmaJd?: number | null } | undefined;
+  const sg = r?.sigma;
+  if (!sg || sg.A_s == null || sg.C_s == null || sg.N_s == null || !r?.sigmaJd) { cloudOk = false; console.log(`  ${b.short}: no Horizons uncertainty to compare`); continue; }
+  const off = cloudOffsets(b.cov as Covariance, sampleOrbits(b.cov as Covariance, 2000, 777), r.sigmaJd);
+  const ours = Math.sqrt(off.reduce((sum, o) => sum + o.x * o.x + o.y * o.y + o.z * o.z, 0) / off.length) * 149597870.7;
+  const theirs = Math.hypot(sg.A_s, sg.C_s, sg.N_s);
+  const ratio = ours / theirs;
+  compared++;
+  if (Math.abs(Math.log(ratio)) > Math.abs(Math.log(worstRatio.v))) worstRatio = { v: ratio, who: b.short };
+  if (ratio < 0.8 || ratio > 1.25) { cloudOk = false; console.log(`  ${b.short}: our cloud is ${ratio.toFixed(2)} times Horizons' uncertainty`); }
+}
+failed ||= !cloudOk;
+console.log(`\nUncertainty clouds: ${N_CHECK} sampled orbits per body against JPL's covariance:`);
+console.log(`  spreads within ${(worstSpread.v * 100).toFixed(1)}% (${worstSpread.who}), limit 5%`);
+console.log(`  correlations within ${worstCorr.v.toFixed(3)} (${worstCorr.who}), limit 0.05`);
+console.log(`  size against Horizons' own uncertainty, for the ${drawn} bodies with a cloud: ${compared} compared, worst ${worstRatio.v.toFixed(2)} times (${worstRatio.who}), limit 0.8 to 1.25`);
+console.log(`  ${cloudOk ? 'OK' : 'FAIL'}`);
+
+// 10. Languages: every text exists in all three, and the light time reads right in each
 let langOk = true;
 function sameShape(a: unknown, b: unknown, path: string, l: string) {
   if (typeof a !== typeof b || Array.isArray(a) !== Array.isArray(b)) {
