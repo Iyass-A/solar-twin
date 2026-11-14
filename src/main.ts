@@ -3,7 +3,9 @@ import { J2000, toJulianDate, centuriesSinceJ2000 } from './astro/julian';
 import { PLANETS, VALID_FROM_MS, VALID_TO_MS, type PlanetId } from './astro/elements';
 import { heliocentricPosition, orbitPath, longitude, distance, wrap180 } from './astro/kepler';
 import { referencePosition } from './astro/reference';
-import { Orrery, VIEWS, type BodyFrame, type ViewMode } from './view/orrery';
+import { Orrery } from './view/orrery';
+import { VIEWS, type BodyFrame, type ViewMode } from './view/views';
+import type { Scene3D } from './view/scene3d';
 
 const DAY_MS = 86_400_000;
 
@@ -27,14 +29,17 @@ const clamp = (ms: number) => Math.min(VALID_TO_MS, Math.max(VALID_FROM_MS, ms))
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
   <h1>التوأم الرقمي للمجموعة الشمسية</h1>
-  <p class="step">الخطوة 4: معلومات كل كوكب</p>
+  <p class="step">المرحلة 2، الخطوة 1: مشهد ثلاثي الأبعاد</p>
 
-  <div class="card sky">
-    <canvas id="sky" aria-label="خريطة الكواكب حول الشمس"></canvas>
+  <div class="tabs" role="tablist">
+    <button type="button" role="tab" id="tab3d">ثلاثي الأبعاد</button>
+    <button type="button" role="tab" id="tab2d">خريطة من فوق</button>
   </div>
-  <p class="caption"><span id="caption"></span><br>
-    منظر من فوق، والكواكب بتدور عكس عقارب الساعة. أحجام الكواكب مو حقيقية.
-    الأرقام على الدواير هي البعد بالوحدة الفلكية. دولاب الماوس بيكبّر، ودبل كليك بيرجّع.</p>
+  <div class="card sky">
+    <div id="sky3d" class="view" hidden><div class="loading">عم يحمّل المشهد…</div></div>
+    <canvas id="sky" class="view" aria-label="خريطة الكواكب حول الشمس" hidden></canvas>
+  </div>
+  <p class="caption"><span id="caption"></span><br><span id="howto"></span></p>
 
   <div class="card" id="info">
     <div class="sub" id="infoHint">اكبس على أي كوكب بالخريطة أو بالجدول لتشوف معلوماته.</div>
@@ -115,6 +120,7 @@ const slider = $<HTMLInputElement>('slider');
 const dateInput = $<HTMLInputElement>('date');
 
 const orrery = new Orrery($<HTMLCanvasElement>('sky'));
+let scene3d: Scene3D | null = null; // loaded on first use (Three.js is a separate file)
 
 // ---------- Clock ----------
 
@@ -154,10 +160,58 @@ dateInput.addEventListener('change', () => {
 function setView(mode: ViewMode) {
   orrery.mode = mode;
   orrery.zoom = 1;
+  if (scene3d) { scene3d.mode = mode; scene3d.resetCamera(); }
   $('caption').textContent = VIEWS[mode].caption;
 }
 viewSel.addEventListener('change', () => setView(viewSel.value as ViewMode));
 setView('compressed');
+
+// ---------- 3D scene or 2D map ----------
+
+type Kind = '3d' | '2d';
+let kind: Kind = '3d';
+
+const HOWTO: Record<Kind, string> = {
+  '3d': 'اسحب لتلفّ المشهد، ودولاب الماوس أو إصبعين بيكبّروا، ودبل كليك أو ↺ بيرجّع. '
+    + 'الخطوط النازلة من الكواكب بتورجي قديش الكوكب فوق أو تحت مستوى مدار الأرض. '
+    + 'الدواير هي البعد بالوحدة الفلكية. أحجام الكواكب مو حقيقية.',
+  '2d': 'منظر من فوق، والكواكب بتدور عكس عقارب الساعة. أحجام الكواكب مو حقيقية. '
+    + 'الأرقام على الدواير هي البعد بالوحدة الفلكية. دولاب الماوس بيكبّر، ودبل كليك بيرجّع.',
+};
+
+function show(k: Kind) {
+  kind = k;
+  $('sky3d').hidden = k !== '3d';
+  $('sky').hidden = k !== '2d';
+  $('tab3d').setAttribute('aria-selected', String(k === '3d'));
+  $('tab2d').setAttribute('aria-selected', String(k === '2d'));
+  $('howto').textContent = HOWTO[k];
+  if (k === '3d' && !scene3d) void load3d();
+}
+
+let loading3d = false;
+async function load3d() {
+  if (loading3d) return;
+  loading3d = true;
+  try {
+    const { Scene3D } = await import('./view/scene3d');
+    scene3d = new Scene3D($('sky3d'));
+    scene3d.mode = orrery.mode;
+    scene3d.selected = orrery.selected;
+    scene3d.onPick = select;
+  } catch (err) {
+    // No WebGL (or the file did not load): stay with the 2D map
+    console.error(err);
+    loading3d = false;
+    $<HTMLButtonElement>('tab3d').disabled = true;
+    $('tab3d').title = 'المتصفح هون ما بيدعم العرض ثلاثي الأبعاد';
+    show('2d');
+  }
+}
+
+$('tab3d').addEventListener('click', () => show('3d'));
+$('tab2d').addEventListener('click', () => show('2d'));
+show('3d');
 
 // ---------- Selecting a planet ----------
 
@@ -166,6 +220,7 @@ const LIGHT_SECONDS_PER_AU = 499.004784;
 
 function select(id: PlanetId | null) {
   orrery.selected = id;
+  if (scene3d) scene3d.selected = id;
   document.querySelectorAll<HTMLTableRowElement>('tr[data-id]').forEach((tr) => {
     tr.classList.toggle('selected', tr.dataset.id === id);
   });
@@ -272,7 +327,8 @@ function frame(now: number) {
     orbit: orbitPath(p, T),
   }));
 
-  orrery.draw(bodies);
+  if (kind === '2d') orrery.draw(bodies);
+  else scene3d?.draw(bodies);
   if (!dragging) slider.valueAsNumber = (clock.ms - VALID_FROM_MS) / DAY_MS;
   if (now - lastPanels > 250) {
     lastPanels = now;

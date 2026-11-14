@@ -7,6 +7,7 @@ import { PLANETS, VALID_FROM_MS, VALID_TO_MS } from '../src/astro/elements';
 import { heliocentricPosition, orbitPath, longitude, distance, wrap180 } from '../src/astro/kepler';
 import { referencePosition } from '../src/astro/reference';
 import { J2000, toJulianDate, centuriesSinceJ2000 } from '../src/astro/julian';
+import { VIEWS, toScene } from '../src/view/views';
 
 const MAX_ERROR_DEG = 1;
 const DAY_MS = 86_400_000;
@@ -63,6 +64,28 @@ for (const p of PLANETS) {
 }
 failed ||= !orbitOk;
 console.log(`\nOrbits pass through planets: ${orbitOk ? 'OK' : 'FAIL'}`);
+
+// 5. The 3D scene keeps every direction, turns the same way (counter-clockwise seen from
+//    the north, which is up in Three.js) and fits all planets inside the view
+const SCENE_R = 100;
+let sceneOk = true;
+for (const mode of Object.keys(VIEWS) as (keyof typeof VIEWS)[]) {
+  const view = VIEWS[mode];
+  for (const p of PLANETS) {
+    const v = heliocentricPosition(p, Tnow);
+    const [X, Y, Z] = toScene(v, view, SCENE_R);
+    const back = { x: X, y: -Z, z: Y }; // undo the axis swap
+    const cos = (back.x * v.x + back.y * v.y + back.z * v.z) / (distance(back) * distance(v));
+    const fits = distance(v) > view.rMax || distance(back) <= SCENE_R;
+    if (cos < 1 - 1e-12 || !fits) { sceneOk = false; console.log(`  3D ${mode}: ${p.id} is off`); }
+  }
+}
+const [ax, , az] = toScene({ x: 1, y: 0, z: 0 }, VIEWS.true, SCENE_R);
+const [bx, , bz] = toScene({ x: 0, y: 1, z: 0 }, VIEWS.true, SCENE_R);
+const upward = az * bx - ax * bz; // y part of (x axis) × (y axis), must point up
+if (upward <= 0) { sceneOk = false; console.log('  3D: the scene is mirrored'); }
+failed ||= !sceneOk;
+console.log(`3D scene keeps directions and turning: ${sceneOk ? 'OK' : 'FAIL'}`);
 
 console.log(failed ? '\nRESULT: FAIL' : '\nRESULT: OK');
 if (failed) process.exitCode = 1;

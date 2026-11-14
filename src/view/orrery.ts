@@ -5,56 +5,12 @@
 
 import type { PlanetId } from '../astro/elements';
 import type { Vec3 } from '../astro/kepler';
-
-export type ViewMode = 'compressed' | 'true' | 'inner';
-
-interface ViewInfo {
-  label: string;
-  caption: string;
-  rMax: number;        // au shown at the edge (zoom 1)
-  compressed: boolean; // square-root distances: true directions, squeezed distances
-  rings: number[];     // distance rings to draw [au]
-}
-
-export const VIEWS: Record<ViewMode, ViewInfo> = {
-  compressed: {
-    label: 'كل الكواكب، مسافات مضغوطة',
-    caption: 'المسافات مضغوطة لحتى يبينوا كل الكواكب، بس الاتجاهات صحيحة.',
-    rMax: 31, compressed: true, rings: [1, 5, 10, 20, 30],
-  },
-  true: {
-    label: 'كل الكواكب، مسافات حقيقية',
-    caption: 'المسافات حقيقية. الكواكب الداخلية بتبين قريبة كتير من الشمس.',
-    rMax: 31, compressed: false, rings: [5, 10, 20, 30],
-  },
-  inner: {
-    label: 'الكواكب الداخلية، مسافات حقيقية',
-    caption: 'المسافات حقيقية، لحد مدار المريخ.',
-    rMax: 1.75, compressed: false, rings: [0.5, 1, 1.5],
-  },
-};
-
-export interface BodyFrame {
-  id: PlanetId;
-  name: string;
-  pos: Vec3;
-  orbit: Vec3[];
-}
-
-const COLORS: Record<PlanetId, string> = {
-  mercury: '#b5b5b5',
-  venus: '#e8c77a',
-  earth: '#4f9dff',
-  mars: '#e0603a',
-  jupiter: '#d9a46c',
-  saturn: '#e3cf8f',
-  uranus: '#8fd8e0',
-  neptune: '#6b85ff',
-};
+import { VIEWS, COLORS, radialScale, type BodyFrame, type ViewMode } from './views';
 
 const DOT: Partial<Record<PlanetId, number>> = { jupiter: 6, saturn: 5.5, uranus: 4.5, neptune: 4.5 };
 
-interface Box { x0: number; y0: number; x1: number; y1: number; }
+// A taken area on screen. `id` marks a planet's own dot, which must not hide its own name.
+interface Box { x0: number; y0: number; x1: number; y1: number; id?: PlanetId; }
 
 const overlaps = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
 
@@ -111,6 +67,8 @@ export class Orrery {
   }
 
   draw(bodies: BodyFrame[]) {
+    // Hidden (3D tab), or just shown and not measured yet: the ResizeObserver catches up next frame
+    if (this.w < 60 || this.h < 60) return;
     const { ctx, w, h } = this;
     const view = VIEWS[this.mode];
     const cx = w / 2;
@@ -118,7 +76,7 @@ export class Orrery {
     const R = (Math.min(w, h) / 2 - 28) * this.zoom;
 
     // Distance from the Sun [au] -> distance on screen [px]
-    const scale = (r: number) => (view.compressed ? Math.sqrt(r / view.rMax) : r / view.rMax) * R;
+    const scale = (r: number) => radialScale(view, r) * R;
     const project = (v: Vec3): [number, number] => {
       const r = Math.hypot(v.x, v.y);
       if (r === 0) return [cx, cy];
@@ -210,7 +168,7 @@ export class Orrery {
         ctx.stroke();
         ctx.lineWidth = 1;
       }
-      taken.push({ x0: x - r - 5, y0: y - r - 5, x1: x + r + 5, y1: y + r + 5 });
+      taken.push({ x0: x - r - 5, y0: y - r - 5, x1: x + r + 5, y1: y + r + 5, id: b.id });
     });
     taken.push({ x0: cx - 6, y0: cy - 6, x1: cx + 6, y1: cy + 6 }); // the Sun
 
@@ -228,7 +186,7 @@ export class Orrery {
       for (const [dx, dy] of spots) {
         const box = { x0: x + dx - 2, y0: y + dy - 12, x1: x + dx + tw + 2, y1: y + dy + 4 };
         const inside = box.x0 >= 0 && box.y0 >= 0 && box.x1 <= w && box.y1 <= h;
-        if (inside && !taken.some((t) => overlaps(t, box))) {
+        if (inside && !taken.some((t) => t.id !== b.id && overlaps(t, box))) {
           ctx.fillText(b.name, x + dx, y + dy);
           taken.push(box);
           break;
