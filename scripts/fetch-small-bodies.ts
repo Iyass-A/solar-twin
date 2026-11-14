@@ -37,16 +37,34 @@ const COV_SHARDS = 16;
 const SBDB = 'https://ssd-api.jpl.nasa.gov/sbdb.api';
 const QUERY = 'https://ssd-api.jpl.nasa.gov/sbdb_query.api';
 const HORIZONS = 'https://ssd.jpl.nasa.gov/api/horizons.api';
-const PAUSE_MS = 300;
 const USER_AGENT = 'solar-twin (https://github.com/Iyass-A/solar-twin)';
+// Time between two requests to the same server [ms]. JPL's SBDB API (ssd-api.jpl.nasa.gov) answers
+// "403 Forbidden" for about a minute once it gets more than about 170 requests in a minute (measured
+// in November 2026), so it gets at most 80 a minute. Horizons answered 3,000 requests at 300 ms.
+const MIN_GAP_MS: Record<string, number> = { 'ssd-api.jpl.nasa.gov': 750 };
+const DEFAULT_GAP_MS = 300;
+const BLOCKED_WAIT_MS = 75_000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-let requests = 0;
+let requests = 0, blocked = 0;
+const lastRequest = new Map<string, number>();
 
-/** GET a JSON API, retrying a few times when the server is busy (HTTP 5xx) or the connection drops. */
+/** Wait until this server may get the next request. */
+async function pace(url: string) {
+  const host = new URL(url).host;
+  const gap = MIN_GAP_MS[host] ?? DEFAULT_GAP_MS;
+  const wait = (lastRequest.get(host) ?? 0) + gap - Date.now();
+  if (wait > 0) await sleep(wait);
+  lastRequest.set(host, Date.now());
+}
+
+/**
+ * GET a JSON API. Tries again when the server is busy (HTTP 5xx) or the connection drops, and after
+ * a pause when it says we asked too often (HTTP 403 or 429).
+ */
 async function getJson(url: string): Promise<any> {
   for (let attempt = 1; ; attempt++) {
-    await sleep(PAUSE_MS);
+    await pace(url);
     requests++;
     let res: Response, text: string;
     try {
@@ -56,7 +74,13 @@ async function getJson(url: string): Promise<any> {
       if (attempt < 5) { console.log(`  network error, trying again (${attempt})`); await sleep(5000 * attempt); continue; }
       throw err;
     }
-    if (res.ok) return JSON.parse(text);
+    if (res.ok || res.status === 300) return JSON.parse(text); // 300: SBDB found several bodies, and lists them
+    if ((res.status === 403 || res.status === 429) && attempt < 5) {
+      blocked++;
+      console.log(`  HTTP ${res.status} from ${new URL(url).host}: asked too often, waiting ${BLOCKED_WAIT_MS * attempt / 1000} s (${attempt})`);
+      await sleep(BLOCKED_WAIT_MS * attempt);
+      continue;
+    }
     if (res.status >= 500 && attempt < 5) {
       console.log(`  HTTP ${res.status}, trying again (${attempt})`);
       await sleep(5000 * attempt);
@@ -275,7 +299,11 @@ for (const b of bodies.values()) {
   if (++n3 % 100 === 0) console.log(`3. covariance ${n3} / ${bodies.size}`);
   const base = `${SBDB}?sstr=${encodeURIComponent(b.pdes)}&full-prec=1`;
   let d: any;
-  try { d = await getJson(`${base}&cov=vec`); } catch (err) { problems.push(`${b.pdes}: no SBDB answer for covariance`); continue; }
+  try { d = await getJson(`${base}&cov=vec`); } catch (err) {
+    problems.push(`${b.pdes}: no SBDB answer for covariance: ${(err as Error).message.split('\n')[0]}`);
+    if (problems.filter((p) => p.includes('no SBDB answer')).length >= 20) throw new Error(`SBDB failed 20 times, stopping:\n- ${problems.slice(-3).join('\n- ')}`);
+    continue;
+  }
   if (d.object?.des !== b.pdes) { problems.push(`${b.pdes}: covariance answer is for ${d.object?.des ?? 'no single object'}, left without`); continue; }
   const cov = d.orbit?.covariance;
   if (!cov?.data) continue;
@@ -426,5 +454,6 @@ writeFileSync('scripts/reference/small-bodies-horizons.json', JSON.stringify({
 }));
 
 const kinds = (k: string) => list.filter((b) => b.kind.startsWith(k)).length;
-console.log(`\n${list.length} bodies (${kinds('a')} asteroids, ${kinds('c')} comets), ${shardOf.size} with an uncertainty cloud, ${requests} requests.`);
+console.log(`\n${list.length} bodies (${kinds('a')} asteroids, ${kinds('c')} comets), ${shardOf.size} with an uncertainty cloud, ${list.filter((b) => b.cov).length} with a covariance.`);
+console.log(`${requests} requests, ${blocked} times told to wait.`);
 if (problems.length) console.log(`Notes (${problems.length}):\n- ${problems.join('\n- ')}`);

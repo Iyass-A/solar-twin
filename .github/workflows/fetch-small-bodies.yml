@@ -12,7 +12,7 @@ on:
       mode:
         description: "count: only count the bodies in each group (quick, nothing is pushed); full: fetch everything"
         type: choice
-        options: [full, count, probe]
+        options: [full, count]
         default: full
 
 permissions:
@@ -36,9 +36,6 @@ jobs:
       - name: Count only
         if: inputs.mode == 'count'
         run: npx tsx scripts/count-small-bodies.ts data/small-body-groups.json
-      - name: Probe the SBDB API (temporary diagnosis)
-        if: inputs.mode == 'probe'
-        run: npx tsx scripts/probe-sbdb.ts
       - name: Fetch
         if: inputs.mode == 'full'
         run: |
