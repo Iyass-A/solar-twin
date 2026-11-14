@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Licensed under the GNU AGPL v3.0 or later (`LICENSE`). Copyright (C) 2026 Iyass-A.
+- The page links to its source code, and the licence notices of three.js, Astronomy Engine and the star data are published with it (`THIRD-PARTY-LICENSES.txt`).
+
 ## v0.2.0 (14 November 2026), public beta
 
 - 3D view with Three.js, next to the 2D map and sharing its clock, time bar, views and selection: drag to turn, wheel or two fingers to zoom, double-click or ↺ to reset. Short lines show how far each planet is above or below the ecliptic.

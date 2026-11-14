@@ -66,8 +66,29 @@ Every push to `main` runs the checks, builds the site and publishes it to GitHub
 - Planet elements: E. M. Standish, JPL, [Approximate Positions of the Planets](https://ssd.jpl.nasa.gov/planets/approx_pos.html)
 - Accuracy check: [Astronomy Engine](https://github.com/cosinekitty/astronomy) by Don Cross (MIT)
 - Saturn's pole: Archinal et al. 2018, [Report of the IAU Working Group on Cartographic Coordinates and Rotational Elements: 2015](https://doi.org/10.1007/s10569-017-9805-5)
-- Stars: Yale Bright Star Catalogue, 5th revised edition (Hoffleit & Warren 1991), in the [JSON conversion by Bretton Wade](https://github.com/brettonw/YaleBrightStarCatalog) (MIT, see `public/LICENSE-bsc5.txt`). `scripts/make-stars.ts` turns it into `src/data/stars.json`.
+- Stars: Yale Bright Star Catalogue, 5th revised edition (Hoffleit & Warren 1991), in the [JSON conversion by Bretton Wade](https://github.com/brettonw/YaleBrightStarCatalog) (MIT). `scripts/make-stars.ts` turns it into `src/data/stars.json`.
 - 3D: [Three.js](https://threejs.org/) (MIT)
+
+Their licence notices are collected in `public/THIRD-PARTY-LICENSES.txt`, which is published with the site.
+
+## Licence
+
+Solar Twin is free software, licensed under the [GNU Affero General Public License v3.0 or later](LICENSE).
+You may use, study, change and share it. If you share a changed version, or run one as a website for others,
+you must make its complete source code available under the same licence.
+
+```
+Solar Twin: a live digital twin of the solar system
+Copyright (C) 2026 Iyass-A
+
+This program is free software: you can redistribute it and/or modify it under the terms of
+the GNU Affero General Public License as published by the Free Software Foundation, either
+version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Affero General Public License for more details.
+```
 
 ## What's next
 

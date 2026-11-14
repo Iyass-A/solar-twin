@@ -65,6 +65,8 @@ export interface Strings {
   stopFollow: string;
   stars: string;
   sources: string;
+  sourceCode: string;
+  licences: string;
   planets: Record<PlanetId, string>;
   /** Light travel time, given in minutes. */
   light: (minutes: number) => string;
@@ -171,6 +173,8 @@ const AR: Strings = {
   stopFollow: 'وقّف الملاحقة',
   stars: 'النجوم',
   sources: 'المصادر:',
+  sourceCode: 'الكود المصدري',
+  licences: 'رخص المكتبات والبيانات',
   planets: {
     mercury: 'عطارد', venus: 'الزهرة', earth: 'الأرض', mars: 'المريخ',
     jupiter: 'المشتري', saturn: 'زحل', uranus: 'أورانوس', neptune: 'نبتون',
@@ -247,6 +251,8 @@ const DE: Strings = {
   stopFollow: 'Nicht mehr folgen',
   stars: 'Sterne',
   sources: 'Quellen:',
+  sourceCode: 'Quellcode',
+  licences: 'Lizenzen der Bibliotheken und Daten',
   planets: {
     mercury: 'Merkur', venus: 'Venus', earth: 'Erde', mars: 'Mars',
     jupiter: 'Jupiter', saturn: 'Saturn', uranus: 'Uranus', neptune: 'Neptun',
@@ -323,6 +329,8 @@ const EN: Strings = {
   stopFollow: 'Stop following',
   stars: 'Stars',
   sources: 'Sources:',
+  sourceCode: 'Source code',
+  licences: 'Licences of libraries and data',
   planets: {
     mercury: 'Mercury', venus: 'Venus', earth: 'Earth', mars: 'Mars',
     jupiter: 'Jupiter', saturn: 'Saturn', uranus: 'Uranus', neptune: 'Neptune',

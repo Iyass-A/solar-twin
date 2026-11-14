@@ -1,5 +1,5 @@
 // Makes src/data/stars.json from the Yale Bright Star Catalogue (5th ed., Hoffleit & Warren 1991),
-// using the JSON copy by Bretton Wade (MIT licence, see public/LICENSE-bsc5.txt):
+// using the JSON copy by Bretton Wade (MIT licence, see public/THIRD-PARTY-LICENSES.txt):
 //   https://raw.githubusercontent.com/brettonw/YaleBrightStarCatalog/master/bsc5-short.json
 //   (commit abffb3b7223ae37e879b0a3ff5b49ad06aed5576)
 //

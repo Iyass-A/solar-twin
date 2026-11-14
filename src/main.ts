@@ -119,13 +119,17 @@ app.innerHTML = `
   </div>
 
   <footer class="sources">
-    <p><a href="https://github.com/Iyass-A/solar-twin/issues/new" target="_blank" rel="noopener" data-t="feedback"></a></p>
+    <p>
+      <a href="https://github.com/Iyass-A/solar-twin/issues/new" target="_blank" rel="noopener" data-t="feedback"></a> ·
+      <a href="https://github.com/Iyass-A/solar-twin" target="_blank" rel="noopener"><span data-t="sourceCode"></span> <bdi>(AGPL-3.0)</bdi></a> ·
+      <a href="${import.meta.env.BASE_URL}THIRD-PARTY-LICENSES.txt" target="_blank" rel="noopener" data-t="licences"></a>
+    </p>
     <p><span data-t="sources"></span>
     <span dir="ltr">
       <a href="https://ssd.jpl.nasa.gov/planets/approx_pos.html" target="_blank" rel="noopener">JPL: Approximate Positions of the Planets</a> ·
       <a href="https://github.com/cosinekitty/astronomy" target="_blank" rel="noopener">Astronomy Engine</a> ·
       <a href="https://doi.org/10.1007/s10569-017-9805-5" target="_blank" rel="noopener">IAU WGCCRE 2015 (Saturn's pole)</a> ·
-      <a href="${import.meta.env.BASE_URL}LICENSE-bsc5.txt" target="_blank" rel="noopener">Yale Bright Star Catalogue, 5th ed. (Hoffleit &amp; Warren 1991), JSON by Bretton Wade (MIT)</a> ·
+      <a href="https://github.com/brettonw/YaleBrightStarCatalog" target="_blank" rel="noopener">Yale Bright Star Catalogue, 5th ed. (Hoffleit &amp; Warren 1991), JSON by Bretton Wade (MIT)</a> ·
       <a href="https://threejs.org/" target="_blank" rel="noopener">Three.js</a>
     </span></p>
   </footer>
