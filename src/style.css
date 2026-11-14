@@ -261,3 +261,18 @@ tr.selected td { background: #222a50; }
   font-size: 1.1rem;
   opacity: 0.8;
 }
+
+.follow3d {
+  position: absolute;
+  top: 8px;
+  left: 56px;
+  padding: 3px 12px;
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+.follow3d.on {
+  background: #4f9dff;
+  border-color: #4f9dff;
+  color: #0b0d17;
+}

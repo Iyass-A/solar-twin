@@ -8,6 +8,7 @@ import { heliocentricPosition, orbitPath, longitude, distance, wrap180 } from '.
 import { referencePosition } from '../src/astro/reference';
 import { J2000, toJulianDate, centuriesSinceJ2000 } from '../src/astro/julian';
 import { VIEWS, toScene } from '../src/view/views';
+import { SATURN_POLE } from '../src/astro/poles';
 
 const MAX_ERROR_DEG = 1;
 const DAY_MS = 86_400_000;
@@ -86,6 +87,15 @@ const upward = az * bx - ax * bz; // y part of (x axis) × (y axis), must point 
 if (upward <= 0) { sceneOk = false; console.log('  3D: the scene is mirrored'); }
 failed ||= !sceneOk;
 console.log(`3D scene keeps directions and turning: ${sceneOk ? 'OK' : 'FAIL'}`);
+
+// 6. Saturn's rings: the angle between its pole and its orbit's pole is its axial tilt, 26.73°
+const sat = PLANETS.find((p) => p.id === 'saturn')!;
+const I = sat.base.I * Math.PI / 180, O = sat.base.O * Math.PI / 180;
+const orbitNormal = { x: Math.sin(I) * Math.sin(O), y: -Math.sin(I) * Math.cos(O), z: Math.cos(I) };
+const tilt = Math.acos(SATURN_POLE.x * orbitNormal.x + SATURN_POLE.y * orbitNormal.y + SATURN_POLE.z * orbitNormal.z) * 180 / Math.PI;
+const tiltOk = Math.abs(tilt - 26.73) < 0.1;
+failed ||= !tiltOk;
+console.log(`Saturn's tilt from its pole: ${tilt.toFixed(2)}° (known 26.73°) ${tiltOk ? 'OK' : 'FAIL'}`);
 
 console.log(failed ? '\nRESULT: FAIL' : '\nRESULT: OK');
 if (failed) process.exitCode = 1;

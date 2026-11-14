@@ -29,7 +29,7 @@ const clamp = (ms: number) => Math.min(VALID_TO_MS, Math.max(VALID_FROM_MS, ms))
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
   <h1>التوأم الرقمي للمجموعة الشمسية</h1>
-  <p class="step">المرحلة 2، الخطوة 1: مشهد ثلاثي الأبعاد</p>
+  <p class="step">المرحلة 2، الخطوة 2: ملاحقة كوكب وحلقات زحل</p>
 
   <div class="tabs" role="tablist">
     <button type="button" role="tab" id="tab3d">ثلاثي الأبعاد</button>
@@ -173,6 +173,7 @@ let kind: Kind = '3d';
 
 const HOWTO: Record<Kind, string> = {
   '3d': 'اسحب لتلفّ المشهد، ودولاب الماوس أو إصبعين بيكبّروا، ودبل كليك أو ↺ بيرجّع. '
+    + 'اختار كوكب واكبس «لاحق» لتلحقه الكاميرا حتى والزمن ماشي. '
     + 'الخطوط النازلة من الكواكب بتورجي قديش الكوكب فوق أو تحت مستوى مدار الأرض. '
     + 'الدواير هي البعد بالوحدة الفلكية. أحجام الكواكب مو حقيقية.',
   '2d': 'منظر من فوق، والكواكب بتدور عكس عقارب الساعة. أحجام الكواكب مو حقيقية. '

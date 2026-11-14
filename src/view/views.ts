@@ -64,5 +64,10 @@ export function toScene(v: Vec3, view: ViewInfo, R: number): [number, number, nu
   const r = Math.hypot(v.x, v.y, v.z);
   if (r === 0) return [0, 0, 0];
   const s = (radialScale(view, r) * R) / r;
-  return [v.x * s, v.z * s, -v.y * s];
+  return sceneAxes({ x: v.x * s, y: v.y * s, z: v.z * s });
+}
+
+/** Only the axis swap, for directions such as a planet's pole: ecliptic (x, y, z) -> scene (x, z, -y). */
+export function sceneAxes(v: Vec3): [number, number, number] {
+  return [v.x, v.z, -v.y];
 }
