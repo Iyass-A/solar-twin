@@ -6,8 +6,12 @@
 // Writes:
 //   src/data/small-bodies.json                    orbits + covariance, used by the site
 //
-// Two sets of elements per body: the current ones (at JPL's standard epoch) for positions,
-// and the ones at the orbit-solution epoch, where the covariance applies (often years back).
+// Two sets of elements per body: the current ones for positions, and the ones at the
+// orbit-solution epoch, where the covariance applies (often years back).
+// "Current" means JPL's standard epoch, shared by most asteroids. SBDB gives comets (and a few
+// special solutions) only at their solution epoch, sometimes decades ago (Halley: 1968); for those,
+// the current elements are Horizons' osculating elements at the standard epoch, which include
+// the planets' pull since then.
 //   scripts/reference/small-bodies-horizons.json  Horizons positions, used only by npm run check
 //
 // Runs in GitHub Actions (.github/workflows/fetch-small-bodies.yml), because JPL is not
@@ -117,6 +121,42 @@ async function horizonsVectors(command: string, from: number, to: number, stepDa
   };
 }
 
+/** Osculating heliocentric ecliptic J2000 elements from Horizons at one Julian date (TDB). */
+async function horizonsElements(command: string, jd: number) {
+  const params = new URLSearchParams({
+    format: 'json',
+    COMMAND: `'${command}'`,
+    OBJ_DATA: "'NO'",
+    MAKE_EPHEM: "'YES'",
+    EPHEM_TYPE: "'ELEMENTS'",
+    CENTER: "'500@10'",
+    REF_PLANE: "'ECLIPTIC'",
+    REF_SYSTEM: "'ICRF'",
+    OUT_UNITS: "'AU-D'",
+    TP_TYPE: "'ABSOLUTE'",
+    CSV_FORMAT: "'YES'",
+    TIME_TYPE: "'TDB'",
+    START_TIME: `'JD ${jd.toFixed(5)}'`,
+    STOP_TIME: `'JD ${(jd + 1).toFixed(5)}'`,
+    STEP_SIZE: "'1 d'",
+  });
+  const data = await getJson(`${HORIZONS}?${params}`);
+  const text: string = data.result ?? '';
+  const start = text.indexOf('$$SOE'), end = text.indexOf('$$EOE');
+  if (start < 0 || end < 0) throw new Error(`No elements in Horizons answer:\n${text.slice(0, 600)}`);
+  // Column names from the CSV header line just above $$SOE
+  const header = text.slice(0, start).split('\n').reverse().find((l) => l.includes('JDTDB'));
+  if (!header) throw new Error('No CSV header in Horizons elements');
+  const cols = header.split(',').map((c) => c.trim());
+  const row = text.slice(start + 5, end).trim().split('\n')[0].split(',').map((c) => c.trim());
+  const get = (name: string) => {
+    const k = cols.indexOf(name);
+    if (k < 0) throw new Error(`Horizons elements have no column ${name}: ${cols.join(' ')}`);
+    return Number(row[k]);
+  };
+  return { epoch: get('JDTDB'), e: get('EC'), q: get('QR'), tp: get('Tp'), node: get('OM'), peri: get('W'), i: get('IN') };
+}
+
 // ---------- Main ----------
 
 const listFile = process.argv[2];
@@ -211,19 +251,40 @@ for (const q of queries) {
   console.log(`  ${body.name}: e ${body.e}, q ${body.q} au, i ${body.i}°, epoch JD ${body.epoch}` +
     (covOut ? `, covariance epoch JD ${covOut.epoch}` : ''));
 
-  // Independent positions from Horizons, for npm run check
+}
+
+// The standard epoch: the one most bodies share (JPL moves it forward about twice a year)
+const counts = new Map<number, number>();
+for (const b of bodies) counts.set(b.epoch, (counts.get(b.epoch) ?? 0) + 1);
+const standardEpoch = [...counts].sort((a, b) => b[1] - a[1])[0][0];
+console.log(`\nStandard epoch: JD ${standardEpoch}\n`);
+
+for (const b of bodies) {
+  const command = horizonsCommand(b.kind, b.des);
+  console.log(`${b.short} (Horizons: ${command})`);
   try {
-    const command = horizonsCommand(o.kind, o.des);
-    const ref = await horizonsVectors(command, epoch! - 365, epoch! + 365, 365);
-    const atCov = covOut ? await horizonsVectors(command, covOut.epoch!, covOut.epoch! + 1, 1) : null;
+    // Current elements from Horizons when SBDB's are not at the standard epoch
+    if (Math.abs(b.epoch - standardEpoch) > 1) {
+      const h = await horizonsElements(command, standardEpoch);
+      console.log(`  elements from Horizons at JD ${h.epoch} (SBDB had JD ${b.epoch}): e ${h.e}, q ${h.q} au`);
+      b.sbdbEpoch = b.epoch;
+      Object.assign(b, h);
+      b.elementsFrom = 'Horizons';
+    } else {
+      b.elementsFrom = 'SBDB';
+    }
+    // Independent positions, for npm run check: a year before, at, and a year after the standard epoch,
+    // and at the covariance epoch
+    const ref = await horizonsVectors(command, standardEpoch - 365, standardEpoch + 365, 365);
+    const atCov = b.cov ? await horizonsVectors(command, b.cov.epoch, b.cov.epoch + 1, 1) : null;
     reference.push({
-      spkid: o.spkid, query: q, ...ref,
+      spkid: b.spkid, query: b.query, ...ref,
       covJd: atCov ? atCov.jd[0] : null,
       covPos: atCov ? atCov.pos[0] : null,
     });
-    console.log(`  Horizons: ${ref.target}, ${ref.jd.length} positions` + (atCov ? ' + 1 at the covariance epoch' : ''));
+    console.log(`  ${ref.target}: ${ref.jd.length} positions` + (atCov ? ' + 1 at the covariance epoch' : ''));
   } catch (err) {
-    problems.push(`${q}: Horizons failed: ${(err as Error).message.split('\n')[0]}`);
+    problems.push(`${b.query}: Horizons failed: ${(err as Error).message.split('\n')[0]}`);
     console.log(`  Horizons failed: ${(err as Error).message}`);
   }
 }
@@ -235,7 +296,9 @@ writeFileSync('src/data/small-bodies.json', JSON.stringify({
   source: 'NASA/JPL Small-Body Database (SBDB) API, https://ssd-api.jpl.nasa.gov/doc/sbdb.html',
   sbdbVersion,
   fetched,
-  note: 'Angles in degrees, q in au, tp and epoch as Julian days (TDB). Covariance in au, deg, days; labels name the rows.',
+  standardEpoch,
+  note: 'Angles in degrees, q in au, tp and epoch as Julian days (TDB). Covariance in au, deg, days; labels name the rows. '
+    + 'elementsFrom tells where the current elements come from: SBDB at its standard epoch, or Horizons there.',
   bodies,
 }, null, 1));
 writeFileSync('scripts/reference/small-bodies-horizons.json', JSON.stringify({
