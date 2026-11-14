@@ -8,6 +8,12 @@ name: Fetch small-body data
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "count: only count the bodies in each group (quick, nothing is pushed); full: fetch everything"
+        type: choice
+        options: [full, count]
+        default: full
 
 permissions:
   contents: write # only to push the data-update branch of this repository
@@ -27,8 +33,14 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx tsx scripts/fetch-small-bodies.ts data/small-bodies.txt
+      - name: Count only
+        if: inputs.mode == 'count'
+        run: npx tsx scripts/count-small-bodies.ts data/small-body-groups.json
+      - name: Fetch
+        if: inputs.mode != 'count'
+        run: npx tsx scripts/fetch-small-bodies.ts data/small-bodies.txt
       - name: Push the result to the data-update branch
+        if: inputs.mode != 'count'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

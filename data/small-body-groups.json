@@ -1,0 +1,33 @@
+{
+  "note": "Groups of asteroids and comets fetched from JPL's SBDB Query API besides data/small-bodies.txt. Each group: SBDB filter parameters (https://ssd-api.jpl.nasa.gov/doc/sbdb_filter.html), a sort field and a limit.",
+  "groups": [
+    {
+      "id": "neo-1km",
+      "title": "Near-Earth asteroids of about 1 km and larger (H <= 17.75)",
+      "params": { "sb-kind": "a", "sb-group": "neo", "sb-cdata": "{\"AND\":[\"H|LE|17.75\"]}" },
+      "sort": "H",
+      "limit": 1500
+    },
+    {
+      "id": "bright-asteroids",
+      "title": "Brightest numbered asteroids in the main belt and among Jupiter's trojans",
+      "params": { "sb-kind": "a", "sb-ns": "n", "sb-class": "MBA,OMB,IMB,MCA,TJN" },
+      "sort": "H",
+      "limit": 400
+    },
+    {
+      "id": "outer",
+      "title": "Brightest bodies beyond Neptune, and centaurs (H <= 7)",
+      "params": { "sb-class": "TNO,CEN", "sb-cdata": "{\"AND\":[\"H|LE|7\"]}" },
+      "sort": "H",
+      "limit": 300
+    },
+    {
+      "id": "periodic-comets",
+      "title": "Numbered periodic comets (no fragments)",
+      "params": { "sb-kind": "c", "sb-ns": "n", "sb-xfrag": "1" },
+      "sort": "pdes",
+      "limit": 600
+    }
+  ]
+}
