@@ -21,7 +21,9 @@ export const LANGS: LangInfo[] = [
 
 export interface Strings {
   title: string;
-  step: string;
+  tagline: string;
+  beta: string;
+  feedback: string;
   language: string;
   tab3d: string;
   tab2d: string;
@@ -107,7 +109,9 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 const AR: Strings = {
   title: 'التوأم الرقمي للمجموعة الشمسية',
-  step: 'المرحلة 2، الخطوة 4: نجوم حقيقية',
+  tagline: 'مواقع الكواكب الحقيقية، من سنة 1800 لـ 2050',
+  beta: 'تجريبية',
+  feedback: 'عندك ملاحظة؟',
   language: 'اللغة',
   tab3d: 'ثلاثي الأبعاد',
   tab2d: 'خريطة من فوق',
@@ -181,7 +185,9 @@ const AR: Strings = {
 
 const DE: Strings = {
   title: 'Digitaler Zwilling des Sonnensystems',
-  step: 'Phase 2, Schritt 4: echte Sterne',
+  tagline: 'Die echten Positionen der Planeten, von 1800 bis 2050',
+  beta: 'Beta',
+  feedback: 'Feedback geben',
   language: 'Sprache',
   tab3d: '3D-Ansicht',
   tab2d: 'Karte von oben',
@@ -255,7 +261,9 @@ const DE: Strings = {
 
 const EN: Strings = {
   title: 'Digital Twin of the Solar System',
-  step: 'Phase 2, step 4: real stars',
+  tagline: 'The real positions of the planets, from 1800 to 2050',
+  beta: 'beta',
+  feedback: 'Send feedback',
   language: 'Language',
   tab3d: '3D view',
   tab2d: 'Map from above',

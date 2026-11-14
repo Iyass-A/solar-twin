@@ -6,6 +6,7 @@ import { referencePosition } from './astro/reference';
 import { Orrery } from './view/orrery';
 import { VIEWS, type BodyFrame, type ViewMode } from './view/views';
 import type { Scene3D } from './view/scene3d';
+import pkg from '../package.json';
 import { LANGS, detectLang, lang, langInfo, num, setLang, t, type Lang, type TextKey } from './i18n';
 
 const DAY_MS = 86_400_000;
@@ -35,7 +36,8 @@ app.innerHTML = `
       ${LANGS.map((l) => `<button type="button" data-lang="${l.id}" lang="${l.id}">${l.name}</button>`).join('')}
     </div>
   </div>
-  <p class="step" data-t="step"></p>
+  <p class="step"><span data-t="tagline"></span>
+    <span class="version"><bdi>v${pkg.version}</bdi> <span data-t="beta"></span></span></p>
 
   <div class="tabs" role="tablist">
     <button type="button" role="tab" id="tab3d" data-t="tab3d"></button>
@@ -117,14 +119,15 @@ app.innerHTML = `
   </div>
 
   <footer class="sources">
-    <span data-t="sources"></span>
+    <p><a href="https://github.com/Iyass-A/solar-twin/issues/new" target="_blank" rel="noopener" data-t="feedback"></a></p>
+    <p><span data-t="sources"></span>
     <span dir="ltr">
       <a href="https://ssd.jpl.nasa.gov/planets/approx_pos.html" target="_blank" rel="noopener">JPL: Approximate Positions of the Planets</a> ·
       <a href="https://github.com/cosinekitty/astronomy" target="_blank" rel="noopener">Astronomy Engine</a> ·
       <a href="https://doi.org/10.1007/s10569-017-9805-5" target="_blank" rel="noopener">IAU WGCCRE 2015 (Saturn's pole)</a> ·
       <a href="${import.meta.env.BASE_URL}LICENSE-bsc5.txt" target="_blank" rel="noopener">Yale Bright Star Catalogue, 5th ed. (Hoffleit &amp; Warren 1991), JSON by Bretton Wade (MIT)</a> ·
       <a href="https://threejs.org/" target="_blank" rel="noopener">Three.js</a>
-    </span>
+    </span></p>
   </footer>
 `;
 

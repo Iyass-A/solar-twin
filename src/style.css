@@ -53,6 +53,17 @@ h1 {
   margin: 0 0 24px;
 }
 
+.version {
+  display: inline-block;
+  margin-inline-start: 6px;
+  padding: 1px 8px;
+  font-size: 0.8rem;
+  color: #c9d6ff;
+  border: 1px solid #3a4166;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
 .card {
   background: #151a2e;
   border: 1px solid #262c45;
@@ -328,3 +339,4 @@ tr.selected td { background: #222a50; }
 }
 
 .sources a { color: #8f9bd0; }
+.sources p { margin: 0 0 6px; }
