@@ -5,6 +5,9 @@
 //
 // Writes:
 //   src/data/small-bodies.json                    orbits + covariance, used by the site
+//
+// Two sets of elements per body: the current ones (at JPL's standard epoch) for positions,
+// and the ones at the orbit-solution epoch, where the covariance applies (often years back).
 //   scripts/reference/small-bodies-horizons.json  Horizons positions, used only by npm run check
 //
 // Runs in GitHub Actions (.github/workflows/fetch-small-bodies.yml), because JPL is not
@@ -82,8 +85,8 @@ function horizonsCommand(kind: string, des: string): string {
   return `DES=${des};CAP;NOFRAG;`;                 // comet: closest apparition, no fragments
 }
 
-/** Heliocentric ecliptic J2000 positions [au] from Horizons, a year before, at, and a year after the epoch. */
-async function horizonsVectors(command: string, epoch: number) {
+/** Heliocentric ecliptic J2000 positions [au] from Horizons, every `stepDays` from `from` to `to` (Julian days). */
+async function horizonsVectors(command: string, from: number, to: number, stepDays: number) {
   const params = new URLSearchParams({
     format: 'json',
     COMMAND: `'${command}'`,
@@ -97,9 +100,9 @@ async function horizonsVectors(command: string, epoch: number) {
     OUT_UNITS: "'AU-D'",
     CSV_FORMAT: "'YES'",
     TIME_TYPE: "'TDB'",
-    START_TIME: `'JD ${(epoch - 365).toFixed(5)}'`,
-    STOP_TIME: `'JD ${(epoch + 365).toFixed(5)}'`,
-    STEP_SIZE: "'365 d'",
+    START_TIME: `'JD ${from.toFixed(5)}'`,
+    STOP_TIME: `'JD ${to.toFixed(5)}'`,
+    STEP_SIZE: `'${stepDays} d'`,
   });
   const data = await getJson(`${HORIZONS}?${params}`);
   const text: string = data.result ?? '';
@@ -131,10 +134,15 @@ let sbdbVersion: string | null = null;
 for (const q of queries) {
   console.log(`${q}`);
   const base = `${SBDB}?sstr=${encodeURIComponent(q)}&phys-par=1&full-prec=1`;
-  const d = await getJson(`${base}&cov=vec`);
+  // 1. Current elements, at JPL's standard epoch (asking for the covariance would move them to the solution epoch)
+  const d = await getJson(base);
   if (!d.object) throw new Error(`"${q}" did not match exactly one object: ${JSON.stringify(d).slice(0, 400)}`);
   sbdbVersion ??= d.signature?.version ?? null;
-  const o = d.object, orb = d.orbit, cov = orb?.covariance ?? null;
+  const o = d.object, orb = d.orbit;
+  // 2. Covariance with the elements it belongs to, at the orbit-solution epoch
+  const dc = await getJson(`${base}&cov=vec`);
+  if (dc.object?.spkid !== o.spkid) throw new Error(`${q}: covariance answer is for another object`);
+  const orbC = dc.orbit, cov = orbC?.covariance ?? null;
 
   // Covariance: full-precision upper-triangular vector, checked against the (rounded) full matrix
   let covOut: any = null;
@@ -148,14 +156,25 @@ for (const q of queries) {
     const best = dRow <= dCol ? { order: 'row', matrix: byRow, diff: dRow } : { order: 'col', matrix: byCol, diff: dCol };
     if (best.diff > 1e-3) throw new Error(`${q}: covariance vector matches neither order (row ${dRow}, col ${dCol})`);
     console.log(`  covariance ${n}x${n} (${cov.labels.join(', ')}), stored by ${best.order}, max difference to cov=mat ${best.diff.toExponential(1)}`);
-    covOut = { epoch: num(cov.epoch), labels: cov.labels, matrix: best.matrix };
+    const ce = cov.elements ?? orbC.elements; // given separately only if the epochs differ
+    covOut = {
+      epoch: num(cov.epoch),
+      elements: {
+        e: element(ce, 'e'), q: element(ce, 'q'), tp: element(ce, 'tp'),
+        node: element(ce, 'om', 'node'), peri: element(ce, 'w', 'peri'), i: element(ce, 'i'),
+      },
+      labels: cov.labels,
+      matrix: best.matrix,
+    };
+    for (const [k, v] of Object.entries(covOut.elements)) {
+      if (v === null || Number.isNaN(v)) throw new Error(`${q}: covariance element ${k} is missing`);
+    }
   } else {
     problems.push(`${q}: no covariance`);
   }
 
-  // Elements at the covariance epoch when they are given separately, else the standard ones
-  const src = cov?.elements ?? orb.elements;
-  const epoch = cov?.elements ? num(cov.epoch) : num(orb.epoch);
+  const src = orb.elements;
+  const epoch = num(orb.epoch);
   const phys = d.phys_par ?? [];
   const body = {
     query: q,
@@ -189,13 +208,20 @@ for (const q of queries) {
     if (body[k] === null || Number.isNaN(body[k])) throw new Error(`${q}: element ${k} is missing`);
   }
   bodies.push(body);
-  console.log(`  ${body.name}: e ${body.e}, q ${body.q} au, i ${body.i}°, epoch JD ${body.epoch}`);
+  console.log(`  ${body.name}: e ${body.e}, q ${body.q} au, i ${body.i}°, epoch JD ${body.epoch}` +
+    (covOut ? `, covariance epoch JD ${covOut.epoch}` : ''));
 
   // Independent positions from Horizons, for npm run check
   try {
-    const ref = await horizonsVectors(horizonsCommand(o.kind, o.des), epoch!);
-    reference.push({ spkid: o.spkid, query: q, ...ref });
-    console.log(`  Horizons: ${ref.target}, ${ref.jd.length} positions`);
+    const command = horizonsCommand(o.kind, o.des);
+    const ref = await horizonsVectors(command, epoch! - 365, epoch! + 365, 365);
+    const atCov = covOut ? await horizonsVectors(command, covOut.epoch!, covOut.epoch! + 1, 1) : null;
+    reference.push({
+      spkid: o.spkid, query: q, ...ref,
+      covJd: atCov ? atCov.jd[0] : null,
+      covPos: atCov ? atCov.pos[0] : null,
+    });
+    console.log(`  Horizons: ${ref.target}, ${ref.jd.length} positions` + (atCov ? ' + 1 at the covariance epoch' : ''));
   } catch (err) {
     problems.push(`${q}: Horizons failed: ${(err as Error).message.split('\n')[0]}`);
     console.log(`  Horizons failed: ${(err as Error).message}`);
