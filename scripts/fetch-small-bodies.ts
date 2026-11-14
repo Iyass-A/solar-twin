@@ -289,6 +289,10 @@ for (const b of bodies.values()) {
     if (Math.min(dRow, dCol) > 1e-3) throw new Error(`Covariance vector matches neither order (row ${dRow}, col ${dCol})`);
     console.log(`3. covariance vectors are stored by ${covOrder} (checked on ${b.pdes})`);
   }
+  if ((cov.labels as string[]).slice(0, 6).join(',') !== 'e,q,tp,node,peri,i') {
+    problems.push(`${b.pdes}: covariance labels ${cov.labels.join(',')} not in the expected order, left without`);
+    continue;
+  }
   const ce = cov.elements ?? d.orbit.elements;
   const elements = {
     e: element(ce, 'e')!, q: element(ce, 'q')!, tp: element(ce, 'tp')!,
