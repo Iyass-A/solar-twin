@@ -1,11 +1,15 @@
 import './style.css';
 import { J2000, toJulianDate, centuriesSinceJ2000 } from './astro/julian';
-import { PLANETS, VALID_FROM_MS, VALID_TO_MS, type PlanetId } from './astro/elements';
+import { PLANETS, VALID_FROM_MS, VALID_TO_MS } from './astro/elements';
 import { heliocentricPosition, orbitPath, longitude, distance, wrap180 } from './astro/kepler';
 import { referencePosition } from './astro/reference';
 import { Orrery } from './view/orrery';
 import { VIEWS, type BodyFrame, type ViewMode } from './view/views';
 import type { Scene3D } from './view/scene3d';
+import {
+  SMALL_COLORS, SMALL_GROUPS, loadSmallBodies, smallLabel, smallFullName, isValidAt, smallPosition, smallOrbitPath,
+  type SmallBody, type SmallFrame,
+} from './view/smallbodies';
 import pkg from '../package.json';
 import { LANGS, detectLang, lang, langInfo, num, setLang, t, type Lang, type TextKey } from './i18n';
 
@@ -48,15 +52,22 @@ app.innerHTML = `
     <canvas id="sky" class="view" data-aria="mapAria" hidden></canvas>
   </div>
   <p class="caption"><span id="caption"></span><br><span id="howto"></span></p>
+  <p class="legend" id="legend">
+    ${SMALL_GROUPS.map((g) => `<span class="key"><i style="background:${SMALL_COLORS[g]}"></i><span id="legend-${g}"></span></span>`).join('')}
+    <span class="note" data-t="smallNote"></span>
+  </p>
 
   <div class="card" id="info">
     <div class="sub" id="infoHint" data-t="infoHint"></div>
     <div id="infoBody" hidden>
       <div class="value" id="infoName"></div>
       <div class="facts">
-        <div><span class="label" data-t="fromSun"></span><span id="infoSun"></span></div>
-        <div><span class="label" data-t="fromEarth"></span><span id="infoEarth"></span></div>
-        <div><span class="label" data-t="lightTime"></span><span id="infoLight"></span></div>
+        <div id="rowType" hidden><span class="label" data-t="type"></span><span id="infoType"></span></div>
+        <div class="sub" id="infoOutside" hidden></div>
+        <div class="dist"><span class="label" data-t="fromSun"></span><span id="infoSun"></span></div>
+        <div class="dist"><span class="label" data-t="fromEarth"></span><span id="infoEarth"></span></div>
+        <div class="dist"><span class="label" data-t="lightTime"></span><span id="infoLight"></span></div>
+        <div id="rowDiameter" hidden><span class="label" data-t="diameter"></span><span id="infoDiameter"></span></div>
       </div>
     </div>
   </div>
@@ -71,6 +82,7 @@ app.innerHTML = `
       <label><span data-t="view"></span> <select id="view">
         ${VIEW_MODES.map((m) => `<option value="${m}"></option>`).join('')}
       </select></label>
+      <label class="check"><input type="checkbox" id="smallToggle" checked> <span data-t="smallBodies"></span></label>
     </div>
     <div class="timeline" dir="ltr">
       <span>1800</span>
@@ -118,6 +130,20 @@ app.innerHTML = `
     </table>
   </div>
 
+  <details class="card" id="smallCard" hidden>
+    <summary id="smallSummary"></summary>
+    <table>
+      <thead>
+        <tr>
+          <th data-t="colPlanet"></th>
+          <th data-t="type"></th>
+          <th class="num" data-html="colDistanceHtml"></th>
+        </tr>
+      </thead>
+      <tbody id="smallRows"></tbody>
+    </table>
+  </details>
+
   <footer class="sources">
     <p>
       <a href="https://github.com/Iyass-A/solar-twin/issues/new" target="_blank" rel="noopener" data-t="feedback"></a> ·
@@ -129,6 +155,8 @@ app.innerHTML = `
       <a href="https://ssd.jpl.nasa.gov/planets/approx_pos.html" target="_blank" rel="noopener">JPL: Approximate Positions of the Planets</a> ·
       <a href="https://github.com/cosinekitty/astronomy" target="_blank" rel="noopener">Astronomy Engine</a> ·
       <a href="https://doi.org/10.1007/s10569-017-9805-5" target="_blank" rel="noopener">IAU WGCCRE 2015 (Saturn's pole)</a> ·
+      <a href="https://ssd-api.jpl.nasa.gov/doc/sbdb.html" target="_blank" rel="noopener">JPL Small-Body Database</a> ·
+      <a href="https://ssd.jpl.nasa.gov/horizons/" target="_blank" rel="noopener">JPL Horizons</a> ·
       <a href="https://github.com/brettonw/YaleBrightStarCatalog" target="_blank" rel="noopener">Yale Bright Star Catalogue, 5th ed. (Hoffleit &amp; Warren 1991), JSON by Bretton Wade (MIT)</a> ·
       <a href="https://threejs.org/" target="_blank" rel="noopener">Three.js</a>
     </span></p>
@@ -145,6 +173,33 @@ const dateInput = $<HTMLInputElement>('date');
 
 const orrery = new Orrery($<HTMLCanvasElement>('sky'));
 let scene3d: Scene3D | null = null; // loaded on first use (Three.js is a separate file)
+
+// Asteroids, dwarf planets and comets: their own file, loaded after the page
+let smallBodies: SmallBody[] = [];
+let showSmall = true;
+const smallToggle = $<HTMLInputElement>('smallToggle');
+import('./data/small-bodies.json')
+  .then((m) => {
+    smallBodies = loadSmallBodies(m.default);
+    $('smallRows').innerHTML = smallBodies.map((b) => `
+      <tr data-id="${b.id}">
+        <td id="n-${b.id}"></td>
+        <td id="g-${b.id}"></td>
+        <td dir="ltr" id="d-${b.id}"></td>
+      </tr>`).join('');
+    $('smallRows').querySelectorAll<HTMLTableRowElement>('tr[data-id]').forEach((tr) => {
+      tr.addEventListener('click', () => select(tr.dataset.id!));
+    });
+    $('smallCard').hidden = false;
+    applyLanguage(lang());
+  })
+  .catch((err) => console.error('Asteroids and comets not loaded', err));
+
+smallToggle.addEventListener('change', () => {
+  showSmall = smallToggle.checked;
+  $('legend').hidden = !showSmall;
+  if (!showSmall && orrery.selected?.startsWith('sb-')) select(null);
+});
 
 // ---------- Clock ----------
 
@@ -226,12 +281,12 @@ async function load3d() {
 $('tab3d').addEventListener('click', () => show('3d'));
 $('tab2d').addEventListener('click', () => show('2d'));
 
-// ---------- Selecting a planet ----------
+// ---------- Selecting a planet, asteroid or comet ----------
 
 const AU_KM = 149_597_870.7;
 const LIGHT_SECONDS_PER_AU = 499.004784;
 
-function select(id: PlanetId | null) {
+function select(id: string | null) {
   orrery.selected = id;
   if (scene3d) scene3d.selected = id;
   document.querySelectorAll<HTMLTableRowElement>('tr[data-id]').forEach((tr) => {
@@ -246,24 +301,42 @@ $<HTMLCanvasElement>('sky').addEventListener('click', (ev) => {
 });
 
 document.querySelectorAll<HTMLTableRowElement>('tr[data-id]').forEach((tr) => {
-  tr.addEventListener('click', () => select(tr.dataset.id as PlanetId));
+  tr.addEventListener('click', () => select(tr.dataset.id!));
 });
 
 const fmtDistance = (au: number) =>
   `<span dir="ltr">${num(au, 3)} ${t().au}</span> · <span dir="ltr">${num(au * AU_KM / 1e6, 1)}</span> ${t().millionKm}`;
 
-function updateInfo(bodies: BodyFrame[]) {
-  const sel = bodies.find((b) => b.id === orrery.selected);
-  $('infoHint').hidden = !!sel;
-  $('infoBody').hidden = !sel;
-  if (!sel) return;
+const yearOf = (jd: number) => String(Math.floor(2000 + (jd - J2000) / 365.25));
 
+function updateInfo(bodies: BodyFrame[], jd: number) {
+  const planet = bodies.find((b) => b.id === orrery.selected);
+  const small = planet ? undefined : smallBodies.find((b) => b.id === orrery.selected);
+  const valid = !small || isValidAt(small, jd);
+  $('infoHint').hidden = !!(planet || small);
+  $('infoBody').hidden = !(planet || small);
+  if (!planet && !small) return;
+
+  const s = t();
+  const l = lang();
+  $('infoName').textContent = planet ? planet.name : smallFullName(small!, l);
+  $('rowType').hidden = !small;
+  $('rowDiameter').hidden = !small?.diameter || !valid;
+  $('infoOutside').hidden = valid;
+  document.querySelectorAll<HTMLElement>('#infoBody .dist').forEach((el) => { el.hidden = !valid; });
+  if (small) {
+    const cls = s.classes[small.classCode] ?? small.className;
+    $('infoType').textContent = cls ? `${s.groups[small.group]} · ${cls}` : s.groups[small.group];
+    if (small.diameter) $('infoDiameter').innerHTML = `<span dir="ltr">${num(small.diameter, small.diameter < 10 ? 2 : 0)}</span> ${s.km}`;
+    if (!valid) { $('infoOutside').textContent = s.outsideWindow(yearOf(small.validFrom), yearOf(small.validTo)); return; }
+  }
+
+  const pos = planet ? planet.pos : smallPosition(small!, jd);
   const earth = bodies.find((b) => b.id === 'earth')!.pos;
-  const toEarth = Math.hypot(sel.pos.x - earth.x, sel.pos.y - earth.y, sel.pos.z - earth.z);
+  const toEarth = Math.hypot(pos.x - earth.x, pos.y - earth.y, pos.z - earth.z);
 
-  $('infoName').textContent = sel.name;
-  $('infoSun').innerHTML = fmtDistance(distance(sel.pos));
-  if (sel.id === 'earth') {
+  $('infoSun').innerHTML = fmtDistance(distance(pos));
+  if (planet?.id === 'earth') {
     $('infoEarth').textContent = '—';
     $('infoLight').textContent = t().weAreHere;
   } else {
@@ -289,6 +362,12 @@ function applyLanguage(l: Lang) {
   speedSel.querySelectorAll('option').forEach((o, i) => { o.textContent = s.speeds[i]; });
   viewSel.querySelectorAll('option').forEach((o) => { o.textContent = s.views[o.value as ViewMode].label; });
   for (const p of PLANETS) $(`n-${p.id}`).textContent = s.planets[p.id];
+  for (const b of smallBodies) {
+    $(`n-${b.id}`).textContent = smallLabel(b, l);
+    $(`g-${b.id}`).textContent = s.groups[b.group];
+  }
+  for (const g of SMALL_GROUPS) $(`legend-${g}`).textContent = s.groups[g];
+  $('smallSummary').textContent = `${s.smallBodies} (${smallBodies.length})`;
   document.querySelectorAll<HTMLButtonElement>('[data-lang]').forEach((b) => {
     b.setAttribute('aria-pressed', String(b.dataset.lang === l));
   });
@@ -310,8 +389,8 @@ document.querySelectorAll<HTMLButtonElement>('[data-lang]').forEach((b) => {
 let lastPanels = -Infinity;
 
 function updatePanels(date: Date, bodies: BodyFrame[]) {
-  updateInfo(bodies);
   const jd = toJulianDate(date);
+  updateInfo(bodies, jd);
   $('time').textContent = date.toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
   $('jd').textContent = `JD ${num(jd, 5)}`;
   $('live').hidden = !clock.live;
@@ -325,6 +404,10 @@ function updatePanels(date: Date, bodies: BodyFrame[]) {
     $(`d-${b.id}`).textContent = num(distance(b.pos), 3);
     $(`l-${b.id}`).textContent = `${num(longitude(b.pos), 2)}°`;
     $(`e-${b.id}`).textContent = `${num(err, 3)}°`;
+  }
+
+  for (const b of smallBodies) {
+    $(`d-${b.id}`).textContent = isValidAt(b, jd) ? num(distance(smallPosition(b, jd)), 3) : '—';
   }
 
   const ok = jdOk && worst < MAX_ERROR_DEG;
@@ -364,8 +447,21 @@ function frame(now: number) {
     orbit: orbitPath(p, T),
   }));
 
-  if (kind === '2d') orrery.draw(bodies);
-  else scene3d?.draw(bodies);
+  // Asteroids and comets, each only in the years where our position is accurate
+  const jd = toJulianDate(date);
+  const l = lang();
+  const smalls: SmallFrame[] = [];
+  let selectedOrbit: { path: ReturnType<typeof smallOrbitPath>; color: string } | null = null;
+  if (showSmall) {
+    for (const b of smallBodies) {
+      if (!isValidAt(b, jd)) continue;
+      smalls.push({ id: b.id, label: smallLabel(b, l), group: b.group, pos: smallPosition(b, jd) });
+      if (b.id === orrery.selected) selectedOrbit = { path: smallOrbitPath(b), color: SMALL_COLORS[b.group] };
+    }
+  }
+
+  if (kind === '2d') orrery.draw(bodies, smalls, selectedOrbit);
+  else scene3d?.draw(bodies, smalls, selectedOrbit);
   if (!dragging) slider.valueAsNumber = (clock.ms - VALID_FROM_MS) / DAY_MS;
   if (now - lastPanels > 250) {
     lastPanels = now;

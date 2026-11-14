@@ -3,6 +3,7 @@
 
 import type { PlanetId } from './astro/elements';
 import type { ViewMode } from './view/views';
+import type { SmallGroup } from './view/smallbodies';
 
 export type Lang = 'ar' | 'de' | 'en';
 
@@ -68,6 +69,15 @@ export interface Strings {
   sourceCode: string;
   licences: string;
   planets: Record<PlanetId, string>;
+  smallBodies: string;
+  groups: Record<SmallGroup, string>;
+  /** JPL orbit classes, by code */
+  classes: Record<string, string>;
+  type: string;
+  diameter: string;
+  km: string;
+  smallNote: string;
+  outsideWindow: (from: string, to: string) => string;
   /** Light travel time, given in minutes. */
   light: (minutes: number) => string;
 }
@@ -179,6 +189,18 @@ const AR: Strings = {
     mercury: 'عطارد', venus: 'الزهرة', earth: 'الأرض', mars: 'المريخ',
     jupiter: 'المشتري', saturn: 'زحل', uranus: 'أورانوس', neptune: 'نبتون',
   },
+  smallBodies: 'الكويكبات والمذنبات',
+  groups: { dwarf: 'كوكب قزم', asteroid: 'كويكب', neo: 'كويكب قريب من الأرض', comet: 'مذنب' },
+  classes: {
+    MBA: 'الحزام الرئيسي', AMO: 'مجموعة آمور', APO: 'مجموعة أبولو', ATE: 'مجموعة آتن',
+    TJN: 'طرواديات المشتري', TNO: 'ما بعد نبتون',
+    JFc: 'عائلة المشتري', HTC: 'نوع هالي', ETc: 'نوع إنكه', COM: 'طويل الدورة',
+  },
+  type: 'النوع',
+  diameter: 'القطر',
+  km: 'كم',
+  smallNote: 'كل جسم بيبيّن بس بالسنين اللي حسابنا فيها دقيق، يعني أقل من درجة فرق عن حساب JPL.',
+  outsideWindow: (from, to) => `حسابنا لهالجسم دقيق بس من ${from} لـ ${to}، فما منعرضه بهالتاريخ.`,
   light: (minutes) => {
     const hm = hoursMinutes(minutes);
     if (!hm) return `${num(minutes, 1, 'ar')} دقيقة`;
@@ -257,6 +279,18 @@ const DE: Strings = {
     mercury: 'Merkur', venus: 'Venus', earth: 'Erde', mars: 'Mars',
     jupiter: 'Jupiter', saturn: 'Saturn', uranus: 'Uranus', neptune: 'Neptun',
   },
+  smallBodies: 'Asteroiden und Kometen',
+  groups: { dwarf: 'Zwergplanet', asteroid: 'Asteroid', neo: 'erdnaher Asteroid', comet: 'Komet' },
+  classes: {
+    MBA: 'Hauptgürtel', AMO: 'Amor-Gruppe', APO: 'Apollo-Gruppe', ATE: 'Aten-Gruppe',
+    TJN: 'Jupiter-Trojaner', TNO: 'transneptunisch',
+    JFc: 'Jupiter-Familie', HTC: 'Halley-Typ', ETc: 'Encke-Typ', COM: 'langperiodisch',
+  },
+  type: 'Art',
+  diameter: 'Durchmesser',
+  km: 'km',
+  smallNote: 'Jeder Körper erscheint nur in den Jahren, in denen unsere Rechnung genau ist: weniger als 1° Abweichung zur Rechnung des JPL.',
+  outsideWindow: (from, to) => `Unsere Rechnung ist für diesen Körper nur von ${from} bis ${to} genau, deshalb wird er zu diesem Datum nicht gezeigt.`,
   light: (minutes) => {
     const hm = hoursMinutes(minutes);
     if (!hm) return `${num(minutes, 1, 'de')} Minuten`;
@@ -335,6 +369,18 @@ const EN: Strings = {
     mercury: 'Mercury', venus: 'Venus', earth: 'Earth', mars: 'Mars',
     jupiter: 'Jupiter', saturn: 'Saturn', uranus: 'Uranus', neptune: 'Neptune',
   },
+  smallBodies: 'Asteroids and comets',
+  groups: { dwarf: 'dwarf planet', asteroid: 'asteroid', neo: 'near-Earth asteroid', comet: 'comet' },
+  classes: {
+    MBA: 'main belt', AMO: 'Amor group', APO: 'Apollo group', ATE: 'Aten group',
+    TJN: 'Jupiter trojan', TNO: 'trans-Neptunian',
+    JFc: 'Jupiter family', HTC: 'Halley type', ETc: 'Encke type', COM: 'long-period',
+  },
+  type: 'Type',
+  diameter: 'Diameter',
+  km: 'km',
+  smallNote: 'Each body shows only in the years where our calculation is accurate: within 1° of JPL’s.',
+  outsideWindow: (from, to) => `Our calculation for this body is accurate only from ${from} to ${to}, so it is not shown at this date.`,
   light: (minutes) => {
     const hm = hoursMinutes(minutes);
     if (!hm) return `${num(minutes, 1, 'en')} minutes`;

@@ -2,16 +2,18 @@
 // Looking down on the J2000 ecliptic from the north: x points to the
 // vernal equinox (right), y is up, planets move counter-clockwise.
 // The z coordinate (height above the ecliptic) is ignored.
+// Asteroids and comets are small dots; the selected one also gets its orbit and its name.
 
 import type { PlanetId } from '../astro/elements';
 import type { Vec3 } from '../astro/kepler';
 import { VIEWS, COLORS, radialScale, type BodyFrame, type ViewMode } from './views';
 import { langInfo, t } from '../i18n';
+import { SMALL_COLORS, type SmallFrame } from './smallbodies';
 
 const DOT: Partial<Record<PlanetId, number>> = { jupiter: 6, saturn: 5.5, uranus: 4.5, neptune: 4.5 };
 
 // A taken area on screen. `id` marks a planet's own dot, which must not hide its own name.
-interface Box { x0: number; y0: number; x1: number; y1: number; id?: PlanetId; }
+interface Box { x0: number; y0: number; x1: number; y1: number; id?: string; }
 
 const overlaps = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
 
@@ -24,17 +26,17 @@ const HIT_RADIUS = 18;
 export class Orrery {
   mode: ViewMode = 'compressed';
   zoom = 1;
-  selected: PlanetId | null = null;
+  selected: string | null = null; // a planet id, or a small body's "sb-..." id
 
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private w = 0;
   private h = 0;
-  private lastScreen: { id: PlanetId; x: number; y: number }[] = [];
+  private lastScreen: { id: string; x: number; y: number }[] = [];
 
-  /** The planet nearest to a point on the canvas (CSS pixels), or null if none is close. */
-  hitTest(x: number, y: number): PlanetId | null {
-    let best: PlanetId | null = null;
+  /** The body nearest to a point on the canvas (CSS pixels), or null if none is close. */
+  hitTest(x: number, y: number): string | null {
+    let best: string | null = null;
     let bestD = HIT_RADIUS;
     for (const p of this.lastScreen) {
       const d = Math.hypot(p.x - x, p.y - y);
@@ -67,7 +69,7 @@ export class Orrery {
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
-  draw(bodies: BodyFrame[]) {
+  draw(bodies: BodyFrame[], smalls: SmallFrame[] = [], selectedOrbit: { path: Vec3[]; color: string } | null = null) {
     // Hidden (3D tab), or just shown and not measured yet: the ResizeObserver catches up next frame
     if (this.w < 60 || this.h < 60) return;
     const { ctx, w, h } = this;
@@ -135,6 +137,18 @@ export class Orrery {
       ctx.closePath();
       ctx.stroke();
     }
+    // Orbit of the selected asteroid or comet
+    if (selectedOrbit) {
+      ctx.strokeStyle = selectedOrbit.color;
+      ctx.globalAlpha = 0.6;
+      ctx.beginPath();
+      selectedOrbit.path.forEach((v, i) => {
+        const [x, y] = project(v);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.closePath();
+      ctx.stroke();
+    }
     ctx.globalAlpha = 1;
 
     // Sun
@@ -150,9 +164,34 @@ export class Orrery {
     ctx.arc(cx, cy, 5, 0, Math.PI * 2);
     ctx.fill();
 
+    // Asteroids and comets, under the planets
+    const smallScreen = smalls.map((b) => project(b.pos));
+    let selectedSmall: { b: SmallFrame; x: number; y: number } | null = null;
+    smalls.forEach((b, i) => {
+      const [x, y] = smallScreen[i];
+      const r = b.group === 'dwarf' ? 3 : 2.3;
+      ctx.fillStyle = SMALL_COLORS[b.group];
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+      if (b.id === this.selected) {
+        selectedSmall = { b, x, y };
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(x, y, r + 5, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.lineWidth = 1;
+        taken.push({ x0: x - r - 5, y0: y - r - 5, x1: x + r + 5, y1: y + r + 5, id: b.id });
+      }
+    });
+
     // Planets
     const screen = bodies.map((b) => project(b.pos));
-    this.lastScreen = bodies.map((b, i) => ({ id: b.id, x: screen[i][0], y: screen[i][1] }));
+    this.lastScreen = [
+      ...bodies.map((b, i) => ({ id: b.id as string, x: screen[i][0], y: screen[i][1] })),
+      ...smalls.map((b, i) => ({ id: b.id, x: smallScreen[i][0], y: smallScreen[i][1] })),
+    ];
     bodies.forEach((b, i) => {
       const [x, y] = screen[i];
       const r = DOT[b.id] ?? 4;
@@ -177,23 +216,26 @@ export class Orrery {
     // (Crowded labels show up again in the inner view or when zooming in.)
     ctx.font = '13px system-ui, "Segoe UI", Tahoma, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillStyle = '#e8e8f0';
-    bodies.forEach((b, i) => {
-      const [x, y] = screen[i];
-      const tw = ctx.measureText(b.name).width;
+    const label = (id: string, name: string, x: number, y: number, color: string) => {
+      const tw = ctx.measureText(name).width;
       const spots: [number, number][] = [
         [8, -7], [8, 16], [-8 - tw, -7], [-8 - tw, 16], [-tw / 2, -11], [-tw / 2, 21],
       ];
       for (const [dx, dy] of spots) {
         const box = { x0: x + dx - 2, y0: y + dy - 12, x1: x + dx + tw + 2, y1: y + dy + 4 };
         const inside = box.x0 >= 0 && box.y0 >= 0 && box.x1 <= w && box.y1 <= h;
-        if (inside && !taken.some((t) => t.id !== b.id && overlaps(t, box))) {
-          ctx.fillText(b.name, x + dx, y + dy);
+        if (inside && !taken.some((t) => t.id !== id && overlaps(t, box))) {
+          ctx.fillStyle = color;
+          ctx.fillText(name, x + dx, y + dy);
           taken.push(box);
           break;
         }
       }
-    });
+    };
+    // The selected asteroid or comet first, so its name always shows
+    const sel = selectedSmall as { b: SmallFrame; x: number; y: number } | null;
+    if (sel) label(sel.b.id, sel.b.label, sel.x, sel.y, SMALL_COLORS[sel.b.group]);
+    bodies.forEach((b, i) => label(b.id, b.name, screen[i][0], screen[i][1], '#e8e8f0'));
 
     // Name of the equinox direction, above or below the arrow, wherever there is room
     ctx.font = '11px system-ui, "Segoe UI", Tahoma, sans-serif';

@@ -15,6 +15,7 @@ import smallFile from '../src/data/small-bodies.json' with { type: 'json' };
 import smallRef from './reference/small-bodies-horizons.json' with { type: 'json' };
 import { smallBodyPosition, type SmallBodyOrbit } from '../src/astro/smallbody';
 import { readFileSync } from 'node:fs';
+import { SMALL_BODY_NAMES } from '../src/data/small-body-names';
 import { STRINGS, LANGS } from '../src/i18n';
 
 const MAX_ERROR_DEG = 1;
@@ -135,7 +136,7 @@ console.log(`Stars: ${starCount} up to magnitude ${starFile.magLimit}, Sirius fi
 let smallOk = true;
 const listed = readFileSync('data/small-bodies.txt', 'utf8').split('\n').map((l) => l.replace(/#.*/, '').trim()).filter(Boolean);
 const sbodies = smallFile.bodies as (SmallBodyOrbit & {
-  short: string; spkid: string; query: string; elementsFrom: string;
+  short: string; spkid: string; query: string; elementsFrom: string; validFrom: number; validTo: number;
   cov: { epoch: number; elements: Omit<SmallBodyOrbit, 'epoch'>; labels: string[]; matrix: number[][] } | null;
 })[];
 if (sbodies.length !== listed.length || listed.some((q) => !sbodies.some((b) => b.query === q))) {
@@ -148,12 +149,26 @@ const separation = (a: { x: number; y: number; z: number }, b: number[]) => {
 const worstAt = { now: { v: 0, who: '' }, year: { v: 0, who: '' }, cov: { v: 0, who: '' } };
 const note = (k: keyof typeof worstAt, v: number, who: string) => { if (v > worstAt[k].v) worstAt[k] = { v, who }; };
 let withCov = 0;
+let fullWindow = 0;
+let shortest = { years: Infinity, who: '' };
 let covBad = 0;
 for (const b of sbodies) {
   if (!(b.e < 1) || b.epoch !== smallFile.standardEpoch) { smallOk = false; console.log(`  ${b.short}: e ${b.e}, epoch ${b.epoch}`); }
   const r = smallRef.reference.find((x) => x.spkid === b.spkid);
   if (!r) { smallOk = false; console.log(`  ${b.short}: no Horizons reference`); continue; }
   r.jd.forEach((jd, k) => note(k === 1 ? 'now' : 'year', separation(smallBodyPosition(b, jd), r.pos[k]), b.short));
+  // The site shows a body only between validFrom and validTo: every sample there must be within 1°
+  if (!(b.validFrom <= smallFile.standardEpoch && smallFile.standardEpoch <= b.validTo)) {
+    smallOk = false; console.log(`  ${b.short}: its valid years do not include the standard epoch`);
+  }
+  r.longJd.forEach((jd, k) => {
+    if (jd < b.validFrom || jd > b.validTo) return;
+    const err = separation(smallBodyPosition(b, jd), r.longPos[k]);
+    if (err > 1) { smallOk = false; console.log(`  ${b.short}: ${err.toFixed(2)}° at JD ${jd}, inside its valid years`); }
+  });
+  if (b.validFrom <= r.longJd[0] && b.validTo >= r.longJd[r.longJd.length - 1]) fullWindow++;
+  const years = (b.validTo - b.validFrom) / 365.25;
+  if (years < shortest.years) shortest = { years, who: b.short };
   if (!b.cov) continue;
   withCov++;
   if (r.covJd && r.covPos) note('cov', separation(smallBodyPosition({ ...b.cov.elements, epoch: b.cov.epoch }, r.covJd), r.covPos), b.short);
@@ -188,6 +203,7 @@ console.log(`\nAsteroids and comets: ${sbodies.length} bodies, ${withCov} with c
 console.log(`  at the standard epoch (JD ${smallFile.standardEpoch})  ${worstAt.now.v.toExponential(1)}°  (${worstAt.now.who})  limit 0.001°`);
 console.log(`  a year before or after            ${worstAt.year.v.toFixed(3)}°  (${worstAt.year.who})  limit 0.5°`);
 console.log(`  covariance elements at their epoch ${worstAt.cov.v.toExponential(1)}°  (${worstAt.cov.who})  limit 0.001°`);
+console.log(`  shown only where within 1° (sampled every 5 years): ${fullWindow} of ${sbodies.length} for all 50 years, shortest ${shortest.years.toFixed(0)} years (${shortest.who})`);
 console.log(`  ${smallOk ? 'OK' : 'FAIL'}`);
 
 // 9. Languages: every text exists in all three, and the light time reads right in each
@@ -205,6 +221,12 @@ function sameShape(a: unknown, b: unknown, path: string, l: string) {
 }
 for (const l of LANGS) sameShape(STRINGS.ar, STRINGS[l.id], 'texts', l.id);
 for (const p of PLANETS) for (const l of LANGS) if (!STRINGS[l.id].planets[p.id]) langOk = false;
+for (const b of sbodies) {
+  for (const l of LANGS) {
+    const n = SMALL_BODY_NAMES[b.query]?.[l.id];
+    if (!n || !n[0].trim() || !n[1].trim()) { langOk = false; console.log(`  ${l.id}: no name for ${b.short}`); }
+  }
+}
 
 // [minutes, Arabic, German, English]. 243 min is Neptune's ~4 h 3 min; 119.7 min must round up to 2 hours.
 const LIGHT_CASES: [number, string, string, string][] = [
@@ -222,7 +244,7 @@ for (const [min, ar, de, en] of LIGHT_CASES) {
   });
 }
 failed ||= !langOk;
-console.log(`Texts in ${LANGS.map((l) => l.id).join(', ')}: ${langOk ? 'OK' : 'FAIL'}`);
+console.log(`Texts in ${LANGS.map((l) => l.id).join(', ')}, with names for all ${sbodies.length} asteroids and comets: ${langOk ? 'OK' : 'FAIL'}`);
 
 console.log(failed ? '\nRESULT: FAIL' : '\nRESULT: OK');
 if (failed) process.exitCode = 1;

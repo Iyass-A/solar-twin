@@ -340,3 +340,48 @@ tr.selected td { background: #222a50; }
 
 .sources a { color: #8f9bd0; }
 .sources p { margin: 0 0 6px; }
+
+/* ---------- Asteroids and comets ---------- */
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  margin: -6px 4px 14px;
+  color: #9aa0b4;
+  font-size: 0.8rem;
+}
+
+.legend[hidden] { display: none; }
+
+.legend .key { display: inline-flex; align-items: center; gap: 6px; }
+
+.legend .key i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.legend .note { flex-basis: 100%; color: #6f7590; }
+
+.controls label.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.check input { accent-color: #4f9dff; width: 16px; height: 16px; }
+
+details.card > summary {
+  cursor: pointer;
+  color: #c9cee0;
+  padding: 2px 0;
+}
+
+details.card[open] > summary { margin-bottom: 10px; }
+details.card[hidden] { display: none; }
+
+#info [hidden] { display: none; }

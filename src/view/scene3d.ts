@@ -6,13 +6,17 @@
 // "Follow" glides the camera to the selected planet and keeps it in the middle while time runs.
 // Saturn has its rings, tilted like the real ones (IAU pole direction).
 // Behind everything: the real stars down to magnitude 6 (loaded as a separate file, see stars.ts).
+// Asteroids and comets are one layer of small dots; the selected one also gets a ball, its orbit,
+// its height line and its name, like a planet, so it can be followed too.
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { PlanetId } from '../astro/elements';
+import type { Vec3 } from '../astro/kepler';
 import { SATURN_POLE } from '../astro/poles';
 import { t } from '../i18n';
 import { makeStars, type StarData } from './stars';
+import { SMALL_COLORS, type SmallFrame, type SmallGroup } from './smallbodies';
 import { VIEWS, COLORS, radialScale, sceneAxes, toScene, type BodyFrame, type ViewInfo, type ViewMode } from './views';
 
 const R = 100;           // scene units at the edge of the view (view.rMax)
@@ -21,7 +25,8 @@ const TILT = 52;         // starting camera angle from straight above [deg]
 const DEG = Math.PI / 180;
 
 // Radius of each planet on screen [px]
-const SIZE_PX: Partial<Record<PlanetId, number>> = { jupiter: 7.5, saturn: 7, uranus: 6, neptune: 6 };
+const SIZE_PX: Partial<Record<string, number>> = { jupiter: 7.5, saturn: 7, uranus: 6, neptune: 6 };
+const SMALL_PX: Record<SmallGroup, number> = { dwarf: 4, asteroid: 3, neo: 3, comet: 3 };
 const DEFAULT_PX = 5;
 const SUN_PX = 6;
 const GLOW_PX = 22;
@@ -42,7 +47,7 @@ const RING_OUTER = 2.269;
 interface Fly { t: number; fromTarget: THREE.Vector3; fromDist: number; toDist: number; }
 
 // A taken area on screen. `id` marks a planet's own dot, which must not hide its own name.
-interface Box { x0: number; y0: number; x1: number; y1: number; id?: PlanetId; }
+interface Box { x0: number; y0: number; x1: number; y1: number; id?: string; }
 const overlaps = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
 
 interface Planet {
@@ -60,13 +65,16 @@ interface Label { el: HTMLSpanElement; w: number; h: number; }
 export class Scene3D {
   mode: ViewMode = 'compressed';
   /** Called on a tap or click that was not a drag: the planet under it, or null. */
-  onPick: ((id: PlanetId | null) => void) | null = null;
+  onPick: ((id: string | null) => void) | null = null;
 
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(FOV, 1, 0.1, 5000);
   private readonly controls: OrbitControls;
-  private readonly planets = new Map<PlanetId, Planet>();
+  // The planets, plus the selected asteroid or comet while there is one (id "sb-...")
+  private readonly planets = new Map<string, Planet>();
+  private smallId: string | null = null;
+  private readonly dots: THREE.Points;
   private readonly sun: THREE.Mesh;
   private readonly glow: THREE.Sprite;
   private readonly grid = new THREE.Group();
@@ -74,7 +82,7 @@ export class Scene3D {
   private readonly ring: HTMLDivElement;
   private gridLabels: { pos: THREE.Vector3; label: Label }[] = [];
   private gridFor: ViewMode | null = null;
-  private lastScreen: { id: PlanetId; x: number; y: number; r: number }[] = [];
+  private lastScreen: { id: string; x: number; y: number; r: number }[] = [];
   private readonly tmp = new THREE.Vector3();
   private readonly tmp2 = new THREE.Vector3();
   private followText = '';
@@ -83,21 +91,21 @@ export class Scene3D {
   private readonly starsBtn: HTMLButtonElement;
   private stars: THREE.Points | null = null;
   private starsOn = true;
-  private readonly names = new Map<PlanetId, string>();
-  private sel: PlanetId | null = null;
-  private following: PlanetId | null = null;
+  private readonly names = new Map<string, string>();
+  private sel: string | null = null;
+  private following: string | null = null;
   private fly: Fly | null = null;
-  private focusId: PlanetId | null = null; // the planet drawn bigger
+  private focusId: string | null = null; // the body drawn bigger
   private focusK = 0;                      // 0 = normal size, 1 = FOCUS_GROW
   private homeDist = 0;
   private lastDraw = 0;
   private w = 0;
   private h = 0;
 
-  get selected(): PlanetId | null { return this.sel; }
+  get selected(): string | null { return this.sel; }
 
   /** Selecting another planet while following moves the camera to it; selecting none stops. */
-  set selected(id: PlanetId | null) {
+  set selected(id: string | null) {
     this.sel = id;
     if (this.following && id !== this.following) {
       if (id) this.startFollow(id); else this.stopFollow();
@@ -157,6 +165,10 @@ export class Scene3D {
       map: glowTexture(), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true,
     }));
     this.scene.add(this.sun, this.glow, this.grid);
+
+    // Asteroids and comets: one layer of round dots, sized in screen pixels
+    this.dots = makeDots();
+    this.scene.add(this.dots);
 
     // Planets, their orbits and the drop lines to the ecliptic
     for (const id of Object.keys(COLORS) as PlanetId[]) {
@@ -240,16 +252,15 @@ export class Scene3D {
   }
 
   /** Glide to a planet and keep it in the middle. Turning and zooming still work around it. */
-  private startFollow(id: PlanetId) {
-    const goal = this.planets.get(id)!.mesh.position;
-    if (this.focusId !== id) this.focusK = 0; // another planet: it starts small and grows
+  private startFollow(id: string) {
+    if (this.focusId !== id) this.focusK = 0; // another body: it starts small and grows
     this.focusId = id;
     this.following = id;
     this.fly = {
       t: 0,
       fromTarget: this.controls.target.clone(),
       fromDist: this.camera.position.distanceTo(this.controls.target),
-      toDist: Math.max(6, 0.35 * goal.length()), // close enough to see the neighbourhood
+      toDist: NaN, // set once the body's position is known (a new asteroid appears on the next frame)
     };
   }
 
@@ -266,11 +277,15 @@ export class Scene3D {
 
   /** Move the camera with its target: during a glide, or every frame while following. */
   private updateFollow(dt: number) {
-    const goal = this.following ? this.planets.get(this.following)!.mesh.position : ORIGIN;
+    const goal = (this.following && this.planets.get(this.following)?.mesh.position) || ORIGIN;
     let target: THREE.Vector3;
     let dist: number | null = null;
     if (this.fly) {
       const f = this.fly;
+      if (Number.isNaN(f.toDist)) {
+        if (goal === ORIGIN) return;                    // wait for the body to appear
+        f.toDist = Math.max(6, 0.35 * goal.length());   // close enough to see the neighbourhood
+      }
       f.t = Math.min(1, f.t + dt / FLY_SECONDS);
       const e = f.t * f.t * (3 - 2 * f.t); // smooth start and stop
       target = this.tmp.copy(f.fromTarget).lerp(goal, e);
@@ -302,8 +317,8 @@ export class Scene3D {
   }
 
   /** The planet nearest to a point on the canvas (CSS pixels), or null if none is close. */
-  hitTest(x: number, y: number): PlanetId | null {
-    let best: PlanetId | null = null;
+  hitTest(x: number, y: number): string | null {
+    let best: string | null = null;
     let bestD = Infinity;
     for (const p of this.lastScreen) {
       const d = Math.hypot(p.x - x, p.y - y);
@@ -312,7 +327,7 @@ export class Scene3D {
     return best;
   }
 
-  draw(bodies: BodyFrame[]) {
+  draw(bodies: BodyFrame[], smalls: SmallFrame[] = [], selectedOrbit: { path: Vec3[]; color: string } | null = null) {
     const now = performance.now();
     const dt = Math.min((now - this.lastDraw) / 1000, 0.1);
     this.lastDraw = now;
@@ -346,7 +361,13 @@ export class Scene3D {
       drop.needsUpdate = true;
     }
 
-    // Camera after the planets have moved, then the sizes on screen from the new camera
+    // Asteroids and comets: the dot layer, and the selected one as a full body
+    const view3 = (v: Vec3) => toScene(v, view, R);
+    updateDots(this.dots, smalls.map((b) => ({ xyz: view3(b.pos), color: SMALL_COLORS[b.group], px: SMALL_PX[b.group] })),
+      this.renderer.getPixelRatio());
+    this.syncSmall(smalls, selectedOrbit, view3);
+
+    // Camera after the bodies have moved, then the sizes on screen from the new camera
     this.updateFollow(dt);
     this.controls.update();
     if (this.stars) {
@@ -363,11 +384,68 @@ export class Scene3D {
     this.glow.scale.setScalar(GLOW_PX * 2 * wpp);
 
     this.renderer.render(this.scene, this.camera);
-    this.placeLabels(bodies);
+    this.placeLabels(smalls, view3);
     this.updateFollowButton();
   }
 
   // ---------- Helpers ----------
+
+  /** Keep the selected asteroid or comet as a full body (ball, orbit, height line, name). */
+  private syncSmall(smalls: SmallFrame[], orbit: { path: Vec3[]; color: string } | null,
+    view3: (v: Vec3) => [number, number, number]) {
+    const wanted = this.sel?.startsWith('sb-') ? this.sel : null;
+    if (this.smallId !== wanted) {
+      if (this.smallId) {
+        const old = this.planets.get(this.smallId)!;
+        this.scene.remove(old.mesh, old.orbit, old.drop);
+        old.orbit.geometry.dispose(); old.drop.geometry.dispose();
+        (old.mesh.material as THREE.Material).dispose();
+        old.label.el.remove();
+        this.planets.delete(this.smallId);
+      }
+      this.smallId = wanted;
+      if (wanted) {
+        const color = orbit?.color ?? '#ffffff';
+        const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 12), new THREE.MeshLambertMaterial({ color }));
+        const line = new THREE.LineLoop(new THREE.BufferGeometry(),
+          new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.6, depthWrite: false }));
+        const drop = new THREE.Line(
+          new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3)),
+          new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.6, depthWrite: false }));
+        line.frustumCulled = drop.frustumCulled = false;
+        this.scene.add(mesh, line, drop);
+        const label = this.label('');
+        label.el.style.color = color;
+        const group = smalls.find((b) => b.id === wanted)?.group ?? 'asteroid';
+        this.planets.set(wanted, { mesh, orbit: line, drop, label, px: SMALL_PX[group] + 1, extent: SMALL_PX[group] + 1, grow: 1 });
+      }
+    }
+    if (!this.smallId) return;
+
+    const p = this.planets.get(this.smallId)!;
+    const frame = smalls.find((b) => b.id === this.smallId);
+    const shown = !!frame && !!orbit;
+    p.mesh.visible = p.orbit.visible = p.drop.visible = shown;
+    if (!shown) {
+      if (this.following === this.smallId) this.stopFollow(); // it left its valid years
+      return;
+    }
+    if (p.label.el.textContent !== frame.label) { this.setText(p.label, frame.label); this.names.set(frame.id, frame.label); }
+    const [x, y, z] = view3(frame.pos);
+    p.mesh.position.set(x, y, z);
+
+    let pos = p.orbit.geometry.getAttribute('position') as THREE.BufferAttribute | undefined;
+    if (!pos || pos.count !== orbit.path.length) {
+      pos = new THREE.BufferAttribute(new Float32Array(orbit.path.length * 3), 3);
+      p.orbit.geometry.setAttribute('position', pos);
+    }
+    orbit.path.forEach((v, i) => { const [ox, oy, oz] = view3(v); pos.setXYZ(i, ox, oy, oz); });
+    pos.needsUpdate = true;
+    const drop = p.drop.geometry.getAttribute('position') as THREE.BufferAttribute;
+    drop.setXYZ(0, x, y, z);
+    drop.setXYZ(1, x, 0, z);
+    drop.needsUpdate = true;
+  }
 
   private resize(host: HTMLElement) {
     const box = host.getBoundingClientRect();
@@ -442,14 +520,14 @@ export class Scene3D {
   }
 
   /** Names next to the planets, skipped where they would overlap (like the 2D map). */
-  private placeLabels(bodies: BodyFrame[]) {
+  private placeLabels(smalls: SmallFrame[], view3: (v: Vec3) => [number, number, number]) {
     const taken: Box[] = [];
     const inside = (b: Box) => b.x0 >= 0 && b.y0 >= 0 && b.x1 <= this.w && b.y1 <= this.h;
     const measure = (label: Label) => {
       if (label.w === 0) { label.w = label.el.offsetWidth; label.h = label.el.offsetHeight; }
       return label;
     };
-    const place = (label: Label, x: number, y: number, spots: [number, number][], owner?: PlanetId) => {
+    const place = (label: Label, x: number, y: number, spots: [number, number][], owner?: string) => {
       for (const [dx, dy] of spots) {
         const box = { x0: x + dx - 2, y0: y + dy, x1: x + dx + label.w + 2, y1: y + dy + label.h };
         if (inside(box) && !taken.some((t) => (!owner || t.id !== owner) && overlaps(t, box))) {
@@ -462,23 +540,28 @@ export class Scene3D {
       label.el.style.visibility = 'hidden';
     };
 
-    // Planets on screen
-    const onScreen: { b: BodyFrame; p: Planet; x: number; y: number }[] = [];
+    // Bodies on screen: the planets, and the selected asteroid or comet
+    const onScreen: { id: string; p: Planet; x: number; y: number }[] = [];
     this.lastScreen = [];
-    for (const b of bodies) {
-      const p = this.planets.get(b.id)!;
-      const s = this.toScreen(p.mesh.position);
+    for (const [id, p] of this.planets) {
+      const s = p.mesh.visible ? this.toScreen(p.mesh.position) : null;
       if (!s) { p.label.el.style.visibility = 'hidden'; continue; }
-      onScreen.push({ b, p, ...s });
-      this.lastScreen.push({ id: b.id, ...s, r: p.px * p.grow + 4 });
+      onScreen.push({ id, p, ...s });
+      this.lastScreen.push({ id, ...s, r: p.px * p.grow + 4 });
       const e = p.extent * p.grow + 5;
-      taken.push({ x0: s.x - e, y0: s.y - e, x1: s.x + e, y1: s.y + e, id: b.id });
+      taken.push({ x0: s.x - e, y0: s.y - e, x1: s.x + e, y1: s.y + e, id });
+    }
+    // Every asteroid and comet dot can be tapped
+    for (const b of smalls) {
+      const [x, y, z] = view3(b.pos);
+      const s = this.toScreen(this.tmp2.set(x, y, z));
+      if (s) this.lastScreen.push({ id: b.id, ...s, r: 0 });
     }
     const sun = this.toScreen(this.sun.position);
     if (sun) taken.push({ x0: sun.x - SUN_PX - 2, y0: sun.y - SUN_PX - 2, x1: sun.x + SUN_PX + 2, y1: sun.y + SUN_PX + 2 });
 
-    // Ring around the selected planet
-    const sel = onScreen.find((o) => o.b.id === this.selected);
+    // Ring around the selected body
+    const sel = onScreen.find((o) => o.id === this.selected);
     this.ring.hidden = !sel;
     if (sel) {
       const d = (sel.p.extent * sel.p.grow + 5) * 2;
@@ -486,14 +569,14 @@ export class Scene3D {
       this.ring.style.transform = `translate(${(sel.x - d / 2).toFixed(1)}px, ${(sel.y - d / 2).toFixed(1)}px)`;
     }
 
-    // The selected planet gets its name first, then the others in order from the Sun
+    // The selected body gets its name first, then the planets in order from the Sun
     const order = sel ? [sel, ...onScreen.filter((o) => o !== sel)] : onScreen;
-    for (const { b, p, x, y } of order) {
+    for (const { id, p, x, y } of order) {
       const { w, h } = measure(p.label);
-      const g = p.extent * p.grow + 3;
+      const g = p.extent * p.grow + (id === this.selected ? 8 : 3); // clear of the selection circle
       place(p.label, x, y, [
         [g, -h - 1], [g, 1], [-g - w, -h - 1], [-g - w, 1], [-w / 2, -h - g], [-w / 2, g],
-      ], b.id);
+      ], id);
     }
 
     // Ring values and the equinox, wherever there is room
@@ -563,4 +646,64 @@ function saturnRings(): THREE.Mesh {
   const [px, py, pz] = sceneAxes(SATURN_POLE);
   mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(px, py, pz).normalize());
   return mesh;
+}
+
+// ---------- Dots for asteroids and comets ----------
+
+const DOT_VERTEX = /* glsl */ `
+  attribute float size;
+  attribute vec3 dotColor;
+  uniform float pixelRatio;
+  varying vec3 vColor;
+  void main() {
+    vColor = dotColor;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    gl_PointSize = size * 2.0 * pixelRatio;
+  }
+`;
+
+const DOT_FRAGMENT = /* glsl */ `
+  varying vec3 vColor;
+  void main() {
+    float d = length(gl_PointCoord - 0.5) * 2.0;
+    float a = 1.0 - smoothstep(0.7, 1.0, d);
+    if (a <= 0.0) discard;
+    gl_FragColor = vec4(vColor, a);
+  }
+`;
+
+function makeDots(): THREE.Points {
+  const points = new THREE.Points(new THREE.BufferGeometry(), new THREE.ShaderMaterial({
+    vertexShader: DOT_VERTEX,
+    fragmentShader: DOT_FRAGMENT,
+    uniforms: { pixelRatio: { value: 1 } },
+    transparent: true,
+    depthWrite: false,
+  }));
+  points.frustumCulled = false;
+  return points;
+}
+
+/** Put the dots where the bodies are now; buffers grow when needed. Colours are sRGB, like the CSS ones. */
+function updateDots(points: THREE.Points, dots: { xyz: [number, number, number]; color: string; px: number }[], pixelRatio: number) {
+  const g = points.geometry;
+  let pos = g.getAttribute('position') as THREE.BufferAttribute | undefined;
+  if (!pos || pos.count < dots.length) {
+    const n = Math.max(dots.length, 64);
+    g.setAttribute('position', pos = new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    g.setAttribute('dotColor', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    g.setAttribute('size', new THREE.BufferAttribute(new Float32Array(n), 1));
+  }
+  const col = g.getAttribute('dotColor') as THREE.BufferAttribute;
+  const size = g.getAttribute('size') as THREE.BufferAttribute;
+  const c = new THREE.Color();
+  dots.forEach((d, i) => {
+    pos!.setXYZ(i, d.xyz[0], d.xyz[1], d.xyz[2]);
+    c.setStyle(d.color, THREE.SRGBColorSpace);
+    col.setXYZ(i, c.r, c.g, c.b);
+    size.setX(i, d.px);
+  });
+  pos.needsUpdate = col.needsUpdate = size.needsUpdate = true;
+  g.setDrawRange(0, dots.length);
+  (points.material as THREE.ShaderMaterial).uniforms.pixelRatio.value = pixelRatio;
 }

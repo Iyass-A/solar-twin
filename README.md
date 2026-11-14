@@ -14,6 +14,7 @@ Version 0.2, public beta.
 - **See where the planets are right now**, or on any date from 1800 to 2050. Drag the time bar, play time at a day up to a year per second, or jump to a date.
 - **3D view.** Turn and zoom the scene, and follow a planet with the camera while time runs. Saturn's rings sit at their real tilt, and the 5,080 stars visible to the naked eye are in their true places behind.
 - **Map from above (2D)**, with all planets at compressed distances, all at true distances, or just the inner planets.
+- **Asteroids, dwarf planets and comets**: 36 well-known ones from JPL, such as Ceres, Apophis, Bennu, Pluto, Halley and Hale-Bopp, as coloured dots. Pick one to see its orbit, follow it, and read its type and size.
 - **Pick a planet** to see its distance from the Sun and from Earth, and how long its light takes to reach us.
 - **Three languages.** Arabic (right to left), German and English. Add `?lang=ar`, `?lang=de` or `?lang=en` to the address to share a link in one language.
 
@@ -24,7 +25,9 @@ Every build compares them with [Astronomy Engine](https://github.com/cosinekitty
 The largest difference is **0.20°** (Saturn, 1911); the build fails above 1°.
 The page also runs this check for the date on screen.
 
-That is plenty for seeing where the planets are, but it is not meant for pointing a telescope or planning a spacecraft.
+Asteroids and comets use the same kind of Sun-only orbit, from JPL's current elements. Each build compares them with JPL Horizons every 5 years over 25 years each way, and the site shows a body only in the years where it stays within 1°. That is the whole 50 years for 14 of the 36; close encounters cut the others short (Apophis, for example, passes Earth in 2029).
+
+That is plenty for seeing where things are, but it is not meant for pointing a telescope or planning a spacecraft.
 
 ## How it works
 

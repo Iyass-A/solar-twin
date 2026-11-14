@@ -1,9 +1,9 @@
 {
  "source": "NASA/JPL Small-Body Database (SBDB) API, https://ssd-api.jpl.nasa.gov/doc/sbdb.html",
  "sbdbVersion": "1.3",
- "fetched": "2026-11-14T17:32:24.755Z",
+ "fetched": "2026-11-14T17:59:23.223Z",
  "standardEpoch": 2461200.5,
- "note": "Angles in degrees, q in au, tp and epoch as Julian days (TDB). Covariance in au, deg, days; labels name the rows. elementsFrom tells where the current elements come from: SBDB at its standard epoch, or Horizons there.",
+ "note": "Angles in degrees, q in au, tp and epoch as Julian days (TDB). Covariance in au, deg, days; labels name the rows. elementsFrom tells where the current elements come from: SBDB at its standard epoch, or Horizons there. validFrom/validTo: Julian days between which our Sun-only position stays within 1° of Horizons (sampled every ~5 years).",
  "bodies": [
   {
    "query": "1",
@@ -100,7 +100,9 @@
      ]
     ]
    },
-   "elementsFrom": "SBDB"
+   "elementsFrom": "SBDB",
+   "validFrom": 2457548.5,
+   "validTo": 2464852.5
   },
   {
    "query": "2",
@@ -197,7 +199,9 @@
      ]
     ]
    },
-   "elementsFrom": "SBDB"
+   "elementsFrom": "SBDB",
+   "validFrom": 2455722.5,
+   "validTo": 2470330.5
   },
   {
    "query": "3",
@@ -294,7 +298,9 @@
      ]
     ]
    },
-   "elementsFrom": "SBDB"
+   "elementsFrom": "SBDB",
+   "validFrom": 2453896.5,
+   "validTo": 2464852.5
   },
   {
    "query": "4",
@@ -391,7 +397,9 @@
      ]
     ]
    },
-   "elementsFrom": "SBDB"
+   "elementsFrom": "SBDB",
+   "validFrom": 2452070.5,
+   "validTo": 2470330.5
   },
   {
    "query": "10",
@@ -488,7 +496,9 @@
      ]
     ]
    },
-   "elementsFrom": "SBDB"
+   "elementsFrom": "SBDB",
+   "validFrom": 2460835.5,
+   "validTo": 2463026.5
   },
   {
    "query": "16",
@@ -585,7 +595,9 @@
      ]
     ]
    },
-   "elementsFrom": "SBDB"
+   "elementsFrom": "SBDB",
+   "validFrom": 2455722.5,
+   "validTo": 2463026.5
   },
   {
    "query": "21",
@@ -682,7 +694,9 @@
      ]
     ]
    },
-   "elementsFrom": "SBDB"
+   "elementsFrom": "SBDB",
+   "validFrom": 2452070.5,
+   "validTo": 2470330.5
   },
   {
    "query": "243",
@@ -779,7 +793,9 @@
      ]
     ]
    },
-   "elementsFrom": "SBDB"
+   "elementsFrom": "SBDB",
+   "validFrom": 2453896.5,
+   "validTo": 2468504.5
   },
   {
    "query": "433",
@@ -876,7 +892,9 @@
      ]
     ]
    },
-   "elementsFrom": "SBDB"
+   "elementsFrom": "SBDB",
+   "validFrom": 2453896.5,
+   "validTo": 2470330.5
   },
   {
    "query": "1566",
@@ -989,7 +1007,9 @@
      ]
     ]
    },
-   "elementsFrom": "SBDB"
+   "elementsFrom": "SBDB",
+   "validFrom": 2459374.5,
+   "validTo": 2470330.5
   },
   {
    "query": "3200",
@@ -1102,7 +1122,9 @@
      ]
     ]
    },
-   "elementsFrom": "SBDB"
+   "elementsFrom": "SBDB",
+   "validFrom": 2452070.5,
+   "validTo": 2470330.5
   },
   {
    "query": "4179",
@@ -1233,7 +1255,9 @@
      ]
     ]
    },
-   "elementsFrom": "SBDB"
+   "elementsFrom": "SBDB",
+   "validFrom": 2457548.5,
+   "validTo": 2463026.5
   },
   {
    "query": "25143",
@@ -1346,7 +1370,9 @@
      ]
     ]
    },
-   "elementsFrom": "SBDB"
+   "elementsFrom": "SBDB",
+   "validFrom": 2453896.5,
+   "validTo": 2463026.5
   },
   {
    "query": "65803",
@@ -1443,7 +1469,9 @@
      ]
     ]
    },
-   "elementsFrom": "SBDB"
+   "elementsFrom": "SBDB",
+   "validFrom": 2459374.5,
+   "validTo": 2470330.5
   },
   {
    "query": "99942",
@@ -1574,7 +1602,9 @@
      ]
     ]
    },
-   "elementsFrom": "SBDB"
+   "elementsFrom": "SBDB",
+   "validFrom": 2459374.5,
+   "validTo": 2461565.5
   },
   {
    "query": "101955",
@@ -1706,7 +1736,9 @@
     ]
    },
    "sbdbEpoch": 2455562.5,
-   "elementsFrom": "Horizons"
+   "elementsFrom": "Horizons",
+   "validFrom": 2453896.5,
+   "validTo": 2464852.5
   },
   {
    "query": "162173",
@@ -1819,7 +1851,9 @@
      ]
     ]
    },
-   "elementsFrom": "SBDB"
+   "elementsFrom": "SBDB",
+   "validFrom": 2459374.5,
+   "validTo": 2463026.5
   },
   {
    "query": "2024 YR4",
@@ -1916,7 +1950,9 @@
      ]
     ]
    },
-   "elementsFrom": "SBDB"
+   "elementsFrom": "SBDB",
+   "validFrom": 2460835.5,
+   "validTo": 2463026.5
   },
   {
    "query": "624",
@@ -2013,7 +2049,9 @@
      ]
     ]
    },
-   "elementsFrom": "SBDB"
+   "elementsFrom": "SBDB",
+   "validFrom": 2459374.5,
+   "validTo": 2466678.5
   },
   {
    "query": "3548",
@@ -2110,7 +2148,9 @@
      ]
     ]
    },
-   "elementsFrom": "SBDB"
+   "elementsFrom": "SBDB",
+   "validFrom": 2459374.5,
+   "validTo": 2464852.5
   },
   {
    "query": "134340",
@@ -2140,7 +2180,9 @@
    "diameter": null,
    "cov": null,
    "sbdbEpoch": 2457588.5,
-   "elementsFrom": "Horizons"
+   "elementsFrom": "Horizons",
+   "validFrom": 2452070.5,
+   "validTo": 2470330.5
   },
   {
    "query": "136199",
@@ -2237,7 +2279,9 @@
      ]
     ]
    },
-   "elementsFrom": "SBDB"
+   "elementsFrom": "SBDB",
+   "validFrom": 2452070.5,
+   "validTo": 2470330.5
   },
   {
    "query": "136108",
@@ -2334,7 +2378,9 @@
      ]
     ]
    },
-   "elementsFrom": "SBDB"
+   "elementsFrom": "SBDB",
+   "validFrom": 2452070.5,
+   "validTo": 2470330.5
   },
   {
    "query": "136472",
@@ -2431,7 +2477,9 @@
      ]
     ]
    },
-   "elementsFrom": "SBDB"
+   "elementsFrom": "SBDB",
+   "validFrom": 2452070.5,
+   "validTo": 2470330.5
   },
   {
    "query": "90377",
@@ -2528,7 +2576,9 @@
      ]
     ]
    },
-   "elementsFrom": "SBDB"
+   "elementsFrom": "SBDB",
+   "validFrom": 2452070.5,
+   "validTo": 2470330.5
   },
   {
    "query": "486958",
@@ -2625,7 +2675,9 @@
      ]
     ]
    },
-   "elementsFrom": "SBDB"
+   "elementsFrom": "SBDB",
+   "validFrom": 2452070.5,
+   "validTo": 2470330.5
   },
   {
    "query": "1P",
@@ -2777,7 +2829,9 @@
     ]
    },
    "sbdbEpoch": 2439875.5,
-   "elementsFrom": "Horizons"
+   "elementsFrom": "Horizons",
+   "validFrom": 2452070.5,
+   "validTo": 2470330.5
   },
   {
    "query": "2P",
@@ -2909,7 +2963,9 @@
     ]
    },
    "sbdbEpoch": 2460603.5,
-   "elementsFrom": "Horizons"
+   "elementsFrom": "Horizons",
+   "validFrom": 2452070.5,
+   "validTo": 2470330.5
   },
   {
    "query": "9P",
@@ -3041,7 +3097,9 @@
     ]
    },
    "sbdbEpoch": 2457470.5,
-   "elementsFrom": "Horizons"
+   "elementsFrom": "Horizons",
+   "validFrom": 2460835.5,
+   "validTo": 2464852.5
   },
   {
    "query": "55P",
@@ -3173,7 +3231,9 @@
     ]
    },
    "sbdbEpoch": 2451040.5,
-   "elementsFrom": "Horizons"
+   "elementsFrom": "Horizons",
+   "validFrom": 2452070.5,
+   "validTo": 2461565.5
   },
   {
    "query": "67P",
@@ -3347,7 +3407,9 @@
     ]
    },
    "sbdbEpoch": 2457305.5,
-   "elementsFrom": "Horizons"
+   "elementsFrom": "Horizons",
+   "validFrom": 2459374.5,
+   "validTo": 2463026.5
   },
   {
    "query": "81P",
@@ -3521,7 +3583,9 @@
     ]
    },
    "sbdbEpoch": 2458808.5,
-   "elementsFrom": "Horizons"
+   "elementsFrom": "Horizons",
+   "validFrom": 2452070.5,
+   "validTo": 2463026.5
   },
   {
    "query": "103P",
@@ -3695,7 +3759,9 @@
     ]
    },
    "sbdbEpoch": 2457152.5,
-   "elementsFrom": "Horizons"
+   "elementsFrom": "Horizons",
+   "validFrom": 2453896.5,
+   "validTo": 2468504.5
   },
   {
    "query": "109P",
@@ -3793,7 +3859,9 @@
     ]
    },
    "sbdbEpoch": 2450000.5,
-   "elementsFrom": "Horizons"
+   "elementsFrom": "Horizons",
+   "validFrom": 2452070.5,
+   "validTo": 2470330.5
   },
   {
    "query": "C/1995 O1",
@@ -3891,7 +3959,9 @@
     ]
    },
    "sbdbEpoch": 2459837.5,
-   "elementsFrom": "Horizons"
+   "elementsFrom": "Horizons",
+   "validFrom": 2452070.5,
+   "validTo": 2470330.5
   },
   {
    "query": "C/2020 F3",
@@ -3989,7 +4059,9 @@
     ]
    },
    "sbdbEpoch": 2459036.5,
-   "elementsFrom": "Horizons"
+   "elementsFrom": "Horizons",
+   "validFrom": 2452070.5,
+   "validTo": 2470330.5
   }
  ]
 }
