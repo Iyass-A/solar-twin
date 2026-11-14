@@ -163,8 +163,13 @@ async function horizonsUncertainty(command: string, jd: number) {
   if (start < 0 || end < 0) throw new Error(`No uncertainties in Horizons answer:\n${text.slice(0, 600)}`);
   const header = text.slice(0, start).split('\n').reverse().find((l) => l.includes('JDTDB'));
   if (!header) throw new Error('No CSV header in Horizons uncertainties');
-  const cols = header.split(',').map((c) => c.trim()).filter(Boolean);
+  if (!loggedHeader) { loggedHeader = true; console.log(`  Horizons header: ${header.trim()}`); }
+  // The header may lack a comma between its first two names ("JDTDB   Calendar Date (TDB)")
+  const cols = header.replace(/JDTDB\s+Calendar/, 'JDTDB, Calendar').split(',').map((c) => c.trim()).filter(Boolean);
   const row = text.slice(start + 5, end).trim().split('\n')[0].split(',').map((c) => c.trim());
+  if (cols[0] !== 'JDTDB' || !cols[1].startsWith('Calendar') || row.filter(Boolean).length !== cols.length) {
+    throw new Error(`Horizons uncertainty columns do not line up: ${cols.join('|')} / ${row.join('|')}`);
+  }
   const values: Record<string, number> = {};
   cols.forEach((c, k) => { if (k !== 1) values[c] = Number(row[k]); });
   const explanation = text.slice(end + 5).split('\n').filter((l) => /_s|sigma|uncertaint/i.test(l)).join('\n').trim();
@@ -220,6 +225,7 @@ const bodies: any[] = [];
 const reference: any[] = [];
 const problems: string[] = [];
 let sigmaExplanation = '';
+let loggedHeader = false;
 let sbdbVersion: string | null = null;
 
 for (const q of queries) {
