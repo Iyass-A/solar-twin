@@ -25,3 +25,4 @@ npm run check
 - Phase 2, step 1: 3D scene with Three.js (Sun, planets, orbits, ecliptic rings), next to the 2D map, sharing the same clock, time bar, views and selection
 - Phase 2, step 2: follow a selected planet with the camera (it is drawn bigger while followed); Saturn's rings with the real tilt from the IAU pole, checked against its known 26.73° axial tilt
 - Phase 2, step 3: three languages (Arabic, German, English) with a switch at the top; right-to-left for Arabic, decimal commas for German. The choice is remembered; `?lang=de` in the address picks a language directly
+- Phase 2, step 4: real background stars in 3D (Yale Bright Star Catalogue, the 5,080 stars up to magnitude 6) with true direction, brightness and colour; a ✦ button hides them. The data file is made by `scripts/make-stars.ts`; sources are listed at the bottom of the page

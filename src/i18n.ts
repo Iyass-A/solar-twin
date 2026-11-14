@@ -61,6 +61,8 @@ export interface Strings {
   resetView: string;
   follow: (name: string) => string;
   stopFollow: string;
+  stars: string;
+  sources: string;
   planets: Record<PlanetId, string>;
   /** Light travel time, given in minutes. */
   light: (minutes: number) => string;
@@ -105,7 +107,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 const AR: Strings = {
   title: 'التوأم الرقمي للمجموعة الشمسية',
-  step: 'المرحلة 2، الخطوة 3: ثلاث لغات',
+  step: 'المرحلة 2، الخطوة 4: نجوم حقيقية',
   language: 'اللغة',
   tab3d: 'ثلاثي الأبعاد',
   tab2d: 'خريطة من فوق',
@@ -130,7 +132,8 @@ const AR: Strings = {
   howto3d: 'اسحب لتلفّ المشهد، ودولاب الماوس أو إصبعين بيكبّروا، ودبل كليك أو ↺ بيرجّع. '
     + 'اختار كوكب واكبس «لاحق» لتلحقه الكاميرا حتى والزمن ماشي. '
     + 'الخطوط النازلة من الكواكب بتورجي قديش الكوكب فوق أو تحت مستوى مدار الأرض. '
-    + 'الدواير هي البعد بالوحدة الفلكية. أحجام الكواكب مو حقيقية.',
+    + 'الدواير هي البعد بالوحدة الفلكية. أحجام الكواكب مو حقيقية. '
+    + 'النجوم بالخلفية حقيقية، كل اللي بينشاف بالعين بليلة صافية، وزر ✦ بيخفيها.',
   howto2d: 'منظر من فوق، والكواكب بتدور عكس عقارب الساعة. أحجام الكواكب مو حقيقية. '
     + 'الأرقام على الدواير هي البعد بالوحدة الفلكية. دولاب الماوس بيكبّر، ودبل كليك بيرجّع.',
   infoHint: 'اكبس على أي كوكب بالخريطة أو بالجدول لتشوف معلوماته.',
@@ -162,6 +165,8 @@ const AR: Strings = {
   resetView: 'رجّع المنظر',
   follow: (name) => `لاحق ${name}`,
   stopFollow: 'وقّف الملاحقة',
+  stars: 'النجوم',
+  sources: 'المصادر:',
   planets: {
     mercury: 'عطارد', venus: 'الزهرة', earth: 'الأرض', mars: 'المريخ',
     jupiter: 'المشتري', saturn: 'زحل', uranus: 'أورانوس', neptune: 'نبتون',
@@ -176,7 +181,7 @@ const AR: Strings = {
 
 const DE: Strings = {
   title: 'Digitaler Zwilling des Sonnensystems',
-  step: 'Phase 2, Schritt 3: drei Sprachen',
+  step: 'Phase 2, Schritt 4: echte Sterne',
   language: 'Sprache',
   tab3d: '3D-Ansicht',
   tab2d: 'Karte von oben',
@@ -201,7 +206,8 @@ const DE: Strings = {
   howto3d: 'Ziehen dreht die Szene, Mausrad oder zwei Finger zoomen, Doppelklick oder ↺ setzt zurück. '
     + 'Wähle einen Planeten und klicke auf „folgen“: Die Kamera bleibt bei ihm, auch wenn die Zeit läuft. '
     + 'Die Linien von den Planeten zur Ebene zeigen, wie weit sie über oder unter der Ebene der Erdbahn liegen. '
-    + 'Die Kreise zeigen den Abstand in AE. Die Planetengrößen sind nicht maßstabsgetreu.',
+    + 'Die Kreise zeigen den Abstand in AE. Die Planetengrößen sind nicht maßstabsgetreu. '
+    + 'Die Sterne im Hintergrund sind echt: alle, die man in einer klaren Nacht mit bloßem Auge sieht. ✦ blendet sie aus.',
   howto2d: 'Blick von oben, die Planeten laufen gegen den Uhrzeigersinn. Die Planetengrößen sind nicht maßstabsgetreu. '
     + 'Die Zahlen an den Kreisen sind Abstände in AE. Mausrad zoomt, Doppelklick setzt zurück.',
   infoHint: 'Wähle einen Planeten in der Karte oder in der Tabelle, um seine Daten zu sehen.',
@@ -233,6 +239,8 @@ const DE: Strings = {
   resetView: 'Ansicht zurücksetzen',
   follow: (name) => `${name} folgen`,
   stopFollow: 'Nicht mehr folgen',
+  stars: 'Sterne',
+  sources: 'Quellen:',
   planets: {
     mercury: 'Merkur', venus: 'Venus', earth: 'Erde', mars: 'Mars',
     jupiter: 'Jupiter', saturn: 'Saturn', uranus: 'Uranus', neptune: 'Neptun',
@@ -247,7 +255,7 @@ const DE: Strings = {
 
 const EN: Strings = {
   title: 'Digital Twin of the Solar System',
-  step: 'Phase 2, step 3: three languages',
+  step: 'Phase 2, step 4: real stars',
   language: 'Language',
   tab3d: '3D view',
   tab2d: 'Map from above',
@@ -272,7 +280,8 @@ const EN: Strings = {
   howto3d: 'Drag to turn the scene, use the mouse wheel or two fingers to zoom, double-click or ↺ to reset. '
     + 'Pick a planet and press “Follow” to keep the camera on it, even while time runs. '
     + 'The lines from the planets to the plane show how far above or below the plane of Earth’s orbit they are. '
-    + 'The circles show the distance in AU. Planet sizes are not to scale.',
+    + 'The circles show the distance in AU. Planet sizes are not to scale. '
+    + 'The background stars are real: all that the naked eye sees on a clear night. ✦ hides them.',
   howto2d: 'View from above, the planets move counter-clockwise. Planet sizes are not to scale. '
     + 'The numbers on the circles are distances in AU. The mouse wheel zooms, double-click resets.',
   infoHint: 'Pick a planet in the map or in the table to see its details.',
@@ -304,6 +313,8 @@ const EN: Strings = {
   resetView: 'Reset view',
   follow: (name) => `Follow ${name}`,
   stopFollow: 'Stop following',
+  stars: 'Stars',
+  sources: 'Sources:',
   planets: {
     mercury: 'Mercury', venus: 'Venus', earth: 'Earth', mars: 'Mars',
     jupiter: 'Jupiter', saturn: 'Saturn', uranus: 'Uranus', neptune: 'Neptune',

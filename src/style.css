@@ -306,3 +306,25 @@ tr.selected td { background: #222a50; }
   border-color: #4f9dff;
   color: #0b0d17;
 }
+
+.stars3d {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 2px 10px;
+  font-size: 1rem;
+  opacity: 0.85;
+}
+
+.stars3d[aria-pressed="false"] { opacity: 0.4; }
+
+/* ---------- Sources ---------- */
+
+.sources {
+  color: #6f7590;
+  font-size: 0.8rem;
+  line-height: 1.7;
+  margin-top: 20px;
+}
+
+.sources a { color: #8f9bd0; }

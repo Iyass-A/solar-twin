@@ -5,12 +5,14 @@
 // Thin vertical lines show how far each planet is above or below the ecliptic.
 // "Follow" glides the camera to the selected planet and keeps it in the middle while time runs.
 // Saturn has its rings, tilted like the real ones (IAU pole direction).
+// Behind everything: the real stars down to magnitude 6 (loaded as a separate file, see stars.ts).
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { PlanetId } from '../astro/elements';
 import { SATURN_POLE } from '../astro/poles';
 import { t } from '../i18n';
+import { makeStars, type StarData } from './stars';
 import { VIEWS, COLORS, radialScale, sceneAxes, toScene, type BodyFrame, type ViewInfo, type ViewMode } from './views';
 
 const R = 100;           // scene units at the edge of the view (view.rMax)
@@ -78,6 +80,9 @@ export class Scene3D {
   private followText = '';
   private readonly followBtn: HTMLButtonElement;
   private readonly resetBtn: HTMLButtonElement;
+  private readonly starsBtn: HTMLButtonElement;
+  private stars: THREE.Points | null = null;
+  private starsOn = true;
   private readonly names = new Map<PlanetId, string>();
   private sel: PlanetId | null = null;
   private following: PlanetId | null = null;
@@ -127,7 +132,18 @@ export class Scene3D {
       else if (this.sel) this.startFollow(this.sel);
     });
 
-    host.replaceChildren(this.renderer.domElement, this.overlay, reset, this.followBtn);
+    this.starsBtn = document.createElement('button');
+    this.starsBtn.type = 'button';
+    this.starsBtn.className = 'stars3d';
+    this.starsBtn.textContent = '✦';
+    this.starsBtn.setAttribute('aria-pressed', 'true');
+    this.starsBtn.addEventListener('click', () => {
+      this.starsOn = !this.starsOn;
+      this.starsBtn.setAttribute('aria-pressed', String(this.starsOn));
+      if (this.stars) this.stars.visible = this.starsOn;
+    });
+
+    host.replaceChildren(this.renderer.domElement, this.overlay, reset, this.followBtn, this.starsBtn);
     const canvas = this.renderer.domElement;
 
     // Light from the Sun (no fall-off with distance) and a little fill light for the night sides
@@ -188,6 +204,15 @@ export class Scene3D {
     this.resize(host);
     this.resetCamera();
     this.refreshTexts();
+
+    // The star catalogue is its own file, so the scene shows first and the stars fade in after
+    import('../data/stars.json')
+      .then((m) => {
+        this.stars = makeStars(m.default as StarData, this.renderer.getPixelRatio());
+        this.stars.visible = this.starsOn;
+        this.scene.add(this.stars);
+      })
+      .catch((err) => console.error('Stars not loaded', err));
   }
 
   /** After a language change: button texts, screen-reader labels and the grid labels. */
@@ -195,6 +220,7 @@ export class Scene3D {
     const s = t();
     this.renderer.domElement.setAttribute('aria-label', s.sceneAria);
     this.resetBtn.title = this.resetBtn.ariaLabel = s.resetView;
+    this.starsBtn.title = this.starsBtn.ariaLabel = s.stars;
     this.gridFor = null;   // rebuilt with the new "equinox" next frame
     this.followText = '';  // follow button rewritten next frame
   }
@@ -323,6 +349,11 @@ export class Scene3D {
     // Camera after the planets have moved, then the sizes on screen from the new camera
     this.updateFollow(dt);
     this.controls.update();
+    if (this.stars) {
+      this.stars.position.copy(this.camera.position); // always the same distance away: "at infinity"
+      const fade = (this.stars.material as THREE.ShaderMaterial).uniforms.opacity;
+      fade.value = Math.min(1, fade.value + dt / 0.8);
+    }
     for (const [id, p] of this.planets) {
       p.grow = id === this.focusId ? 1 + (FOCUS_GROW - 1) * this.focusK : 1;
       p.mesh.scale.setScalar(p.px * p.grow * this.worldPerPixel(p.mesh.position));

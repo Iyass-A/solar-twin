@@ -115,6 +115,17 @@ app.innerHTML = `
       </tbody>
     </table>
   </div>
+
+  <footer class="sources">
+    <span data-t="sources"></span>
+    <span dir="ltr">
+      <a href="https://ssd.jpl.nasa.gov/planets/approx_pos.html" target="_blank" rel="noopener">JPL: Approximate Positions of the Planets</a> ·
+      <a href="https://github.com/cosinekitty/astronomy" target="_blank" rel="noopener">Astronomy Engine</a> ·
+      <a href="https://doi.org/10.1007/s10569-017-9805-5" target="_blank" rel="noopener">IAU WGCCRE 2015 (Saturn's pole)</a> ·
+      <a href="${import.meta.env.BASE_URL}LICENSE-bsc5.txt" target="_blank" rel="noopener">Yale Bright Star Catalogue, 5th ed. (Hoffleit &amp; Warren 1991), JSON by Bretton Wade (MIT)</a> ·
+      <a href="https://threejs.org/" target="_blank" rel="noopener">Three.js</a>
+    </span>
+  </footer>
 `;
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;

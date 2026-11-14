@@ -9,6 +9,8 @@ import { referencePosition } from '../src/astro/reference';
 import { J2000, toJulianDate, centuriesSinceJ2000 } from '../src/astro/julian';
 import { VIEWS, toScene } from '../src/view/views';
 import { SATURN_POLE } from '../src/astro/poles';
+import { equatorialToEcliptic, eclipticLatitude } from '../src/astro/frames';
+import starFile from '../src/data/stars.json' with { type: 'json' };
 import { STRINGS, LANGS } from '../src/i18n';
 
 const MAX_ERROR_DEG = 1;
@@ -98,7 +100,34 @@ const tiltOk = Math.abs(tilt - 26.73) < 0.1;
 failed ||= !tiltOk;
 console.log(`Saturn's tilt from its pole: ${tilt.toFixed(2)}° (known 26.73°) ${tiltOk ? 'OK' : 'FAIL'}`);
 
-// 7. Languages: every text exists in all three, and the light time reads right in each
+// 7. Stars: the catalogue file looks right, and stars on the ecliptic land on it
+let starsOk = true;
+const sd = starFile.stars;
+const starCount = sd.length / 4;
+const near = (a: number, b: number, tol: number) => Math.abs(a - b) <= tol;
+if (sd.length % 4 !== 0 || starCount < 5000 || starCount > 5200) { starsOk = false; console.log(`  ${starCount} stars, expected about 5080`); }
+for (let i = 0; i < starCount; i++) {
+  const [ra, dec, mag] = sd.slice(i * 4, i * 4 + 3);
+  if (!(ra >= 0 && ra < 360 && dec >= -90 && dec <= 90 && mag <= starFile.magLimit)) {
+    starsOk = false; console.log(`  star ${i} out of range: ${ra}, ${dec}, ${mag}`); break;
+  }
+}
+// Brightest first: Sirius, RA 101.287°, Dec -16.716°, magnitude -1.46
+if (!(near(sd[0], 101.287, 0.01) && near(sd[1], -16.716, 0.01) && sd[2] === -1.46)) { starsOk = false; console.log('  first star is not Sirius'); }
+// Polaris (RA 37.95°, Dec 89.26°, mag 2.02) must be in the file
+if (![...Array(starCount).keys()].some((i) => near(sd[i * 4], 37.95, 0.05) && near(sd[i * 4 + 1], 89.264, 0.01))) {
+  starsOk = false; console.log('  Polaris is missing');
+}
+// Regulus and Spica sit near the ecliptic: latitude +0.46° and -2.05°
+const betaRegulus = eclipticLatitude(equatorialToEcliptic(152.093, 11.967));
+const betaSpica = eclipticLatitude(equatorialToEcliptic(201.298, -11.161));
+if (!near(betaRegulus, 0.46, 0.02) || !near(betaSpica, -2.05, 0.02)) {
+  starsOk = false; console.log(`  ecliptic latitudes: Regulus ${betaRegulus.toFixed(3)}°, Spica ${betaSpica.toFixed(3)}°`);
+}
+failed ||= !starsOk;
+console.log(`Stars: ${starCount} up to magnitude ${starFile.magLimit}, Sirius first, Regulus at ${betaRegulus.toFixed(2)}° from the ecliptic: ${starsOk ? 'OK' : 'FAIL'}`);
+
+// 8. Languages: every text exists in all three, and the light time reads right in each
 let langOk = true;
 function sameShape(a: unknown, b: unknown, path: string, l: string) {
   if (typeof a !== typeof b || Array.isArray(a) !== Array.isArray(b)) {
