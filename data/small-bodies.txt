@@ -1,0 +1,48 @@
+# Asteroids and comets in Solar Twin. One per line, as JPL's Small-Body Database (SBDB) finds it.
+# Everything after # is a comment. Run the "Fetch small-body data" workflow after changing this list.
+
+# Large main-belt asteroids, and the dwarf planet Ceres
+1           # Ceres
+2           # Pallas
+3           # Juno
+4           # Vesta
+10          # Hygiea
+16          # Psyche (NASA Psyche mission)
+21          # Lutetia (Rosetta flyby)
+243         # Ida (Galileo flyby)
+
+# Near-Earth asteroids
+433         # Eros (NEAR Shoemaker)
+1566        # Icarus
+3200        # Phaethon (source of the Geminids)
+4179        # Toutatis
+25143       # Itokawa (Hayabusa)
+65803       # Didymos (DART)
+99942       # Apophis (passes Earth in April 2029)
+101955      # Bennu (OSIRIS-REx)
+162173      # Ryugu (Hayabusa2)
+2024 YR4    # briefly had a small chance of hitting Earth in 2032
+
+# Jupiter trojans
+624         # Hektor
+3548        # Eurybates (Lucy)
+
+# Beyond Neptune
+134340      # Pluto
+136199      # Eris
+136108      # Haumea
+136472      # Makemake
+90377       # Sedna
+486958      # Arrokoth (New Horizons)
+
+# Comets
+1P          # Halley
+2P          # Encke
+9P          # Tempel 1 (Deep Impact)
+55P         # Tempel-Tuttle (source of the Leonids)
+67P         # Churyumov-Gerasimenko (Rosetta)
+81P         # Wild 2 (Stardust)
+103P        # Hartley 2 (EPOXI)
+109P        # Swift-Tuttle (source of the Perseids)
+C/1995 O1   # Hale-Bopp
+C/2020 F3   # NEOWISE

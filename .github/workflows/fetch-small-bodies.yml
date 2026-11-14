@@ -1,0 +1,38 @@
+# Fetches asteroid and comet orbits (with their uncertainty) from JPL's Small-Body Database,
+# and reference positions from JPL Horizons for the checks. See scripts/fetch-small-bodies.ts.
+#
+# Runs only when started by hand (Actions tab -> "Fetch small-body data" -> Run workflow).
+# The result goes to the branch "data-update", never straight to main, so it can be
+# reviewed before it reaches the site.
+name: Fetch small-body data
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write # only to push the data-update branch of this repository
+
+concurrency:
+  group: fetch-small-bodies
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsx scripts/fetch-small-bodies.ts data/small-bodies.txt
+      - name: Push the result to the data-update branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B data-update
+          git add src/data/small-bodies.json scripts/reference/small-bodies-horizons.json
+          git commit -m "Small-body data from JPL SBDB and Horizons ($(date -u +%Y-%m-%d))"
+          git push --force origin data-update
