@@ -71,6 +71,13 @@ export interface Strings {
   planets: Record<PlanetId, string>;
   smallBodies: string;
   groups: Record<SmallGroup, string>;
+  /** The same in the plural, for the legend with counts */
+  groupsMany: Record<SmallGroup, string>;
+  famousBodies: string;
+  selectionNote: string;
+  find: string;
+  findPlaceholder: string;
+  notFound: string;
   /** JPL orbit classes, by code */
   classes: Record<string, string>;
   type: string;
@@ -82,6 +89,7 @@ export interface Strings {
   metres: string;
   cloudNote: string;
   noCloud: string;
+  cloudMismatch: string;
   cloudZoom: (factor: string) => string;
   trueSize: string;
   /** Light travel time, given in minutes. */
@@ -202,10 +210,17 @@ const AR: Strings = {
   },
   smallBodies: 'الكويكبات والمذنبات',
   groups: { dwarf: 'كوكب قزم', asteroid: 'كويكب', neo: 'كويكب قريب من الأرض', comet: 'مذنب' },
+  groupsMany: { dwarf: 'كواكب قزمة', asteroid: 'كويكبات', neo: 'كويكبات قريبة من الأرض', comet: 'مذنبات' },
+  famousBodies: 'أشهر الكويكبات والمذنبات',
+  selectionNote: 'عالخريطة: كل الكويكبات القريبة من الأرض اللي قطرها تقريباً كيلومتر أو أكتر، و400 من ألمع الكويكبات المرقّمة بالحزام الرئيسي وطرواديات المشتري، و300 من ألمع الأجسام ورا نبتون والقناطير، وكل المذنبات الدورية المرقّمة. أسماؤها متل ما بيكتبها JPL، بالحرف اللاتيني.',
+  find: 'دوّر:',
+  findPlaceholder: 'اسم أو رقم كويكب أو مذنب',
+  notFound: 'ما لقينا شي بهالاسم.',
   classes: {
-    MBA: 'الحزام الرئيسي', AMO: 'مجموعة آمور', APO: 'مجموعة أبولو', ATE: 'مجموعة آتن',
-    TJN: 'طرواديات المشتري', TNO: 'ما بعد نبتون',
-    JFc: 'عائلة المشتري', HTC: 'نوع هالي', ETc: 'نوع إنكه', COM: 'طويل الدورة',
+    MBA: 'الحزام الرئيسي', IMB: 'الحزام الرئيسي الداخلي', OMB: 'الحزام الرئيسي الخارجي',
+    MCA: 'بيقطع مدار المريخ', AMO: 'مجموعة آمور', APO: 'مجموعة أبولو', ATE: 'مجموعة آتن', IEO: 'مجموعة أتيرا',
+    TJN: 'طرواديات المشتري', CEN: 'قنطور (بين المشتري ونبتون)', TNO: 'ما بعد نبتون', AST: 'كويكب من نوع تاني',
+    JFc: 'عائلة المشتري', JFC: 'عائلة المشتري', HTC: 'نوع هالي', ETc: 'نوع إنكه', CTc: 'نوع خيرون', COM: 'طويل الدورة',
   },
   type: 'النوع',
   diameter: 'القطر',
@@ -219,6 +234,7 @@ const AR: Strings = {
     + 'الرقم هو انحراف معياري واحد (1σ) باتجاهها الأطول.',
   noCloud: 'ما منرسم غيمة لهالجسم: عليه قوى غير الجاذبية، متل غازات المذنب أو دفشة حرارة الشمس، '
     + 'وحسابنا ما بيشملها، فالغيمة كانت رح تطلع غلط.',
+  cloudMismatch: 'ما منرسم غيمة لهالجسم: الغيمة اللي منحسبها (بالشمس بس) ما بتطابق عدم اليقين اللي بيعطيه JPL Horizons، غالباً لأنو شدّ كوكب بيأثّر عليه كتير.',
   cloudZoom: (f) => `مكبّرة ×${f}`,
   trueSize: 'بحجمها الحقيقي',
   light: (minutes) => {
@@ -301,10 +317,17 @@ const DE: Strings = {
   },
   smallBodies: 'Asteroiden und Kometen',
   groups: { dwarf: 'Zwergplanet', asteroid: 'Asteroid', neo: 'erdnaher Asteroid', comet: 'Komet' },
+  groupsMany: { dwarf: 'Zwergplaneten', asteroid: 'Asteroiden', neo: 'erdnahe Asteroiden', comet: 'Kometen' },
+  famousBodies: 'Bekannte Asteroiden und Kometen',
+  selectionNote: 'Auf der Karte: alle erdnahen Asteroiden ab etwa 1 km Durchmesser, die 400 hellsten nummerierten Asteroiden des Hauptgürtels und der Jupiter-Trojaner, die 300 hellsten Körper jenseits des Neptun und Zentauren, und alle nummerierten periodischen Kometen. Namen wie beim JPL.',
+  find: 'Suchen:',
+  findPlaceholder: 'Name oder Nummer eines Asteroiden oder Kometen',
+  notFound: 'Nichts mit diesem Namen gefunden.',
   classes: {
-    MBA: 'Hauptgürtel', AMO: 'Amor-Gruppe', APO: 'Apollo-Gruppe', ATE: 'Aten-Gruppe',
-    TJN: 'Jupiter-Trojaner', TNO: 'transneptunisch',
-    JFc: 'Jupiter-Familie', HTC: 'Halley-Typ', ETc: 'Encke-Typ', COM: 'langperiodisch',
+    MBA: 'Hauptgürtel', IMB: 'innerer Hauptgürtel', OMB: 'äußerer Hauptgürtel',
+    MCA: 'Mars-Bahnkreuzer', AMO: 'Amor-Gruppe', APO: 'Apollo-Gruppe', ATE: 'Aten-Gruppe', IEO: 'Atira-Gruppe',
+    TJN: 'Jupiter-Trojaner', CEN: 'Zentaur (zwischen Jupiter und Neptun)', TNO: 'transneptunisch', AST: 'sonstiger Asteroid',
+    JFc: 'Jupiter-Familie', JFC: 'Jupiter-Familie', HTC: 'Halley-Typ', ETc: 'Encke-Typ', CTc: 'Chiron-Typ', COM: 'langperiodisch',
   },
   type: 'Art',
   diameter: 'Durchmesser',
@@ -318,6 +341,7 @@ const DE: Strings = {
     + 'Die Zahl ist eine Standardabweichung (1σ) in ihrer längsten Richtung.',
   noCloud: 'Für diesen Körper zeichnen wir keine Wolke: Auf ihn wirken neben der Schwerkraft weitere Kräfte, '
     + 'etwa das Ausgasen eines Kometen oder der Schub der Sonnenwärme. Unsere Rechnung enthält sie nicht, die Wolke wäre falsch.',
+  cloudMismatch: 'Für diesen Körper zeichnen wir keine Wolke: Unsere Wolke (nur mit der Sonne gerechnet) passt nicht zur Unsicherheit, die JPL Horizons angibt, wahrscheinlich weil die Anziehung eines Planeten für ihn viel ausmacht.',
   cloudZoom: (f) => `${f}-fach vergrößert`,
   trueSize: 'in echter Größe',
   light: (minutes) => {
@@ -400,10 +424,17 @@ const EN: Strings = {
   },
   smallBodies: 'Asteroids and comets',
   groups: { dwarf: 'dwarf planet', asteroid: 'asteroid', neo: 'near-Earth asteroid', comet: 'comet' },
+  groupsMany: { dwarf: 'dwarf planets', asteroid: 'asteroids', neo: 'near-Earth asteroids', comet: 'comets' },
+  famousBodies: 'Well-known asteroids and comets',
+  selectionNote: 'On the map: all near-Earth asteroids of about 1 km and larger, the 400 brightest numbered asteroids of the main belt and Jupiter trojans, the 300 brightest bodies beyond Neptune and centaurs, and all numbered periodic comets. Names as JPL writes them.',
+  find: 'Find:',
+  findPlaceholder: 'Name or number of an asteroid or comet',
+  notFound: 'Nothing found with this name.',
   classes: {
-    MBA: 'main belt', AMO: 'Amor group', APO: 'Apollo group', ATE: 'Aten group',
-    TJN: 'Jupiter trojan', TNO: 'trans-Neptunian',
-    JFc: 'Jupiter family', HTC: 'Halley type', ETc: 'Encke type', COM: 'long-period',
+    MBA: 'main belt', IMB: 'inner main belt', OMB: 'outer main belt',
+    MCA: 'Mars-crosser', AMO: 'Amor group', APO: 'Apollo group', ATE: 'Aten group', IEO: 'Atira group',
+    TJN: 'Jupiter trojan', CEN: 'centaur (between Jupiter and Neptune)', TNO: 'trans-Neptunian', AST: 'other asteroid',
+    JFc: 'Jupiter family', JFC: 'Jupiter family', HTC: 'Halley type', ETc: 'Encke type', CTc: 'Chiron type', COM: 'long-period',
   },
   type: 'Type',
   diameter: 'Diameter',
@@ -417,6 +448,7 @@ const EN: Strings = {
     + 'The number is one standard deviation (1σ) along its longest direction.',
   noCloud: 'No cloud for this body: forces other than gravity act on it, such as a comet’s outgassing or the push of sunlight’s heat. '
     + 'Our calculation leaves them out, so its cloud would be wrong.',
+  cloudMismatch: 'No cloud for this body: our cloud (computed with the Sun alone) does not match the uncertainty JPL Horizons gives, probably because a planet’s pull matters a lot for it.',
   cloudZoom: (f) => `enlarged ×${f}`,
   trueSize: 'true size',
   light: (minutes) => {

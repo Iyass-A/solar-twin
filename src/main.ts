@@ -8,7 +8,7 @@ import { VIEWS, type BodyFrame, type ViewMode } from './view/views';
 import type { Scene3D } from './view/scene3d';
 import {
   SMALL_COLORS, SMALL_GROUPS, loadSmallBodies, smallLabel, smallFullName, isValidAt, smallPosition, smallOrbitPath,
-  cloudSamples, hasCloud, type SmallBody, type SmallFrame,
+  cloudSamples, hasCloud, cloudPossible, loadCovariance, type SmallBody, type SmallFrame,
 } from './view/smallbodies';
 import pkg from '../package.json';
 import { LANGS, detectLang, lang, langInfo, num, numGrouped, setLang, t, type Lang, type TextKey } from './i18n';
@@ -73,6 +73,7 @@ app.innerHTML = `
       </div>
       <p class="sub cloud-note" id="infoCloud" data-t="cloudNote" hidden></p>
       <p class="sub cloud-note" id="infoNoCloud" data-t="noCloud" hidden></p>
+      <p class="sub cloud-note" id="infoNoMatch" data-t="cloudMismatch" hidden></p>
     </div>
   </div>
 
@@ -86,7 +87,13 @@ app.innerHTML = `
       <label><span data-t="view"></span> <select id="view">
         ${VIEW_MODES.map((m) => `<option value="${m}"></option>`).join('')}
       </select></label>
-      <label class="check"><input type="checkbox" id="smallToggle" checked> <span data-t="smallBodies"></span></label>
+      <label class="check"><input type="checkbox" id="smallToggle" checked> <span id="smallToggleText"></span></label>
+    </div>
+    <div class="row" id="searchRow" hidden>
+      <label><span data-t="find"></span>
+        <input id="search" type="search" list="smallList" dir="auto" autocomplete="off" spellcheck="false" data-placeholder="findPlaceholder"></label>
+      <datalist id="smallList"></datalist>
+      <span class="sub" id="searchMiss" data-t="notFound" hidden></span>
     </div>
     <div class="timeline" dir="ltr">
       <span>1800</span>
@@ -136,6 +143,7 @@ app.innerHTML = `
 
   <details class="card" id="smallCard" hidden>
     <summary id="smallSummary"></summary>
+    <p class="sub" data-t="selectionNote"></p>
     <table>
       <thead>
         <tr>
@@ -180,12 +188,14 @@ let scene3d: Scene3D | null = null; // loaded on first use (Three.js is a separa
 
 // Asteroids, dwarf planets and comets: their own file, loaded after the page
 let smallBodies: SmallBody[] = [];
+let famous: SmallBody[] = []; // the well-known ones in data/small-bodies.txt: their own names and table rows
 let showSmall = true;
 const smallToggle = $<HTMLInputElement>('smallToggle');
 import('./data/small-bodies.json')
   .then((m) => {
     smallBodies = loadSmallBodies(m.default);
-    $('smallRows').innerHTML = smallBodies.map((b) => `
+    famous = smallBodies.filter((b) => b.famous);
+    $('smallRows').innerHTML = famous.map((b) => `
       <tr data-id="${b.id}">
         <td id="n-${b.id}" dir="auto"></td>
         <td id="g-${b.id}"></td>
@@ -195,6 +205,7 @@ import('./data/small-bodies.json')
       tr.addEventListener('click', () => select(tr.dataset.id!));
     });
     $('smallCard').hidden = false;
+    $('searchRow').hidden = false;
     applyLanguage(lang());
   })
   .catch((err) => console.error('Asteroids and comets not loaded', err));
@@ -202,8 +213,26 @@ import('./data/small-bodies.json')
 smallToggle.addEventListener('change', () => {
   showSmall = smallToggle.checked;
   $('legend').hidden = !showSmall;
+  $('searchRow').hidden = !showSmall;
   if (!showSmall && orrery.selected?.startsWith('sb-')) select(null);
 });
+
+// Search: pick a name from the list, or type part of one and press Enter
+const search = $<HTMLInputElement>('search');
+const plain = (text: string) => text.replace(/[\u2066-\u2069]/g, '').trim().toLowerCase();
+function findSmall(text: string): SmallBody | undefined {
+  const q = plain(text);
+  if (!q) return undefined;
+  const l = lang();
+  const names = (b: SmallBody) => [smallFullName(b, l), smallLabel(b, l), b.jplFull, b.jplName, b.pdes].map(plain);
+  return smallBodies.find((b) => names(b).includes(q)) ?? smallBodies.find((b) => names(b).some((n) => n.includes(q)));
+}
+search.addEventListener('change', () => {
+  const b = findSmall(search.value);
+  $('searchMiss').hidden = !!b || !search.value.trim();
+  if (b) select(b.id, true);
+});
+search.addEventListener('input', () => { $('searchMiss').hidden = true; });
 
 // ---------- Clock ----------
 
@@ -290,7 +319,14 @@ $('tab2d').addEventListener('click', () => show('2d'));
 const AU_KM = 149_597_870.7;
 const LIGHT_SECONDS_PER_AU = 499.004784;
 
-function select(id: string | null) {
+function select(id: string | null, fromSearch = false) {
+  if (!fromSearch) { search.value = ''; $('searchMiss').hidden = true; }
+  const small = id?.startsWith('sb-') ? smallBodies.find((b) => b.id === id) : undefined;
+  if (small && cloudPossible(small) && !small.cov) {
+    loadCovariance(small, import.meta.env.BASE_URL)
+      .then(() => { lastPanels = -Infinity; })
+      .catch((err) => console.error('Covariance not loaded', err));
+  }
   orrery.selected = id;
   if (scene3d) scene3d.selected = id;
   document.querySelectorAll<HTMLTableRowElement>('tr[data-id]').forEach((tr) => {
@@ -329,7 +365,8 @@ function updateInfo(bodies: BodyFrame[], jd: number) {
   const cloudShown = !!small && hasCloud(small) && valid && showSmall;
   $('rowSigma').hidden = !cloudShown;
   $('infoCloud').hidden = !cloudShown;
-  $('infoNoCloud').hidden = !(small?.cov && !hasCloud(small) && valid && showSmall);
+  $('infoNoCloud').hidden = !(small && small.covParams > 6 && valid && showSmall);
+  $('infoNoMatch').hidden = !(small && small.covParams === 6 && !cloudPossible(small) && valid && showSmall);
   if (cloudShown) {
     const km = cloudSpread(cloudOffsets(small!.cov!, cloudSamples(small!), jd)).sigma * AU_KM;
     $('infoSigma').innerHTML = km < 1
@@ -339,7 +376,7 @@ function updateInfo(bodies: BodyFrame[], jd: number) {
   $('infoOutside').hidden = valid;
   document.querySelectorAll<HTMLElement>('#infoBody .dist').forEach((el) => { el.hidden = !valid; });
   if (small) {
-    const cls = s.classes[small.classCode] ?? small.className;
+    const cls = s.classes[small.classCode] ?? small.classCode;
     $('infoType').textContent = cls ? `${s.groups[small.group]} · ${cls}` : s.groups[small.group];
     if (small.diameter) $('infoDiameter').innerHTML = `<span dir="ltr">${num(small.diameter, small.diameter < 10 ? 2 : 0)}</span> ${s.km}`;
     if (!valid) { $('infoOutside').textContent = s.outsideWindow(yearOf(small.validFrom), yearOf(small.validTo)); return; }
@@ -376,12 +413,25 @@ function applyLanguage(l: Lang) {
   speedSel.querySelectorAll('option').forEach((o, i) => { o.textContent = s.speeds[i]; });
   viewSel.querySelectorAll('option').forEach((o) => { o.textContent = s.views[o.value as ViewMode].label; });
   for (const p of PLANETS) $(`n-${p.id}`).textContent = s.planets[p.id];
-  for (const b of smallBodies) {
+  for (const b of famous) {
     $(`n-${b.id}`).textContent = smallLabel(b, l);
     $(`g-${b.id}`).textContent = s.groups[b.group];
   }
-  for (const g of SMALL_GROUPS) $(`legend-${g}`).textContent = s.groups[g];
-  $('smallSummary').textContent = `${s.smallBodies} (${smallBodies.length})`;
+  for (const g of SMALL_GROUPS) {
+    const n = smallBodies.filter((b) => b.group === g).length;
+    $(`legend-${g}`).textContent = n ? `${s.groupsMany[g]} (${numGrouped(n)})` : s.groupsMany[g];
+  }
+  $('smallSummary').textContent = `${s.famousBodies} (${numGrouped(famous.length)})`;
+  $('smallToggleText').textContent = smallBodies.length ? `${s.smallBodies} (${numGrouped(smallBodies.length)})` : s.smallBodies;
+  const list = $('smallList');
+  list.replaceChildren(...smallBodies.map((b) => {
+    const o = document.createElement('option');
+    o.value = smallFullName(b, l).replace(/[\u2066-\u2069]/g, '');
+    return o;
+  }));
+  document.querySelectorAll<HTMLInputElement>('[data-placeholder]').forEach((el) => {
+    el.placeholder = s[el.dataset.placeholder as TextKey];
+  });
   document.querySelectorAll<HTMLButtonElement>('[data-lang]').forEach((b) => {
     b.setAttribute('aria-pressed', String(b.dataset.lang === l));
   });
@@ -420,7 +470,7 @@ function updatePanels(date: Date, bodies: BodyFrame[]) {
     $(`e-${b.id}`).textContent = `${num(err, 3)}°`;
   }
 
-  for (const b of smallBodies) {
+  for (const b of famous) {
     $(`d-${b.id}`).textContent = isValidAt(b, jd) ? num(distance(smallPosition(b, jd)), 3) : '—';
   }
 
@@ -470,7 +520,7 @@ function frame(now: number) {
   if (showSmall) {
     for (const b of smallBodies) {
       if (!isValidAt(b, jd)) continue;
-      smalls.push({ id: b.id, label: smallLabel(b, l), group: b.group, pos: smallPosition(b, jd) });
+      smalls.push({ id: b.id, label: b.id === orrery.selected ? smallLabel(b, l) : '', group: b.group, famous: b.famous, pos: smallPosition(b, jd) });
       if (b.id === orrery.selected) {
         selectedOrbit = { path: smallOrbitPath(b), color: SMALL_COLORS[b.group] };
         if (hasCloud(b)) cloud = { offsets: cloudOffsets(b.cov!, cloudSamples(b), jd), color: SMALL_COLORS[b.group] };

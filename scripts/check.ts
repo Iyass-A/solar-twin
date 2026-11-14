@@ -12,11 +12,11 @@ import { SATURN_POLE } from '../src/astro/poles';
 import { equatorialToEcliptic, eclipticLatitude } from '../src/astro/frames';
 import starFile from '../src/data/stars.json' with { type: 'json' };
 import smallFile from '../src/data/small-bodies.json' with { type: 'json' };
-import smallRef from './reference/small-bodies-horizons.json' with { type: 'json' };
-import { smallBodyPosition, type SmallBodyOrbit } from '../src/astro/smallbody';
-import { readFileSync } from 'node:fs';
+import { smallBodyPosition } from '../src/astro/smallbody';
+import { readFileSync, readdirSync } from 'node:fs';
 import { SMALL_BODY_NAMES } from '../src/data/small-body-names';
-import { sampleOrbits, cloudOffsets, type Covariance } from '../src/astro/uncertainty';
+import { sampleOrbits, cloudOffsets, cholesky6 } from '../src/astro/uncertainty';
+import { loadSmallBodies, covarianceFrom, type CovEntry } from '../src/view/smallbodies';
 import { STRINGS, LANGS } from '../src/i18n';
 
 const MAX_ERROR_DEG = 1;
@@ -135,134 +135,157 @@ console.log(`Stars: ${starCount} up to magnitude ${starFile.magLimit}, Sirius fi
 
 // 8. Asteroids and comets: our Kepler positions against JPL Horizons, and the covariance matrices
 let smallOk = true;
+const smallFail = (msg: string) => { smallOk = false; console.log(`  ${msg}`); };
 const listed = readFileSync('data/small-bodies.txt', 'utf8').split('\n').map((l) => l.replace(/#.*/, '').trim()).filter(Boolean);
-const sbodies = smallFile.bodies as (SmallBodyOrbit & {
-  short: string; spkid: string; query: string; elementsFrom: string; validFrom: number; validTo: number;
-  cov: { epoch: number; elements: Omit<SmallBodyOrbit, 'epoch'>; labels: string[]; matrix: number[][] } | null;
-})[];
-if (sbodies.length !== listed.length || listed.some((q) => !sbodies.some((b) => b.query === q))) {
-  smallOk = false; console.log(`  data/small-bodies.txt lists ${listed.length} bodies, the data file has ${sbodies.length}: run the fetch workflow`);
+const sbodies = loadSmallBodies(smallFile as Parameters<typeof loadSmallBodies>[0]);
+const STD = smallFile.standardEpoch;
+const famousBodies = sbodies.filter((b) => b.famous);
+for (const q of listed) if (!sbodies.some((b) => b.key === q)) smallFail(`"${q}" from data/small-bodies.txt is not in the data file: run the fetch workflow`);
+if (famousBodies.length !== listed.length) smallFail(`${famousBodies.length} well-known bodies in the data file, ${listed.length} in data/small-bodies.txt`);
+if (new Set(sbodies.map((b) => b.id)).size !== sbodies.length) smallFail('two bodies share an id');
+
+interface SmallRef {
+  pdes: string; target: string | null; longJd: number[]; longPos: number[][]; nearJd?: number[]; nearPos?: number[][];
+  covJd?: number; covPos?: number[]; sigmaJd?: number; sigma?: { A_s: number; C_s: number; N_s: number };
 }
+const smallRef = JSON.parse(readFileSync('scripts/reference/small-bodies-horizons.json', 'utf8')) as
+  { standardEpoch: number; detailed: string[]; reference: SmallRef[] };
+const refOf = new Map(smallRef.reference.map((r) => [r.pdes, r]));
+const detailed = new Set(smallRef.detailed);
+
+// Covariances: one file per shard, only for orbits fitted with gravity alone
+const covFiles = readdirSync('public/data/cov').filter((f) => /^\d+\.json$/.test(f));
+const covs = new Map<string, { shard: number; entry: CovEntry }>();
+for (const f of covFiles) {
+  const shard = Number(f.replace('.json', ''));
+  for (const [pdes, entry] of Object.entries(JSON.parse(readFileSync(`public/data/cov/${f}`, 'utf8')) as Record<string, CovEntry>)) {
+    covs.set(pdes, { shard, entry });
+  }
+}
+
 const separation = (a: { x: number; y: number; z: number }, b: number[]) => {
   const c = (a.x * b[0] + a.y * b[1] + a.z * b[2]) / (Math.hypot(a.x, a.y, a.z) * Math.hypot(b[0], b[1], b[2]));
   return Math.acos(Math.min(1, Math.max(-1, c))) * 180 / Math.PI;
 };
-const worstAt = { now: { v: 0, who: '' }, year: { v: 0, who: '' }, cov: { v: 0, who: '' } };
+const worstAt = { now: { v: 0, who: '' }, yearFamous: { v: 0, who: '' }, yearSample: { v: 0, who: '' }, cov: { v: 0, who: '' }, fast: { v: 0, who: '' } };
 const note = (k: keyof typeof worstAt, v: number, who: string) => { if (v > worstAt[k].v) worstAt[k] = { v, who }; };
-let withCov = 0;
-let fullWindow = 0;
-let shortest = { years: Infinity, who: '' };
-let covBad = 0;
+let fullWindow = 0, covBad = 0;
+const windowYears: number[] = [];
 for (const b of sbodies) {
-  if (!(b.e < 1) || b.epoch !== smallFile.standardEpoch) { smallOk = false; console.log(`  ${b.short}: e ${b.e}, epoch ${b.epoch}`); }
-  const r = smallRef.reference.find((x) => x.spkid === b.spkid);
-  if (!r) { smallOk = false; console.log(`  ${b.short}: no Horizons reference`); continue; }
-  r.jd.forEach((jd, k) => note(k === 1 ? 'now' : 'year', separation(smallBodyPosition(b, jd), r.pos[k]), b.short));
-  // The site shows a body only between validFrom and validTo: every sample there must be within 1°
-  if (!(b.validFrom <= smallFile.standardEpoch && smallFile.standardEpoch <= b.validTo)) {
-    smallOk = false; console.log(`  ${b.short}: its valid years do not include the standard epoch`);
+  const who = b.jplFull;
+  if (!(b.orbit.e < 1) || Math.abs(b.orbit.epoch - STD) > 1) smallFail(`${who}: e ${b.orbit.e}, epoch ${b.orbit.epoch}`);
+  if (!LANGS.every((l) => STRINGS[l.id].classes[b.classCode])) smallFail(`${who}: orbit class ${b.classCode} has no name in every language`);
+  // The faster position function of the site must give the same positions
+  for (const jd of [STD - 9000, STD, STD + 4321.5]) {
+    const a = b.at(jd), c = smallBodyPosition(b.orbit, jd);
+    note('fast', Math.hypot(a.x - c.x, a.y - c.y, a.z - c.z), who);
   }
-  r.longJd.forEach((jd, k) => {
-    if (jd < b.validFrom || jd > b.validTo) return;
-    const err = separation(smallBodyPosition(b, jd), r.longPos[k]);
-    if (err > 1) { smallOk = false; console.log(`  ${b.short}: ${err.toFixed(2)}° at JD ${jd}, inside its valid years`); }
+  const r = refOf.get(b.pdes);
+  if (!r) { smallFail(`${who}: no Horizons reference`); continue; }
+  // At the standard epoch both use the same elements, so only rounding may differ
+  const k0 = r.longJd.findIndex((jd) => Math.abs(jd - STD) < 1e-6);
+  if (k0 < 0) smallFail(`${who}: no Horizons position at the standard epoch`);
+  else note('now', separation(b.at(STD), r.longPos[k0]), who);
+  // A year before and after: the planets' pull shows, which our Sun-only orbits leave out
+  r.nearJd?.forEach((jd, k) => {
+    if (Math.abs(jd - STD) > 1) note(b.famous ? 'yearFamous' : 'yearSample', separation(b.at(jd), r.nearPos![k]), who);
   });
+  // The site shows a body only between validFrom and validTo: every sample there must be within 1°
+  if (!(b.validFrom <= STD && STD <= b.validTo)) smallFail(`${who}: its valid years do not include the standard epoch`);
+  const samples = [...r.longJd.map((jd, k) => [jd, r.longPos[k]] as const), ...(r.nearJd ?? []).map((jd, k) => [jd, r.nearPos![k]] as const)];
+  for (const [jd, pos] of samples) {
+    if (jd < b.validFrom || jd > b.validTo) continue;
+    const err = separation(b.at(jd), pos);
+    if (err > 1) smallFail(`${who}: ${err.toFixed(2)}° at JD ${jd}, inside its valid years`);
+  }
   if (b.validFrom <= r.longJd[0] && b.validTo >= r.longJd[r.longJd.length - 1]) fullWindow++;
-  const years = (b.validTo - b.validFrom) / 365.25;
-  if (years < shortest.years) shortest = { years, who: b.short };
-  if (!b.cov) continue;
-  withCov++;
-  if (r.covJd && r.covPos) note('cov', separation(smallBodyPosition({ ...b.cov.elements, epoch: b.cov.epoch }, r.covJd), r.covPos), b.short);
-  // The covariance must be usable for uncertainty clouds: right labels, symmetric, positive definite
-  const C = b.cov.matrix, n = C.length;
-  if (b.cov.labels.slice(0, 6).join() !== 'e,q,tp,node,peri,i' || C.some((row) => row.length !== n)) {
-    smallOk = false; console.log(`  ${b.short}: covariance labels ${b.cov.labels.join()}`);
-  }
-  const R = C.map((row, i) => row.map((v, j) => v / Math.sqrt(C[i][i] * C[j][j]))); // correlations
-  const L: number[][] = R.map(() => new Array(n).fill(0));
-  let definite = true;
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j <= i; j++) {
-      if (C[i][j] !== C[j][i]) { smallOk = false; console.log(`  ${b.short}: covariance not symmetric`); }
-      let sum = R[i][j];
-      for (let k = 0; k < j; k++) sum -= L[i][k] * L[j][k];
-      if (i === j) {
-        if (!(sum > 0)) definite = false;
-        L[i][i] = Math.sqrt(Math.max(sum, 0));
-      } else {
-        L[i][j] = sum / (L[j][j] || 1);
-      }
-    }
-  }
-  if (!definite) { smallOk = false; covBad++; console.log(`  ${b.short}: covariance not positive definite`); }
+  windowYears.push((b.validTo - b.validFrom) / 365.25);
+
+  // Covariance: in the shard the index names, and only for orbits fitted with gravity alone
+  const c = covs.get(b.pdes);
+  if (!!c !== (b.covShard !== null) || (c && (c.shard !== b.covShard || b.covParams !== 6))) { smallFail(`${who}: covariance file entry does not match the index`); continue; }
+  if (!c) continue;
+  if (c.entry.upper.length !== 21) { smallFail(`${who}: covariance has ${c.entry.upper.length} values`); continue; }
+  const cov = covarianceFrom(c.entry);
+  if (r.covJd && r.covPos) note('cov', separation(smallBodyPosition({ ...cov.elements, epoch: cov.epoch }, r.covJd), r.covPos), who);
+  if (!cholesky6(cov.matrix)) { covBad++; smallFail(`${who}: covariance not positive definite`); }
 }
-// At the standard epoch both use the same elements, so only rounding may differ.
-// A year away the planets' pull shows, which our Sun-only orbits leave out.
-if (worstAt.now.v > 0.001 || worstAt.cov.v > 0.001 || worstAt.year.v > 0.5) smallOk = false;
+if (covs.size !== sbodies.filter((b) => b.covShard !== null).length) smallFail(`${covs.size} covariances in the files, but the index expects ${sbodies.filter((b) => b.covShard !== null).length}`);
+if (worstAt.now.v > 0.001 || worstAt.cov.v > 0.001 || worstAt.yearFamous.v > 0.5 || worstAt.fast.v > 1e-12) smallOk = false;
 failed ||= !smallOk;
-console.log(`\nAsteroids and comets: ${sbodies.length} bodies, ${withCov} with covariance (${covBad ? `${covBad} NOT positive definite` : 'all positive definite'}), against JPL Horizons:`);
-console.log(`  at the standard epoch (JD ${smallFile.standardEpoch})  ${worstAt.now.v.toExponential(1)}°  (${worstAt.now.who})  limit 0.001°`);
-console.log(`  a year before or after            ${worstAt.year.v.toFixed(3)}°  (${worstAt.year.who})  limit 0.5°`);
-console.log(`  covariance elements at their epoch ${worstAt.cov.v.toExponential(1)}°  (${worstAt.cov.who})  limit 0.001°`);
-console.log(`  shown only where within 1° (sampled every 5 years): ${fullWindow} of ${sbodies.length} for all 50 years, shortest ${shortest.years.toFixed(0)} years (${shortest.who})`);
+windowYears.sort((a, b) => a - b);
+const nearOthers = sbodies.filter((b) => !b.famous && refOf.get(b.pdes)?.nearJd).length;
+const kinds = (k: string) => sbodies.filter((b) => b.group === k).length;
+console.log(`\nAsteroids and comets: ${sbodies.length} bodies (${famousBodies.length} well-known; ${kinds('neo')} near-Earth, ${kinds('asteroid')} other asteroids, ${kinds('dwarf')} dwarf planets, ${kinds('comet')} comets)`);
+console.log(`  site's fast positions against the reference formula  ${worstAt.fast.v.toExponential(1)} au  limit 1e-12`);
+console.log(`  against JPL Horizons, at the standard epoch (JD ${STD})  ${worstAt.now.v.toExponential(1)}°  (${worstAt.now.who})  limit 0.001°`);
+console.log(`  a year before or after, well-known bodies           ${worstAt.yearFamous.v.toFixed(3)}°  (${worstAt.yearFamous.who})  limit 0.5°`);
+console.log(`  a year before or after, ${String(nearOthers).padStart(3)} other bodies           ${worstAt.yearSample.v.toFixed(3)}°  (${worstAt.yearSample.who})  for information`);
+console.log(`  covariance elements at their epoch                  ${worstAt.cov.v.toExponential(1)}°  (${worstAt.cov.who})  limit 0.001°`);
+console.log(`  shown only where within 1° (sampled every 5 years): ${fullWindow} of ${sbodies.length} for all 50 years, median ${windowYears[windowYears.length >> 1].toFixed(0)} years, shortest ${windowYears[0].toFixed(1)}`);
+console.log(`  covariances for the clouds, in ${covFiles.length} files: ${covs.size}, ${covBad ? `${covBad} NOT positive definite` : 'all positive definite'}`);
 console.log(`  ${smallOk ? 'OK' : 'FAIL'}`);
 
-// 9. Uncertainty clouds: the sampled orbits must reproduce JPL's covariance (spreads and correlations)
+// 9. Uncertainty clouds. Every cloud the site can draw: its size against Horizons' own position uncertainty
+// (full dynamics, same orbit solution). The bodies with detailed checks: the sampled orbits must reproduce
+// JPL's covariance, judged against the statistical noise of 4,000 samples (a z-score of each value).
 let cloudOk = true;
-const N_CHECK = 4000; // statistical noise on a spread: about 1 / sqrt(2 N) = 1.1%
-let worstSpread = { v: 0, who: '' }, worstCorr = { v: 0, who: '' };
+const cloudFail = (msg: string) => { cloudOk = false; console.log(`  ${msg}`); };
+const N_CHECK = 4000;
 const KEYS6 = ['e', 'q', 'tp', 'node', 'peri', 'i'] as const;
+let worstSpread = { z: 0, v: 0, who: '' }, worstCorr = { z: 0, v: 0, who: '' };
+let compared = 0, statChecked = 0;
+let worstRatio = { v: 1, who: '' };
+const ratios: number[] = [];
 for (const b of sbodies) {
-  if (!b.cov) continue;
-  const samples = sampleOrbits(b.cov as Covariance, N_CHECK, 12345);
-  if (samples.length !== N_CHECK) { cloudOk = false; console.log(`  ${b.short}: only ${samples.length} samples`); continue; }
+  const c = covs.get(b.pdes);
+  if (!c) continue;
+  const who = b.jplFull;
+  const cov = covarianceFrom(c.entry);
+  const r = refOf.get(b.pdes);
+  const sg = r?.sigma;
+  if (!sg || !r?.sigmaJd || [sg.A_s, sg.C_s, sg.N_s].some((v) => !Number.isFinite(v))) { cloudFail(`${who}: no Horizons uncertainty to compare`); continue; }
+  const samples2k = sampleOrbits(cov, 2000, 777); // the same samples as in the fetch
+  const off = cloudOffsets(cov, samples2k, r.sigmaJd);
+  const ours = Math.sqrt(off.reduce((sum, o) => sum + o.x * o.x + o.y * o.y + o.z * o.z, 0) / off.length) * 149597870.7;
+  const ratio = ours / Math.hypot(sg.A_s, sg.C_s, sg.N_s);
+  compared++;
+  ratios.push(ratio);
+  if (Math.abs(Math.log(ratio)) > Math.abs(Math.log(worstRatio.v))) worstRatio = { v: ratio, who };
+  if (!(ratio >= 0.8 && ratio <= 1.25)) cloudFail(`${who}: our cloud is ${ratio.toFixed(2)} times Horizons' uncertainty`);
+
+  if (!detailed.has(b.pdes)) continue;
+  statChecked++;
+  const samples = sampleOrbits(cov, N_CHECK, 12345);
+  if (samples.length !== N_CHECK) { cloudFail(`${who}: only ${samples.length} samples`); continue; }
   // tp: use the sampled change (dtp), which the sampler keeps apart from the Julian date
   const X = samples.map((o) => KEYS6.map((k) => (k === 'tp' ? o.dtp ?? 0 : o[k])));
   const mean = KEYS6.map((_, i) => X.reduce((sum, x) => sum + x[i], 0) / N_CHECK);
-  const C = b.cov.matrix;
+  const sd = KEYS6.map((_, i) => Math.sqrt(X.reduce((sum, x) => sum + (x[i] - mean[i]) ** 2, 0) / (N_CHECK - 1)));
+  const C = cov.matrix;
   for (let i = 0; i < 6; i++) {
-    for (let j = 0; j <= i; j++) {
-      const c = X.reduce((sum, x) => sum + (x[i] - mean[i]) * (x[j] - mean[j]), 0) / (N_CHECK - 1);
-      if (i === j) {
-        const ratio = Math.sqrt(c / C[i][i]);
-        const off = Math.abs(ratio - 1);
-        if (off > worstSpread.v) worstSpread = { v: off, who: `${b.short} ${KEYS6[i]}` };
-      } else {
-        // correlation from the samples against JPL's
-        const si = Math.sqrt(X.reduce((sum, x) => sum + (x[i] - mean[i]) ** 2, 0) / (N_CHECK - 1));
-        const sj = Math.sqrt(X.reduce((sum, x) => sum + (x[j] - mean[j]) ** 2, 0) / (N_CHECK - 1));
-        const off = Math.abs(c / (si * sj) - C[i][j] / Math.sqrt(C[i][i] * C[j][j]));
-        if (off > worstCorr.v) worstCorr = { v: off, who: `${b.short} ${KEYS6[i]}-${KEYS6[j]}` };
-      }
+    // Spread: the noise of a sample standard deviation is about 1 / sqrt(2 N) of it
+    const off1 = sd[i] / Math.sqrt(C[i][i]) - 1;
+    const z1 = Math.abs(off1) * Math.sqrt(2 * N_CHECK);
+    if (z1 > worstSpread.z) worstSpread = { z: z1, v: Math.abs(off1), who: `${who} ${KEYS6[i]}` };
+    for (let j = 0; j < i; j++) {
+      // Correlation: the noise of a sample correlation is about (1 - rho^2) / sqrt(N)
+      const rho = C[i][j] / Math.sqrt(C[i][i] * C[j][j]);
+      const rs = X.reduce((sum, x) => sum + (x[i] - mean[i]) * (x[j] - mean[j]), 0) / (N_CHECK - 1) / (sd[i] * sd[j]);
+      const z2 = Math.abs(rs - rho) / Math.max((1 - rho * rho) / Math.sqrt(N_CHECK), 1e-6);
+      if (z2 > worstCorr.z) worstCorr = { z: z2, v: Math.abs(rs - rho), who: `${who} ${KEYS6[i]}-${KEYS6[j]}` };
     }
   }
 }
-if (worstSpread.v > 0.05 || worstCorr.v > 0.05) cloudOk = false;
-
-// The cloud's size against Horizons' own position uncertainty (full dynamics, same orbit solution),
-// for the bodies the site draws a cloud for: those fitted with gravity alone (6 parameters)
-const unitV = (v: { x: number; y: number; z: number }) => { const n = Math.hypot(v.x, v.y, v.z); return { x: v.x / n, y: v.y / n, z: v.z / n }; };
-let drawn = 0, compared = 0;
-let worstRatio = { v: 1, who: '' };
-for (const b of sbodies) {
-  if (!b.cov || b.cov.labels.length !== 6) continue;
-  drawn++;
-  const r = smallRef.reference.find((x) => x.spkid === b.spkid) as { sigma?: Record<string, number | null> | null; sigmaJd?: number | null } | undefined;
-  const sg = r?.sigma;
-  if (!sg || sg.A_s == null || sg.C_s == null || sg.N_s == null || !r?.sigmaJd) { cloudOk = false; console.log(`  ${b.short}: no Horizons uncertainty to compare`); continue; }
-  const off = cloudOffsets(b.cov as Covariance, sampleOrbits(b.cov as Covariance, 2000, 777), r.sigmaJd);
-  const ours = Math.sqrt(off.reduce((sum, o) => sum + o.x * o.x + o.y * o.y + o.z * o.z, 0) / off.length) * 149597870.7;
-  const theirs = Math.hypot(sg.A_s, sg.C_s, sg.N_s);
-  const ratio = ours / theirs;
-  compared++;
-  if (Math.abs(Math.log(ratio)) > Math.abs(Math.log(worstRatio.v))) worstRatio = { v: ratio, who: b.short };
-  if (ratio < 0.8 || ratio > 1.25) { cloudOk = false; console.log(`  ${b.short}: our cloud is ${ratio.toFixed(2)} times Horizons' uncertainty`); }
-}
+const noCloud = sbodies.filter((b) => b.covParams === 6 && !covs.has(b.pdes)).length;
+if (worstSpread.z > 5 || worstCorr.z > 5 || compared === 0) cloudOk = false;
 failed ||= !cloudOk;
-console.log(`\nUncertainty clouds: ${N_CHECK} sampled orbits per body against JPL's covariance:`);
-console.log(`  spreads within ${(worstSpread.v * 100).toFixed(1)}% (${worstSpread.who}), limit 5%`);
-console.log(`  correlations within ${worstCorr.v.toFixed(3)} (${worstCorr.who}), limit 0.05`);
-console.log(`  size against Horizons' own uncertainty, for the ${drawn} bodies with a cloud: ${compared} compared, worst ${worstRatio.v.toFixed(2)} times (${worstRatio.who}), limit 0.8 to 1.25`);
+ratios.sort((a, b) => a - b);
+console.log(`\nUncertainty clouds: ${compared} bodies get one (gravity-only orbits whose cloud matches Horizons; ${noCloud} more gravity-only orbits do not)`);
+console.log(`  size against Horizons' own uncertainty: median ${ratios[ratios.length >> 1]?.toFixed(2)}, worst ${worstRatio.v.toFixed(2)} times (${worstRatio.who}), limit 0.8 to 1.25`);
+console.log(`  ${N_CHECK} sampled orbits for each of ${statChecked} bodies against JPL's covariance (z: difference / statistical noise, limit 5):`);
+console.log(`    spreads within ${(worstSpread.v * 100).toFixed(1)}%, z ${worstSpread.z.toFixed(1)} (${worstSpread.who})`);
+console.log(`    correlations within ${worstCorr.v.toFixed(3)}, z ${worstCorr.z.toFixed(1)} (${worstCorr.who})`);
 console.log(`  ${cloudOk ? 'OK' : 'FAIL'}`);
 
 // 10. Languages: every text exists in all three, and the light time reads right in each
@@ -280,10 +303,10 @@ function sameShape(a: unknown, b: unknown, path: string, l: string) {
 }
 for (const l of LANGS) sameShape(STRINGS.ar, STRINGS[l.id], 'texts', l.id);
 for (const p of PLANETS) for (const l of LANGS) if (!STRINGS[l.id].planets[p.id]) langOk = false;
-for (const b of sbodies) {
+for (const q of listed) {
   for (const l of LANGS) {
-    const n = SMALL_BODY_NAMES[b.query]?.[l.id];
-    if (!n || !n[0].trim() || !n[1].trim()) { langOk = false; console.log(`  ${l.id}: no name for ${b.short}`); }
+    const n = SMALL_BODY_NAMES[q]?.[l.id];
+    if (!n || !n[0].trim() || !n[1].trim()) { langOk = false; console.log(`  ${l.id}: no name for ${q}`); }
   }
 }
 
@@ -303,7 +326,7 @@ for (const [min, ar, de, en] of LIGHT_CASES) {
   });
 }
 failed ||= !langOk;
-console.log(`Texts in ${LANGS.map((l) => l.id).join(', ')}, with names for all ${sbodies.length} asteroids and comets: ${langOk ? 'OK' : 'FAIL'}`);
+console.log(`Texts in ${LANGS.map((l) => l.id).join(', ')}, with names for all ${listed.length} well-known asteroids and comets: ${langOk ? 'OK' : 'FAIL'}`);
 
 console.log(failed ? '\nRESULT: FAIL' : '\nRESULT: OK');
 if (failed) process.exitCode = 1;

@@ -25,6 +25,8 @@ const MAX_ZOOM = 40;
 
 // How close a tap must be to a planet to select it [px]
 const HIT_RADIUS = 18;
+// Asteroids and comets count as this much farther away, so a tap near a planet picks the planet
+const SMALL_HIT_PENALTY = 6;
 
 export class Orrery {
   mode: ViewMode = 'compressed';
@@ -35,14 +37,14 @@ export class Orrery {
   private readonly ctx: CanvasRenderingContext2D;
   private w = 0;
   private h = 0;
-  private lastScreen: { id: string; x: number; y: number }[] = [];
+  private lastScreen: { id: string; x: number; y: number; small: boolean }[] = [];
 
   /** The body nearest to a point on the canvas (CSS pixels), or null if none is close. */
   hitTest(x: number, y: number): string | null {
     let best: string | null = null;
     let bestD = HIT_RADIUS;
     for (const p of this.lastScreen) {
-      const d = Math.hypot(p.x - x, p.y - y);
+      const d = Math.hypot(p.x - x, p.y - y) + (p.small ? SMALL_HIT_PENALTY : 0);
       if (d < bestD) { bestD = d; best = p.id; }
     }
     return best;
@@ -168,27 +170,43 @@ export class Orrery {
     ctx.arc(cx, cy, 5, 0, Math.PI * 2);
     ctx.fill();
 
-    // Asteroids and comets, under the planets
+    // Asteroids and comets, under the planets: one path per colour and size (thousands of dots)
     const smallScreen = smalls.map((b) => project(b.pos));
-    let selectedSmall: { b: SmallFrame; x: number; y: number } | null = null;
+    const bulk = w < 600 ? 1.2 : 1.6; // phones: less crowded
+    const radius = (b: SmallFrame) => (b.group === 'dwarf' ? 3 : b.famous ? 2.3 : bulk);
+    // The thousands of less-known ones a little dimmer, so the planets stand out
+    const batches = new Map<string, number[]>();
     smalls.forEach((b, i) => {
       const [x, y] = smallScreen[i];
-      const r = b.group === 'dwarf' ? 3 : 2.3;
-      ctx.fillStyle = SMALL_COLORS[b.group];
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fill();
-      if (b.id === this.selected) {
-        selectedSmall = { b, x, y };
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.arc(x, y, r + 5, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.lineWidth = 1;
-        taken.push({ x0: x - r - 5, y0: y - r - 5, x1: x + r + 5, y1: y + r + 5, id: b.id });
-      }
+      if (x < -5 || y < -5 || x > w + 5 || y > h + 5) return;
+      const k = `${SMALL_COLORS[b.group]} ${radius(b)} ${b.famous || b.group === 'dwarf' ? 1 : 0.7}`;
+      let list = batches.get(k);
+      if (!list) batches.set(k, list = []);
+      list.push(x, y);
     });
+    for (const [k, xy] of batches) {
+      const [color, r, alpha] = k.split(' ');
+      const rr = Number(r);
+      ctx.fillStyle = color;
+      ctx.globalAlpha = Number(alpha);
+      ctx.beginPath();
+      for (let j = 0; j < xy.length; j += 2) { ctx.moveTo(xy[j] + rr, xy[j + 1]); ctx.arc(xy[j], xy[j + 1], rr, 0, Math.PI * 2); }
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    let selectedSmall: { b: SmallFrame; x: number; y: number } | null = null;
+    const si = smalls.findIndex((b) => b.id === this.selected);
+    if (si >= 0) {
+      const b = smalls[si], [x, y] = smallScreen[si], r = radius(b);
+      selectedSmall = { b, x, y };
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(x, y, r + 5, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.lineWidth = 1;
+      taken.push({ x0: x - r - 5, y0: y - r - 5, x1: x + r + 5, y1: y + r + 5, id: b.id });
+    }
 
     // Uncertainty cloud of the selected asteroid or comet: its offsets in pixels, enlarged if tiny
     let cloudText: { text: string; x: number; y: number; r: number; color: string } | null = null;
@@ -214,8 +232,8 @@ export class Orrery {
     // Planets
     const screen = bodies.map((b) => project(b.pos));
     this.lastScreen = [
-      ...bodies.map((b, i) => ({ id: b.id as string, x: screen[i][0], y: screen[i][1] })),
-      ...smalls.map((b, i) => ({ id: b.id, x: smallScreen[i][0], y: smallScreen[i][1] })),
+      ...bodies.map((b, i) => ({ id: b.id as string, x: screen[i][0], y: screen[i][1], small: false })),
+      ...smalls.map((b, i) => ({ id: b.id, x: smallScreen[i][0], y: smallScreen[i][1], small: true })),
     ];
     bodies.forEach((b, i) => {
       const [x, y] = screen[i];

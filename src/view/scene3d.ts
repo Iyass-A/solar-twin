@@ -30,6 +30,8 @@ const DEG = Math.PI / 180;
 // Radius of each planet on screen [px]
 const SIZE_PX: Partial<Record<string, number>> = { jupiter: 7.5, saturn: 7, uranus: 6, neptune: 6 };
 const SMALL_PX: Record<SmallGroup, number> = { dwarf: 4, asteroid: 3, neo: 3, comet: 3 };
+const SMALL_PX_BULK = 2.1; // the thousands of less-known ones: a bit smaller
+const SMALL_HIT_PENALTY = 6; // asteroids and comets count as this much farther away when tapping [px]
 const DEFAULT_PX = 5;
 const SUN_PX = 6;
 const GLOW_PX = 22;
@@ -332,7 +334,7 @@ export class Scene3D {
     let best: string | null = null;
     let bestD = Infinity;
     for (const p of this.lastScreen) {
-      const d = Math.hypot(p.x - x, p.y - y);
+      const d = Math.hypot(p.x - x, p.y - y) + (p.r === 0 ? SMALL_HIT_PENALTY : 0); // r 0: a dot
       if (d < Math.max(HIT_RADIUS, p.r) && d < bestD) { bestD = d; best = p.id; }
     }
     return best;
@@ -375,8 +377,11 @@ export class Scene3D {
 
     // Asteroids and comets: the dot layer, and the selected one as a full body
     const view3 = (v: Vec3) => toScene(v, view, R);
-    updateDots(this.dots, smalls.map((b) => ({ xyz: view3(b.pos), color: SMALL_COLORS[b.group], px: SMALL_PX[b.group] })),
-      this.renderer.getPixelRatio());
+    const bulkPx = this.w < 600 ? SMALL_PX_BULK * 0.7 : SMALL_PX_BULK; // phones: less crowded
+    updateDots(this.dots, smalls.map((b) => {
+      const known = b.famous || b.group === 'dwarf';
+      return { xyz: view3(b.pos), color: SMALL_COLORS[b.group], px: known ? SMALL_PX[b.group] : bulkPx, dim: known ? 1 : 0.7 };
+    }), this.renderer.getPixelRatio());
     this.syncSmall(smalls, selectedOrbit, view3);
 
     // Camera after the bodies have moved, then the sizes on screen from the new camera
@@ -742,8 +747,16 @@ function makeDots(): THREE.Points {
   return points;
 }
 
+const colorCache = new Map<string, THREE.Color>();
+/** A CSS colour as Three.js linear RGB (parsed once). */
+function rgb(css: string): THREE.Color {
+  let c = colorCache.get(css);
+  if (!c) { c = new THREE.Color().setStyle(css, THREE.SRGBColorSpace); colorCache.set(css, c); }
+  return c;
+}
+
 /** Put the dots where the bodies are now; buffers grow when needed. Colours are sRGB, like the CSS ones. */
-function updateDots(points: THREE.Points, dots: { xyz: [number, number, number]; color: string; px: number }[], pixelRatio: number) {
+function updateDots(points: THREE.Points, dots: { xyz: [number, number, number]; color: string; px: number; dim?: number }[], pixelRatio: number) {
   const g = points.geometry;
   let pos = g.getAttribute('position') as THREE.BufferAttribute | undefined;
   if (!pos || pos.count < dots.length) {
@@ -754,11 +767,10 @@ function updateDots(points: THREE.Points, dots: { xyz: [number, number, number];
   }
   const col = g.getAttribute('dotColor') as THREE.BufferAttribute;
   const size = g.getAttribute('size') as THREE.BufferAttribute;
-  const c = new THREE.Color();
   dots.forEach((d, i) => {
     pos!.setXYZ(i, d.xyz[0], d.xyz[1], d.xyz[2]);
-    c.setStyle(d.color, THREE.SRGBColorSpace);
-    col.setXYZ(i, c.r, c.g, c.b);
+    const c = rgb(d.color), k = d.dim ?? 1; // dimmer on the dark background: like a lower opacity
+    col.setXYZ(i, c.r * k, c.g * k, c.b * k);
     size.setX(i, d.px);
   });
   pos.needsUpdate = col.needsUpdate = size.needsUpdate = true;

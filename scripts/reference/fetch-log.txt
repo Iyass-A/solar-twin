@@ -1,0 +1,230 @@
+1. 36 well-known bodies
+2. neo-1km: 875 match, 871 new
+2. bright-asteroids: 890753 match, 392 new
+2. outer: 2290 match, 295 new
+2. periodic-comets: 506 match, 498 new
+   2092 bodies in all
+3. covariance vectors are stored by col (checked on 1)
+3. covariance 100 / 2092
+3. covariance 200 / 2092
+3. covariance 300 / 2092
+3. covariance 400 / 2092
+3. covariance 500 / 2092
+3. covariance 600 / 2092
+3. covariance 700 / 2092
+3. covariance 800 / 2092
+3. covariance 900 / 2092
+3. covariance 1000 / 2092
+3. covariance 1100 / 2092
+3. covariance 1200 / 2092
+3. covariance 1300 / 2092
+3. covariance 1400 / 2092
+3. covariance 1500 / 2092
+3. covariance 1600 / 2092
+3. covariance 1700 / 2092
+3. covariance 1800 / 2092
+3. covariance 1900 / 2092
+3. covariance 2000 / 2092
+
+Standard epoch: JD 2461200.5 (2026.4)
+
+  1 Ceres (A801 AA): within 1° from 2016.4 to 2036.4, Horizons 1σ 0.0256125871 / 0.00335865862 / 0.0802287477 km
+  2 Pallas (A802 FA): within 1° from 2011.4 to 2051.4, Horizons 1σ 9.42041263 / 3.73919328 / 5.87203134 km
+  3 Juno (A804 RA): within 1° from 2006.4 to 2036.4, Horizons 1σ 5.5772096 / 1.61001648 / 2.95076986 km
+  4 Vesta (A807 FA): within 1° from 2001.4 to 2051.4, Horizons 1σ 8.84230129 / 0.0402300395 / 1.30831073 km
+  10 Hygiea (A849 GA): within 1° from 2025.4 to 2031.4, Horizons 1σ 7.54854562 / 1.89334321 / 3.39862806 km
+  16 Psyche (A852 FA): within 1° from 2011.4 to 2031.4, Horizons 1σ 9.24796495 / 1.41724981 / 2.30520124 km
+  21 Lutetia (A852 VA): within 1° from 2001.4 to 2051.4, Horizons 1σ 4.99082607 / 0.800217894 / 0.984453464 km
+  243 Ida (A884 SB): within 1° from 2006.4 to 2046.4, Horizons 1σ 5.51230317 / 0.394770527 / 0.551322271 km
+  433 Eros (A898 PA): within 1° from 2006.4 to 2051.4, Horizons 1σ 6.41019328 / 1.5138496 / 4.09547017 km
+  1566 Icarus (1949 MA): within 1° from 2021.4 to 2051.4
+  3200 Phaethon (1983 TB): within 1° from 2001.4 to 2051.4
+  4179 Toutatis (1989 AC): within 1° from 2016.4 to 2031.4
+  25143 Itokawa (1998 SF36): within 1° from 2006.4 to 2031.4
+  65803 Didymos (1996 GT): within 1° from 2021.4 to 2051.4, Horizons 1σ 0.201736522 / 0.0954612163 / 0.0581912489 km
+  99942 Apophis (2004 MN4): within 1° from 2021.4 to 2027.4
+  101955 Bennu (1999 RQ36): within 1° from 2006.4 to 2036.4
+  162173 Ryugu (1999 JU3): within 1° from 2021.4 to 2031.4
+  (2024 YR4): within 1° from 2025.4 to 2031.4, Horizons 1σ 31.4376188 / 62.0985349 / 10.8570175 km
+  624 Hektor (A907 CF): within 1° from 2021.4 to 2041.4, Horizons 1σ 37.5164947 / 5.09988358 / 1.40773129 km
+  3548 Eurybates (1973 SO): within 1° from 2021.4 to 2036.4, Horizons 1σ 26.2179399 / 3.49850768 / 0.602857489 km
+  134340 Pluto (1930 BM): within 1° from 2001.4 to 2051.4
+  136199 Eris (2003 UB313): within 1° from 2001.4 to 2051.4, Horizons 1σ 4465.35983 / 19936.3375 / 399.123369 km
+  136108 Haumea (2003 EL61): within 1° from 2001.4 to 2051.4, Horizons 1σ 941.600513 / 3951.39481 / 170.267795 km
+  136472 Makemake (2005 FY9): within 1° from 2001.4 to 2051.4, Horizons 1σ 407.583663 / 4315.43769 / 139.224589 km
+  90377 Sedna (2003 VB12): within 1° from 2001.4 to 2051.4, Horizons 1σ 23876.4962 / 82357.0497 / 1105.35356 km
+  486958 Arrokoth (2014 MU69): within 1° from 2001.4 to 2051.4, Horizons 1σ 159916.113 / 952014.237 / 11899.1651 km
+  1P/Halley: within 1° from 2001.4 to 2051.4
+  2P/Encke: within 1° from 2001.4 to 2051.4
+  9P/Tempel 1: within 1° from 2025.4 to 2036.4
+  55P/Tempel-Tuttle: within 1° from 2001.4 to 2027.4
+  67P/Churyumov-Gerasimenko: within 1° from 2021.4 to 2031.4
+  81P/Wild 2: within 1° from 2001.4 to 2031.4
+  103P/Hartley 2: within 1° from 2006.4 to 2046.4
+  109P/Swift-Tuttle: within 1° from 2001.4 to 2051.4, Horizons 1σ 1135.392 / 3160.46192 / 2017.99621 km
+  C/1995 O1 (Hale-Bopp): within 1° from 2001.4 to 2051.4, Horizons 1σ 10750.3936 / 2494.77503 / 753.568114 km
+  C/2020 F3 (NEOWISE): within 1° from 2001.4 to 2051.4, Horizons 1σ 13830.8211 / 8144.17645 / 1480.56843 km
+  7358 Oze (1995 YA3): within 1° from 2016.4 to 2036.4, Horizons 1σ 3.98991925 / 0.81818163 / 0.717125616 km
+  6050 Miwablock (1992 AE): within 1° from 2016.4 to 2027.4, Horizons 1σ 2.11012039 / 0.374424798 / 0.56285367 km
+  5332 Davidaguilar (1990 DA): within 1° from 2001.4 to 2051.4, Horizons 1σ 3.67661156 / 0.878261817 / 1.10116201 km
+4. Horizons 100 / 2092 (2409 requests so far)
+  153249 (2001 BW15): within 1° from 2006.4 to 2051.4, Horizons 1σ 8.98765168 / 0.49959275 / 0.590620265 km
+4. Horizons 200 / 2092 (2618 requests so far)
+  9202 (1993 PB): within 1° from 2001.4 to 2051.4, Horizons 1σ 2.15157042 / 0.275010143 / 0.512765647 km
+  55532 (2001 WG2): within 1° from 2025.4 to 2051.4, Horizons 1σ 7.26995895 / 0.603692547 / 0.461580778 km
+  9950 ESA (1990 VB): within 1° from 2025.4 to 2031.4, Horizons 1σ 35.1358026 / 16.7789002 / 40.7698338 km
+  385580 (2004 XO14): within 1° from 2001.4 to 2046.4, Horizons 1σ 48.6530563 / 17.6482338 / 17.6434614 km
+  16816 (1997 UF9): within 1° from 2001.4 to 2051.4, Horizons 1σ 6.1641372 / 0.844734264 / 0.423511691 km
+  248590 (2006 CS): within 1° from 2025.4 to 2031.4, Horizons 1σ 19.5321671 / 18.4841691 / 23.098708 km
+  96590 (1998 XB): within 1° from 2001.4 to 2051.4, Horizons 1σ 1.12069213 / 0.115676246 / 0.122127854 km
+  163051 (2001 YJ4): within 1° from 2021.4 to 2041.4, Horizons 1σ 17.176968 / 7.56589801 / 9.22906358 km
+4. Horizons 300 / 2092 (2840 requests so far)
+  89959 (2002 NT7): within 1° from 2001.4 to 2051.4, Horizons 1σ 2.46218976 / 0.417808257 / 2.03784644 km
+4. Horizons 400 / 2092 (3052 requests so far)
+  177255 (2003 WC25): within 1° from 2011.4 to 2027.4, Horizons 1σ 55.1904997 / 26.8863508 / 54.0918897 km
+  277958 (2006 SP134): within 1° from 2001.4 to 2051.4, Horizons 1σ 127.909617 / 21.6173165 / 16.9139926 km
+  189552 (2000 RL77): within 1° from 2001.4 to 2036.4, Horizons 1σ 78.9225179 / 66.2798264 / 57.7026245 km
+  555122 (2013 RF36): within 1° from 2011.4 to 2036.4, Horizons 1σ 100.256936 / 44.7747135 / 113.674335 km
+4. Horizons 500 / 2092 (3265 requests so far)
+  406952 (2009 KJ): within 1° from 2001.4 to 2051.4, Horizons 1σ 79.6469644 / 43.0575378 / 129.179989 km
+  89958 (2002 LY45): within 1° from 2001.4 to 2051.4, Horizons 1σ 19.8447957 / 17.3285093 / 23.5921352 km
+4. Horizons 600 / 2092 (3472 requests so far)
+  30997 (1995 UO5): within 1° from 2001.4 to 2051.4, Horizons 1σ 47.2324016 / 31.7070993 / 37.6012905 km
+  161995 (1983 LB): within 1° from 2025.4 to 2041.4, Horizons 1σ 67.1392945 / 32.8130575 / 68.8353411 km
+  187026 (2005 EK70): within 1° from 2001.4 to 2051.4, Horizons 1σ 31.2619607 / 4.3139797 / 6.09488194 km
+  153271 (2001 CL42): within 1° from 2001.4 to 2051.4, Horizons 1σ 57.0603457 / 17.8695039 / 13.5992906 km
+4. Horizons 700 / 2092 (3684 requests so far)
+  370688 (2004 GD28): within 1° from 2006.4 to 2051.4, Horizons 1σ 52.3129777 / 22.2010146 / 31.5546572 km
+  141761 (2002 MC): within 1° from 2016.4 to 2046.4, Horizons 1σ 96.8019172 / 101.945688 / 71.0743392 km
+  188174 (2002 JC): within 1° from 2001.4 to 2041.4, Horizons 1σ 5.52306224 / 0.334390941 / 0.284680174 km
+  314082 Dryope (2005 CZ36): within 1° from 2016.4 to 2041.4, Horizons 1σ 34.2434925 / 52.1165227 / 44.8571769 km
+  438902 (2009 WF104): within 1° from 2025.4 to 2031.4, Horizons 1σ 89.2841485 / 12.6577994 / 13.4450198 km
+  511064 (2013 TH5): within 1° from 2001.4 to 2041.4, Horizons 1σ 177.916893 / 37.5248214 / 46.0319743 km
+  281365 (2008 CM116): within 1° from 2001.4 to 2051.4, Horizons 1σ 63.9800418 / 17.3983226 / 19.6985557 km
+  424089 (2007 DU103): within 1° from 2016.4 to 2041.4, Horizons 1σ 129.881884 / 41.4198867 / 38.5537501 km
+  285638 (2000 SO10): within 1° from 2001.4 to 2051.4, Horizons 1σ 53.2636118 / 26.7471133 / 30.4995686 km
+4. Horizons 800 / 2092 (3911 requests so far)
+  161998 (1988 PA): within 1° from 2006.4 to 2046.4, Horizons 1σ 67.6850782 / 13.3027636 / 13.4024001 km
+  491424 (2012 ET14): within 1° from 2001.4 to 2051.4, Horizons 1σ 427.082884 / 58.9211781 / 56.4874988 km
+  416694 (2004 YR32): within 1° from 2025.4 to 2041.4, Horizons 1σ 50.9699556 / 13.905649 / 16.6776345 km
+4. Horizons 900 / 2092 (4129 requests so far)
+  702 Alauda (A910 OA): within 1° from 2001.4 to 2031.4, Horizons 1σ 8.05312988 / 1.48416474 / 1.16757471 km
+4. Horizons 1000 / 2092 (4341 requests so far)
+4. Horizons 1100 / 2092 (4557 requests so far)
+  659 Nestor (A908 FE): within 1° from 2001.4 to 2031.4, Horizons 1σ 31.9328497 / 3.90084072 / 0.580878096 km
+4. Horizons 1200 / 2092 (4766 requests so far)
+4. Horizons 1300 / 2092 (4973 requests so far)
+  230965 (2004 XA192): within 1° from 2001.4 to 2051.4, Horizons 1σ 783.368678 / 12843.0603 / 449.940408 km
+  455502 (2003 UZ413): within 1° from 2001.4 to 2051.4, Horizons 1σ 2731.92791 / 18198.0219 / 540.861289 km
+  523759 (2014 WK509): within 1° from 2001.4 to 2051.4, Horizons 1σ 11953.6603 / 55211.7801 / 1249.31216 km
+  690420 (2014 FC72): within 1° from 2001.4 to 2051.4, Horizons 1σ 1820.46652 / 56515.4416 / 1276.26912 km
+  559182 (2015 BZ518): within 1° from 2001.4 to 2051.4, Horizons 1σ 9240.13104 / 46080.6244 / 926.379146 km
+4. Horizons 1400 / 2092 (5184 requests so far)
+  523773 (2014 XS40): within 1° from 2001.4 to 2051.4, Horizons 1σ 3062.17131 / 22205.7144 / 682.504779 km
+  523777 (2014 YF50): within 1° from 2001.4 to 2051.4, Horizons 1σ 1576.15163 / 22660.3707 / 587.168382 km
+  555678 (2014 CO23): within 1° from 2001.4 to 2051.4, Horizons 1σ 6281.36677 / 38527.7822 / 1145.79819 km
+4. Horizons 1500 / 2092 (5385 requests so far)
+  483002 (2014 QS441): within 1° from 2001.4 to 2051.4, Horizons 1σ 2753.84642 / 43325.6787 / 950.893945 km
+  559181 (2015 BX518): within 1° from 2001.4 to 2051.4, Horizons 1σ 5709.92722 / 33114.9433 / 985.307096 km
+  307251 (2002 KW14): within 1° from 2001.4 to 2051.4, Horizons 1σ 40841.2249 / 192671.833 / 5605.20988 km
+  (2016 FK164): within 1° from 2001.4 to 2051.4, Horizons 1σ 872418.308 / 4508062.78 / 72953.6502 km
+  523758 (2014 WJ509): within 1° from 2001.4 to 2051.4, Horizons 1σ 3707.54147 / 30514.558 / 781.445649 km
+4. Horizons 1600 / 2092 (5588 requests so far)
+  121P/Shoemaker-Holt 2: within 1° from 2021.4 to 2031.4, Horizons 1σ 318.952552 / 64.9100746 / 99.7678563 km
+  177P/Barnard: within 1° from 2011.4 to 2051.4, Horizons 1σ 383.049083 / 1153.13554 / 665.077697 km
+4. Horizons 1700 / 2092 (5849 requests so far)
+  232P/Hill: within 1° from 2021.4 to 2031.4, Horizons 1σ 1905.08319 / 1173.13201 / 286.417682 km
+  249P/LINEAR: within 1° from 2021.4 to 2046.4, Horizons 1σ 52.1052427 / 48.436247 / 124.27565 km
+  286P/Christensen: within 1° from 2025.4 to 2027.4, Horizons 1σ 1438.0881 / 163.649456 / 207.756671 km
+4. Horizons 1800 / 2092 (6119 requests so far)
+  316P/LONEOS-Christensen: within 1° from 2025.4 to 2031.4, Horizons 1σ 6483.4525 / 3176.27796 / 556.135268 km
+  341P/Gibbs: within 1° from 2021.4 to 2041.4, Horizons 1σ 4650.90899 / 5635.98677 / 656.609287 km
+4. Horizons 1900 / 2092 (6405 requests so far)
+  415P/Tenagra: within 1° from 2016.4 to 2031.4, Horizons 1σ 10596.4352 / 1535.13511 / 329.181976 km
+  44P/Reinmuth 2: within 1° from 2006.4 to 2036.4, Horizons 1σ 395.18755 / 108.19803 / 220.873014 km
+  458P/Jahn: within 1° from 2016.4 to 2041.4, Horizons 1σ 1540.23313 / 210.177093 / 549.554884 km
+4. Horizons 2000 / 2092 (6705 requests so far)
+
+2092 bodies (1584 asteroids, 508 comets), 1690 with an uncertainty cloud, 2041 with a covariance.
+6954 requests, 0 times told to wait.
+Gravity-only orbits without a cloud (61), our size / Horizons':
+  277616 (2006 BN6): 1.39
+  480934 (2003 LX5): 1.45
+  (2025 OX529): 0.22
+  (2020 MK53): not compared
+  (2018 AG37): 28.49
+  (2025 NE552): 32.91
+  (2025 MZ348): 37.08
+  (2020 FY30): 1.84
+  (2025 MT387): 16.23
+  (2003 UA292): not compared
+  (2025 ME352): 28.10
+  (2020 BE102): 11.59
+  (2025 NC194): not compared
+  (2025 MB349): 11.30
+  (2002 PJ149): not compared
+  (2023 FS54): 37.35
+  (2020 FA31): 12.61
+  (2025 UP145): 200.10
+  (2025 MD350): 24.79
+  (2015 KF172): 1.86
+  (2005 GW186): not compared
+  (2025 NY190): 138.21
+  (2025 VR33): 24.97
+  (2025 OF345): 2.80
+  (2025 MJ352): 41.86
+  (2025 MK192): 1.51
+  108P/Ciffreo: 0.62
+  121P/Shoemaker-Holt 2: 1.43
+  143P/Kowal-Mrkos: 0.68
+  158P/Kowal-LINEAR: 0.54
+  160P/LINEAR: 0.78
+  163P/NEAT: 2.41
+  182P/LONEOS: 0.74
+  186P/Garradd: 1.29
+  187P/LINEAR: 0.65
+  18D/Perrine-Mrkos: 0.06
+  250P/Larson: 1.51
+  25D/Neujmin 2: 0.12
+  264P/Larsen: 0.33
+  275P/Hermann: 1.37
+  298P/Christensen: 3.69
+  301P/LINEAR-NEAT: 0.45
+  316P/LONEOS-Christensen: 0.73
+  334P/NEAT: 0.65
+  336P/McNaught: 0.64
+  363P/Lemmon: 1.44
+  379P/Spacewatch: 1.63
+  382P/Larson: 0.79
+  383P/Christensen: 1.81
+  406P/Gibbs: 6.04
+  407P/PANSTARRS-Fuls: 1.68
+  429P/LINEAR-Hill: 1.27
+  439P/LINEAR: 3.80
+  459P/Catalina: 0.58
+  467P/LINEAR-Grauer: 1.40
+  480P/PANSTARRS: 1.45
+  481P/Lemmon-PANSTARRS: 1.44
+  500P/PANSTARRS: 1.35
+  509P/Catalina: 1.41
+  515P/PANSTARRS: 8.78
+  83D/Russell 1: 0.00
+Notes (18):
+- 101P: covariance answer is for no single object, left without
+- 128P: covariance answer is for no single object, left without
+- 141P: covariance answer is for no single object, left without
+- 157P: covariance answer is for no single object, left without
+- 205P: covariance answer is for no single object, left without
+- 213P: covariance answer is for no single object, left without
+- 240P: covariance answer is for no single object, left without
+- 323P: covariance answer is for no single object, left without
+- 332P: covariance answer is for no single object, left without
+- 51P: covariance answer is for no single object, left without
+- 57P: covariance answer is for no single object, left without
+- 73P: covariance answer is for no single object, left without
+- 79P: covariance answer is for no single object, left without
+- 2020 MK53: covariance gives no usable samples, no cloud
+- 2003 UA292: covariance gives no usable samples, no cloud
+- 2025 NC194: covariance gives no usable samples, no cloud
+- 2002 PJ149: covariance gives no usable samples, no cloud
+- 2005 GW186: covariance gives no usable samples, no cloud
