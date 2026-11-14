@@ -24,3 +24,4 @@ npm run check
 - Step 3: 2D map on a canvas (three views, mouse-wheel zoom) and a time bar: slider 1800-2050, play at different speeds, jump to a date, back to now
 - Phase 2, step 1: 3D scene with Three.js (Sun, planets, orbits, ecliptic rings), next to the 2D map, sharing the same clock, time bar, views and selection
 - Phase 2, step 2: follow a selected planet with the camera (it is drawn bigger while followed); Saturn's rings with the real tilt from the IAU pole, checked against its known 26.73° axial tilt
+- Phase 2, step 3: three languages (Arabic, German, English) with a switch at the top; right-to-left for Arabic, decimal commas for German. The choice is remembered; `?lang=de` in the address picks a language directly

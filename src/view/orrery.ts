@@ -6,6 +6,7 @@
 import type { PlanetId } from '../astro/elements';
 import type { Vec3 } from '../astro/kepler';
 import { VIEWS, COLORS, radialScale, type BodyFrame, type ViewMode } from './views';
+import { langInfo, t } from '../i18n';
 
 const DOT: Partial<Record<PlanetId, number>> = { jupiter: 6, saturn: 5.5, uranus: 4.5, neptune: 4.5 };
 
@@ -119,7 +120,7 @@ export class Orrery {
 
     // Boxes already taken on screen, so labels don't overlap
     const taken: Box[] = [];
-    ctx.direction = 'rtl';
+    ctx.direction = langInfo().dir;
     ctx.textBaseline = 'alphabetic';
 
     // Orbits
@@ -197,11 +198,12 @@ export class Orrery {
     // Name of the equinox direction, above or below the arrow, wherever there is room
     ctx.font = '11px system-ui, "Segoe UI", Tahoma, sans-serif';
     ctx.fillStyle = 'rgba(150, 160, 195, 0.75)';
-    const ew = ctx.measureText('الاعتدال').width;
+    const equinox = t().equinox;
+    const ew = ctx.measureText(equinox).width;
     for (const dy of [-9, 18]) {
       const box = { x0: w - 8 - ew, y0: cy + dy - 11, x1: w, y1: cy + dy + 3 };
       if (!taken.some((t) => overlaps(t, box))) {
-        ctx.fillText('الاعتدال', w - 6 - ew, cy + dy);
+        ctx.fillText(equinox, w - 6 - ew, cy + dy);
         break;
       }
     }

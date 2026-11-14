@@ -9,6 +9,7 @@ import { referencePosition } from '../src/astro/reference';
 import { J2000, toJulianDate, centuriesSinceJ2000 } from '../src/astro/julian';
 import { VIEWS, toScene } from '../src/view/views';
 import { SATURN_POLE } from '../src/astro/poles';
+import { STRINGS, LANGS } from '../src/i18n';
 
 const MAX_ERROR_DEG = 1;
 const DAY_MS = 86_400_000;
@@ -96,6 +97,40 @@ const tilt = Math.acos(SATURN_POLE.x * orbitNormal.x + SATURN_POLE.y * orbitNorm
 const tiltOk = Math.abs(tilt - 26.73) < 0.1;
 failed ||= !tiltOk;
 console.log(`Saturn's tilt from its pole: ${tilt.toFixed(2)}° (known 26.73°) ${tiltOk ? 'OK' : 'FAIL'}`);
+
+// 7. Languages: every text exists in all three, and the light time reads right in each
+let langOk = true;
+function sameShape(a: unknown, b: unknown, path: string, l: string) {
+  if (typeof a !== typeof b || Array.isArray(a) !== Array.isArray(b)) {
+    langOk = false; console.log(`  ${l}: ${path} is missing or of the wrong kind`); return;
+  }
+  if (typeof a === 'string' && !(b as string).trim()) { langOk = false; console.log(`  ${l}: ${path} is empty`); }
+  if (a && typeof a === 'object') {
+    const ka = Object.keys(a), kb = Object.keys(b as object);
+    if (ka.join() !== kb.join()) { langOk = false; console.log(`  ${l}: ${path} has keys ${kb.join()} instead of ${ka.join()}`); }
+    for (const k of ka) sameShape((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k], `${path}.${k}`, l);
+  }
+}
+for (const l of LANGS) sameShape(STRINGS.ar, STRINGS[l.id], 'texts', l.id);
+for (const p of PLANETS) for (const l of LANGS) if (!STRINGS[l.id].planets[p.id]) langOk = false;
+
+// [minutes, Arabic, German, English]. 243 min is Neptune's ~4 h 3 min; 119.7 min must round up to 2 hours.
+const LIGHT_CASES: [number, string, string, string][] = [
+  [8.32, '8.3 دقيقة', '8,3 Minuten', '8.3 minutes'],
+  [60, 'ساعة', '1 Stunde', '1 hour'],
+  [119.7, 'ساعتين', '2 Stunden', '2 hours'],
+  [243, '4 ساعات و3 دقائق', '4 Stunden und 3 Minuten', '4 hours 3 minutes'],
+  [662, '11 ساعة ودقيقتين', '11 Stunden und 2 Minuten', '11 hours 2 minutes'],
+  [61, 'ساعة ودقيقة', '1 Stunde und 1 Minute', '1 hour 1 minute'],
+];
+for (const [min, ar, de, en] of LIGHT_CASES) {
+  const got = [STRINGS.ar.light(min), STRINGS.de.light(min), STRINGS.en.light(min)];
+  [ar, de, en].forEach((want, i) => {
+    if (got[i] !== want) { langOk = false; console.log(`  light time ${min} min: got "${got[i]}", want "${want}"`); }
+  });
+}
+failed ||= !langOk;
+console.log(`Texts in ${LANGS.map((l) => l.id).join(', ')}: ${langOk ? 'OK' : 'FAIL'}`);
 
 console.log(failed ? '\nRESULT: FAIL' : '\nRESULT: OK');
 if (failed) process.exitCode = 1;

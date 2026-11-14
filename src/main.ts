@@ -6,6 +6,7 @@ import { referencePosition } from './astro/reference';
 import { Orrery } from './view/orrery';
 import { VIEWS, type BodyFrame, type ViewMode } from './view/views';
 import type { Scene3D } from './view/scene3d';
+import { LANGS, detectLang, lang, langInfo, num, setLang, t, type Lang, type TextKey } from './i18n';
 
 const DAY_MS = 86_400_000;
 
@@ -15,40 +16,45 @@ const MAX_ERROR_DEG = 1;
 // Self-check: 2000-01-01 12:00 UTC must give exactly 2451545.0
 const jdOk = Math.abs(toJulianDate(new Date(Date.UTC(2000, 0, 1, 12))) - J2000) < 1e-9;
 
-const SPEEDS = [
-  { days: 1, label: 'يوم بالثانية' },
-  { days: 7, label: 'أسبوع بالثانية' },
-  { days: 30.44, label: 'شهر بالثانية' },
-  { days: 365.25, label: 'سنة بالثانية' },
-];
+// Simulated days per real second (the names are in src/i18n.ts)
+const SPEED_DAYS = [1, 7, 30.44, 365.25];
+const VIEW_MODES = Object.keys(VIEWS) as ViewMode[];
 
 const clamp = (ms: number) => Math.min(VALID_TO_MS, Math.max(VALID_FROM_MS, ms));
 
 // ---------- Page ----------
+// Texts come from src/i18n.ts: data-t sets the text, data-html the HTML, data-aria the screen-reader label.
+
+setLang(detectLang());
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
-  <h1>التوأم الرقمي للمجموعة الشمسية</h1>
-  <p class="step">المرحلة 2، الخطوة 2: ملاحقة كوكب وحلقات زحل</p>
+  <div class="top">
+    <h1 data-t="title"></h1>
+    <div class="langs" role="group" data-aria="language">
+      ${LANGS.map((l) => `<button type="button" data-lang="${l.id}" lang="${l.id}">${l.name}</button>`).join('')}
+    </div>
+  </div>
+  <p class="step" data-t="step"></p>
 
   <div class="tabs" role="tablist">
-    <button type="button" role="tab" id="tab3d">ثلاثي الأبعاد</button>
-    <button type="button" role="tab" id="tab2d">خريطة من فوق</button>
+    <button type="button" role="tab" id="tab3d" data-t="tab3d"></button>
+    <button type="button" role="tab" id="tab2d" data-t="tab2d"></button>
   </div>
   <div class="card sky">
-    <div id="sky3d" class="view" hidden><div class="loading">عم يحمّل المشهد…</div></div>
-    <canvas id="sky" class="view" aria-label="خريطة الكواكب حول الشمس" hidden></canvas>
+    <div id="sky3d" class="view" hidden><div class="loading" data-t="loading"></div></div>
+    <canvas id="sky" class="view" data-aria="mapAria" hidden></canvas>
   </div>
   <p class="caption"><span id="caption"></span><br><span id="howto"></span></p>
 
   <div class="card" id="info">
-    <div class="sub" id="infoHint">اكبس على أي كوكب بالخريطة أو بالجدول لتشوف معلوماته.</div>
+    <div class="sub" id="infoHint" data-t="infoHint"></div>
     <div id="infoBody" hidden>
       <div class="value" id="infoName"></div>
       <div class="facts">
-        <div><span class="label">البعد عن الشمس</span><span id="infoSun"></span></div>
-        <div><span class="label">البعد عن الأرض</span><span id="infoEarth"></span></div>
-        <div><span class="label">ضوءه بيوصلنا بعد</span><span id="infoLight"></span></div>
+        <div><span class="label" data-t="fromSun"></span><span id="infoSun"></span></div>
+        <div><span class="label" data-t="fromEarth"></span><span id="infoEarth"></span></div>
+        <div><span class="label" data-t="lightTime"></span><span id="infoLight"></span></div>
       </div>
     </div>
   </div>
@@ -56,35 +62,35 @@ app.innerHTML = `
   <div class="card controls">
     <div class="row">
       <button id="play" type="button"></button>
-      <button id="now" type="button">هلأ</button>
-      <label>السرعة <select id="speed">
-        ${SPEEDS.map((s, i) => `<option value="${i}">${s.label}</option>`).join('')}
+      <button id="now" type="button" data-t="now"></button>
+      <label><span data-t="speed"></span> <select id="speed">
+        ${SPEED_DAYS.map((_, i) => `<option value="${i}"></option>`).join('')}
       </select></label>
-      <label>العرض <select id="view">
-        ${(Object.keys(VIEWS) as ViewMode[]).map((m) => `<option value="${m}">${VIEWS[m].label}</option>`).join('')}
+      <label><span data-t="view"></span> <select id="view">
+        ${VIEW_MODES.map((m) => `<option value="${m}"></option>`).join('')}
       </select></label>
     </div>
     <div class="timeline" dir="ltr">
       <span>1800</span>
       <input id="slider" type="range" min="0" max="${(VALID_TO_MS - VALID_FROM_MS) / DAY_MS}" step="any"
-             aria-label="شريط الزمن">
+             data-aria="timeBar">
       <span>2050</span>
     </div>
     <div class="row">
-      <label>روح لتاريخ <input id="date" type="date" dir="ltr" min="1800-01-01" max="2050-12-31"></label>
+      <label><span data-t="goToDate"></span> <input id="date" type="date" dir="ltr" min="1800-01-01" max="2050-12-31"></label>
     </div>
   </div>
 
   <div class="grid">
     <div class="card">
-      <div class="label">الوقت بالمحاكاة <span id="live" class="badge">مباشر</span></div>
+      <div class="label"><span data-t="simTime"></span> <span id="live" class="badge" data-t="live"></span></div>
       <div class="value" dir="ltr" id="time"></div>
       <div class="sub" dir="ltr" id="jd"></div>
     </div>
     <div class="card" id="check">
-      <div class="label">فحص الدقة بهالتاريخ</div>
+      <div class="label" data-t="check"></div>
       <div class="value" id="checkValue"></div>
-      <div class="sub">أكبر فرق: <span dir="ltr" id="worst"></span></div>
+      <div class="sub"><span data-t="worst"></span> <span dir="ltr" id="worst"></span></div>
     </div>
   </div>
 
@@ -92,16 +98,16 @@ app.innerHTML = `
     <table>
       <thead>
         <tr>
-          <th>الكوكب</th>
-          <th>البعد عن الشمس<br><span dir="ltr">(AU)</span></th>
-          <th>الطول البروجي</th>
-          <th>الفرق مع المرجع</th>
+          <th data-t="colPlanet"></th>
+          <th class="num" data-html="colDistanceHtml"></th>
+          <th class="num" data-t="colLongitude"></th>
+          <th class="num" data-t="colError"></th>
         </tr>
       </thead>
       <tbody>
         ${PLANETS.map((p) => `
           <tr data-id="${p.id}">
-            <td>${p.nameAr}</td>
+            <td id="n-${p.id}"></td>
             <td dir="ltr" id="d-${p.id}"></td>
             <td dir="ltr" id="l-${p.id}"></td>
             <td dir="ltr" id="e-${p.id}"></td>
@@ -128,16 +134,15 @@ const clock = {
   ms: Date.now(),
   live: true,      // follow real time
   playing: false,  // run the simulation at clock.speed
-  speed: SPEEDS[1].days,
+  speed: SPEED_DAYS[1],
 };
 speedSel.value = '1';
 
 function setPlaying(on: boolean) {
   clock.playing = on;
   if (on) clock.live = false;
-  playBtn.textContent = on ? '⏸ إيقاف' : '▶ تشغيل';
+  playBtn.textContent = on ? t().pause : t().play;
 }
-setPlaying(false);
 
 function jumpTo(ms: number) {
   clock.ms = clamp(ms);
@@ -146,7 +151,7 @@ function jumpTo(ms: number) {
 
 playBtn.addEventListener('click', () => setPlaying(!clock.playing));
 nowBtn.addEventListener('click', () => { setPlaying(false); clock.live = true; });
-speedSel.addEventListener('change', () => { clock.speed = SPEEDS[Number(speedSel.value)].days; });
+speedSel.addEventListener('change', () => { clock.speed = SPEED_DAYS[Number(speedSel.value)]; });
 
 let dragging = false;
 slider.addEventListener('pointerdown', () => { dragging = true; });
@@ -161,24 +166,14 @@ function setView(mode: ViewMode) {
   orrery.mode = mode;
   orrery.zoom = 1;
   if (scene3d) { scene3d.mode = mode; scene3d.resetCamera(); }
-  $('caption').textContent = VIEWS[mode].caption;
+  $('caption').textContent = t().views[mode].caption;
 }
 viewSel.addEventListener('change', () => setView(viewSel.value as ViewMode));
-setView('compressed');
 
 // ---------- 3D scene or 2D map ----------
 
 type Kind = '3d' | '2d';
 let kind: Kind = '3d';
-
-const HOWTO: Record<Kind, string> = {
-  '3d': 'اسحب لتلفّ المشهد، ودولاب الماوس أو إصبعين بيكبّروا، ودبل كليك أو ↺ بيرجّع. '
-    + 'اختار كوكب واكبس «لاحق» لتلحقه الكاميرا حتى والزمن ماشي. '
-    + 'الخطوط النازلة من الكواكب بتورجي قديش الكوكب فوق أو تحت مستوى مدار الأرض. '
-    + 'الدواير هي البعد بالوحدة الفلكية. أحجام الكواكب مو حقيقية.',
-  '2d': 'منظر من فوق، والكواكب بتدور عكس عقارب الساعة. أحجام الكواكب مو حقيقية. '
-    + 'الأرقام على الدواير هي البعد بالوحدة الفلكية. دولاب الماوس بيكبّر، ودبل كليك بيرجّع.',
-};
 
 function show(k: Kind) {
   kind = k;
@@ -186,7 +181,7 @@ function show(k: Kind) {
   $('sky').hidden = k !== '2d';
   $('tab3d').setAttribute('aria-selected', String(k === '3d'));
   $('tab2d').setAttribute('aria-selected', String(k === '2d'));
-  $('howto').textContent = HOWTO[k];
+  $('howto').textContent = k === '3d' ? t().howto3d : t().howto2d;
   if (k === '3d' && !scene3d) void load3d();
 }
 
@@ -205,14 +200,13 @@ async function load3d() {
     console.error(err);
     loading3d = false;
     $<HTMLButtonElement>('tab3d').disabled = true;
-    $('tab3d').title = 'المتصفح هون ما بيدعم العرض ثلاثي الأبعاد';
+    $('tab3d').title = t().no3d;
     show('2d');
   }
 }
 
 $('tab3d').addEventListener('click', () => show('3d'));
 $('tab2d').addEventListener('click', () => show('2d'));
-show('3d');
 
 // ---------- Selecting a planet ----------
 
@@ -238,23 +232,7 @@ document.querySelectorAll<HTMLTableRowElement>('tr[data-id]').forEach((tr) => {
 });
 
 const fmtDistance = (au: number) =>
-  `<span dir="ltr">${au.toFixed(3)} AU</span> · <span dir="ltr">${(au * AU_KM / 1e6).toFixed(1)}</span> مليون كم`;
-
-function fmtLightTime(au: number): string {
-  const minutes = au * LIGHT_SECONDS_PER_AU / 60;
-  if (minutes < 60) return `${minutes.toFixed(1)} دقيقة`;
-  const h = Math.floor(minutes / 60);
-  const m = Math.round(minutes - h * 60);
-  return m === 0 ? arabicCount(h, 'ساعة', 'ساعتين', 'ساعات')
-    : `${arabicCount(h, 'ساعة', 'ساعتين', 'ساعات')} و${arabicCount(m, 'دقيقة', 'دقيقتين', 'دقائق')}`;
-}
-
-/** Arabic counting: 1 ساعة, 2 ساعتين, 3-10 ساعات, 11+ ساعة. */
-function arabicCount(n: number, one: string, two: string, few: string): string {
-  if (n === 1) return one;
-  if (n === 2) return two;
-  return `${n} ${n >= 3 && n <= 10 ? few : one}`;
-}
+  `<span dir="ltr">${num(au, 3)} ${t().au}</span> · <span dir="ltr">${num(au * AU_KM / 1e6, 1)}</span> ${t().millionKm}`;
 
 function updateInfo(bodies: BodyFrame[]) {
   const sel = bodies.find((b) => b.id === orrery.selected);
@@ -269,12 +247,45 @@ function updateInfo(bodies: BodyFrame[]) {
   $('infoSun').innerHTML = fmtDistance(distance(sel.pos));
   if (sel.id === 'earth') {
     $('infoEarth').textContent = '—';
-    $('infoLight').textContent = 'نحنا هون 🙂';
+    $('infoLight').textContent = t().weAreHere;
   } else {
     $('infoEarth').innerHTML = fmtDistance(toEarth);
-    $('infoLight').textContent = fmtLightTime(toEarth);
+    $('infoLight').textContent = t().light(toEarth * LIGHT_SECONDS_PER_AU / 60);
   }
 }
+
+// ---------- Language ----------
+
+function applyLanguage(l: Lang) {
+  setLang(l);
+  const s = t();
+  document.documentElement.lang = l;
+  document.documentElement.dir = langInfo().dir;
+  document.title = `Solar Twin · ${s.title}`;
+
+  document.querySelectorAll<HTMLElement>('[data-t]').forEach((el) => { el.textContent = s[el.dataset.t as TextKey]; });
+  document.querySelectorAll<HTMLElement>('[data-html]').forEach((el) => { el.innerHTML = s[el.dataset.html as TextKey]; });
+  document.querySelectorAll<HTMLElement>('[data-aria]').forEach((el) => {
+    el.setAttribute('aria-label', s[el.dataset.aria as TextKey]);
+  });
+  speedSel.querySelectorAll('option').forEach((o, i) => { o.textContent = s.speeds[i]; });
+  viewSel.querySelectorAll('option').forEach((o) => { o.textContent = s.views[o.value as ViewMode].label; });
+  for (const p of PLANETS) $(`n-${p.id}`).textContent = s.planets[p.id];
+  document.querySelectorAll<HTMLButtonElement>('[data-lang]').forEach((b) => {
+    b.setAttribute('aria-pressed', String(b.dataset.lang === l));
+  });
+  if ($<HTMLButtonElement>('tab3d').disabled) $('tab3d').title = s.no3d;
+
+  setPlaying(clock.playing);
+  $('caption').textContent = s.views[orrery.mode].caption;
+  $('howto').textContent = kind === '3d' ? s.howto3d : s.howto2d;
+  scene3d?.refreshTexts();
+  lastPanels = -Infinity;
+}
+
+document.querySelectorAll<HTMLButtonElement>('[data-lang]').forEach((b) => {
+  b.addEventListener('click', () => applyLanguage(b.dataset.lang as Lang));
+});
 
 // ---------- Panels (updated a few times per second) ----------
 
@@ -284,7 +295,7 @@ function updatePanels(date: Date, bodies: BodyFrame[]) {
   updateInfo(bodies);
   const jd = toJulianDate(date);
   $('time').textContent = date.toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
-  $('jd').textContent = `JD ${jd.toFixed(5)}`;
+  $('jd').textContent = `JD ${num(jd, 5)}`;
   $('live').hidden = !clock.live;
   if (document.activeElement !== dateInput) dateInput.value = date.toISOString().slice(0, 10);
 
@@ -293,16 +304,22 @@ function updatePanels(date: Date, bodies: BodyFrame[]) {
     const ref = referencePosition(b.id, date);
     const err = Math.abs(wrap180(longitude(b.pos) - longitude(ref)));
     worst = Math.max(worst, err);
-    $(`d-${b.id}`).textContent = distance(b.pos).toFixed(3);
-    $(`l-${b.id}`).textContent = `${longitude(b.pos).toFixed(2)}°`;
-    $(`e-${b.id}`).textContent = `${err.toFixed(3)}°`;
+    $(`d-${b.id}`).textContent = num(distance(b.pos), 3);
+    $(`l-${b.id}`).textContent = `${num(longitude(b.pos), 2)}°`;
+    $(`e-${b.id}`).textContent = `${num(err, 3)}°`;
   }
 
   const ok = jdOk && worst < MAX_ERROR_DEG;
   $('check').className = `card ${ok ? 'ok' : 'bad'}`;
-  $('checkValue').textContent = ok ? 'ناجح ✓' : 'فاشل ✗';
-  $('worst').textContent = `${worst.toFixed(3)}°`;
+  $('checkValue').textContent = ok ? t().passed : t().failed;
+  $('worst').textContent = `${num(worst, 3)}°`;
 }
+
+// ---------- Start ----------
+
+applyLanguage(lang());
+setView('compressed');
+show('3d');
 
 // ---------- Animation loop ----------
 
@@ -321,9 +338,10 @@ function frame(now: number) {
 
   const date = new Date(clock.ms);
   const T = centuriesSinceJ2000(toJulianDate(date));
+  const names = t().planets;
   const bodies: BodyFrame[] = PLANETS.map((p) => ({
     id: p.id,
-    name: p.nameAr,
+    name: names[p.id],
     pos: heliocentricPosition(p, T),
     orbit: orbitPath(p, T),
   }));

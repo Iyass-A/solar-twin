@@ -6,9 +6,8 @@ import type { Vec3 } from '../astro/kepler';
 
 export type ViewMode = 'compressed' | 'true' | 'inner';
 
+// The names and captions of the views are in src/i18n.ts.
 export interface ViewInfo {
-  label: string;
-  caption: string;
   rMax: number;        // au shown at the edge (zoom 1)
   compressed: boolean; // square-root distances: true directions, squeezed distances
   rings: number[];     // distance rings to draw [au]
@@ -16,18 +15,12 @@ export interface ViewInfo {
 
 export const VIEWS: Record<ViewMode, ViewInfo> = {
   compressed: {
-    label: 'كل الكواكب، مسافات مضغوطة',
-    caption: 'المسافات مضغوطة لحتى يبينوا كل الكواكب، بس الاتجاهات صحيحة.',
     rMax: 31, compressed: true, rings: [1, 5, 10, 20, 30],
   },
   true: {
-    label: 'كل الكواكب، مسافات حقيقية',
-    caption: 'المسافات حقيقية. الكواكب الداخلية بتبين قريبة كتير من الشمس.',
     rMax: 31, compressed: false, rings: [5, 10, 20, 30],
   },
   inner: {
-    label: 'الكواكب الداخلية، مسافات حقيقية',
-    caption: 'المسافات حقيقية، لحد مدار المريخ.',
     rMax: 1.75, compressed: false, rings: [0.5, 1, 1.5],
   },
 };

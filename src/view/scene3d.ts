@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { PlanetId } from '../astro/elements';
 import { SATURN_POLE } from '../astro/poles';
+import { t } from '../i18n';
 import { VIEWS, COLORS, radialScale, sceneAxes, toScene, type BodyFrame, type ViewInfo, type ViewMode } from './views';
 
 const R = 100;           // scene units at the edge of the view (view.rMax)
@@ -76,6 +77,7 @@ export class Scene3D {
   private readonly tmp2 = new THREE.Vector3();
   private followText = '';
   private readonly followBtn: HTMLButtonElement;
+  private readonly resetBtn: HTMLButtonElement;
   private readonly names = new Map<PlanetId, string>();
   private sel: PlanetId | null = null;
   private following: PlanetId | null = null;
@@ -113,8 +115,8 @@ export class Scene3D {
     reset.type = 'button';
     reset.className = 'reset3d';
     reset.textContent = '↺';
-    reset.title = reset.ariaLabel = 'رجّع المنظر';
     reset.addEventListener('click', () => this.resetCamera());
+    this.resetBtn = reset;
 
     this.followBtn = document.createElement('button');
     this.followBtn.type = 'button';
@@ -127,7 +129,6 @@ export class Scene3D {
 
     host.replaceChildren(this.renderer.domElement, this.overlay, reset, this.followBtn);
     const canvas = this.renderer.domElement;
-    canvas.setAttribute('aria-label', 'مشهد ثلاثي الأبعاد للكواكب حول الشمس');
 
     // Light from the Sun (no fall-off with distance) and a little fill light for the night sides
     const light = new THREE.PointLight('#ffffff', 3.2, 0, 0);
@@ -186,6 +187,16 @@ export class Scene3D {
     new ResizeObserver(() => this.resize(host)).observe(host);
     this.resize(host);
     this.resetCamera();
+    this.refreshTexts();
+  }
+
+  /** After a language change: button texts, screen-reader labels and the grid labels. */
+  refreshTexts() {
+    const s = t();
+    this.renderer.domElement.setAttribute('aria-label', s.sceneAria);
+    this.resetBtn.title = this.resetBtn.ariaLabel = s.resetView;
+    this.gridFor = null;   // rebuilt with the new "equinox" next frame
+    this.followText = '';  // follow button rewritten next frame
   }
 
   /** Back to the starting angle, with the whole view in the picture. Stops following. */
@@ -256,7 +267,7 @@ export class Scene3D {
 
   /** The button shows only with a selected planet: "follow <name>", or "stop" while following. */
   private updateFollowButton() {
-    const text = this.following ? 'وقّف الملاحقة' : this.sel ? `لاحق ${this.names.get(this.sel) ?? ''}` : '';
+    const text = this.following ? t().stopFollow : this.sel ? t().follow(this.names.get(this.sel) ?? '') : '';
     if (text === this.followText) return;
     this.followText = text;
     this.followBtn.hidden = !text;
@@ -285,7 +296,7 @@ export class Scene3D {
 
     for (const b of bodies) {
       const p = this.planets.get(b.id)!;
-      if (!p.label.el.textContent) { this.setText(p.label, b.name); this.names.set(b.id, b.name); }
+      if (p.label.el.textContent !== b.name) { this.setText(p.label, b.name); this.names.set(b.id, b.name); }
 
       const [x, y, z] = toScene(b.pos, view, R);
       p.mesh.position.set(x, y, z);
@@ -382,7 +393,7 @@ export class Scene3D {
     );
     axis.computeLineDistances();
     this.grid.add(axis);
-    this.gridLabels.push({ pos: new THREE.Vector3(end, 0, 0), label: this.label('الاعتدال', 'dim') });
+    this.gridLabels.push({ pos: new THREE.Vector3(end, 0, 0), label: this.label(t().equinox, 'dim') });
   }
 
   private label(text: string, cls = ''): Label {
