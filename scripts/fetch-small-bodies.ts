@@ -20,6 +20,13 @@
 // APIs: https://ssd-api.jpl.nasa.gov/doc/sbdb.html and https://ssd-api.jpl.nasa.gov/doc/horizons.html
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { smallBodyPosition } from '../src/astro/smallbody';
+
+// Our Sun-only orbits drift from the real ones over the years. Each body gets a window around the
+// standard epoch where our position stays within VALID_DEG of Horizons; the site shows it only there.
+const VALID_DEG = 1;
+const LONG_STEP_DAYS = 1826;  // about 5 years
+const LONG_STEPS = 5;         // 5 steps each way: about 25 years
 
 const SBDB = 'https://ssd-api.jpl.nasa.gov/sbdb.api';
 const HORIZONS = 'https://ssd.jpl.nasa.gov/api/horizons.api';
@@ -119,6 +126,12 @@ async function horizonsVectors(command: string, from: number, to: number, stepDa
     jd: rows.map((r) => Number(r[0])),
     pos: rows.map((r) => [Number(r[2]), Number(r[3]), Number(r[4])]),
   };
+}
+
+/** Angle [deg] between two directions seen from the Sun. */
+function separationDeg(a: { x: number; y: number; z: number }, b: number[]): number {
+  const c = (a.x * b[0] + a.y * b[1] + a.z * b[2]) / (Math.hypot(a.x, a.y, a.z) * Math.hypot(b[0], b[1], b[2]));
+  return Math.acos(Math.min(1, Math.max(-1, c))) * 180 / Math.PI;
 }
 
 /** Osculating heliocentric ecliptic J2000 elements from Horizons at one Julian date (TDB). */
@@ -277,12 +290,28 @@ for (const b of bodies) {
     // and at the covariance epoch
     const ref = await horizonsVectors(command, standardEpoch - 365, standardEpoch + 365, 365);
     const atCov = b.cov ? await horizonsVectors(command, b.cov.epoch, b.cov.epoch + 1, 1) : null;
+    const span = LONG_STEPS * LONG_STEP_DAYS;
+    const long = await horizonsVectors(command, standardEpoch - span, standardEpoch + span, LONG_STEP_DAYS);
     reference.push({
       spkid: b.spkid, query: b.query, ...ref,
       covJd: atCov ? atCov.jd[0] : null,
       covPos: atCov ? atCov.pos[0] : null,
+      longJd: long.jd,
+      longPos: long.pos,
     });
-    console.log(`  ${ref.target}: ${ref.jd.length} positions` + (atCov ? ' + 1 at the covariance epoch' : ''));
+
+    // Validity window: from the epoch outwards, as long as every sample stays within VALID_DEG
+    const samples = [...ref.jd.map((jd, k) => ({ jd, pos: ref.pos[k] })), ...long.jd.map((jd, k) => ({ jd, pos: long.pos[k] }))]
+      .map((sm) => ({ jd: sm.jd, err: separationDeg(smallBodyPosition(b, sm.jd), sm.pos) }))
+      .sort((x, y) => x.jd - y.jd);
+    let validFrom = standardEpoch, validTo = standardEpoch;
+    for (const sm of samples.filter((x) => x.jd >= standardEpoch)) { if (sm.err > VALID_DEG) break; validTo = sm.jd; }
+    for (const sm of samples.filter((x) => x.jd <= standardEpoch).reverse()) { if (sm.err > VALID_DEG) break; validFrom = sm.jd; }
+    b.validFrom = validFrom;
+    b.validTo = validTo;
+    const yr = (jd: number) => (2000 + (jd - 2451545) / 365.25).toFixed(1);
+    console.log(`  ${ref.target}: ${ref.jd.length + long.jd.length} positions` + (atCov ? ' + 1 at the covariance epoch' : '') +
+      `; within ${VALID_DEG}° from ${yr(validFrom)} to ${yr(validTo)}; errors ${samples.map((x) => x.err.toFixed(2)).join(' ')}`);
   } catch (err) {
     problems.push(`${b.query}: Horizons failed: ${(err as Error).message.split('\n')[0]}`);
     console.log(`  Horizons failed: ${(err as Error).message}`);
@@ -298,7 +327,8 @@ writeFileSync('src/data/small-bodies.json', JSON.stringify({
   fetched,
   standardEpoch,
   note: 'Angles in degrees, q in au, tp and epoch as Julian days (TDB). Covariance in au, deg, days; labels name the rows. '
-    + 'elementsFrom tells where the current elements come from: SBDB at its standard epoch, or Horizons there.',
+    + 'elementsFrom tells where the current elements come from: SBDB at its standard epoch, or Horizons there. '
+    + `validFrom/validTo: Julian days between which our Sun-only position stays within ${VALID_DEG}° of Horizons (sampled every ~5 years).`,
   bodies,
 }, null, 1));
 writeFileSync('scripts/reference/small-bodies-horizons.json', JSON.stringify({
