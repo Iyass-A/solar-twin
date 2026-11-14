@@ -25,7 +25,7 @@ concurrency:
 jobs:
   fetch:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 240 # about 5,000 requests, one at a time
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -38,13 +38,15 @@ jobs:
         run: npx tsx scripts/count-small-bodies.ts data/small-body-groups.json
       - name: Fetch
         if: inputs.mode != 'count'
-        run: npx tsx scripts/fetch-small-bodies.ts data/small-bodies.txt
+        run: |
+          set -o pipefail
+          npx tsx scripts/fetch-small-bodies.ts data/small-bodies.txt data/small-body-groups.json | tee scripts/reference/fetch-log.txt
       - name: Push the result to the data-update branch
         if: inputs.mode != 'count'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B data-update
-          git add src/data/small-bodies.json scripts/reference/small-bodies-horizons.json
+          git add src/data/small-bodies.json public/data/cov scripts/reference/small-bodies-horizons.json scripts/reference/fetch-log.txt
           git commit -m "Small-body data from JPL SBDB and Horizons ($(date -u +%Y-%m-%d))"
           git push --force origin data-update
