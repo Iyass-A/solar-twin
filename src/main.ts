@@ -189,7 +189,15 @@ function fmtLightTime(au: number): string {
   if (minutes < 60) return `${minutes.toFixed(1)} دقيقة`;
   const h = Math.floor(minutes / 60);
   const m = Math.round(minutes - h * 60);
-  return `${h} ساعة و${m} دقيقة`;
+  return m === 0 ? arabicCount(h, 'ساعة', 'ساعتين', 'ساعات')
+    : `${arabicCount(h, 'ساعة', 'ساعتين', 'ساعات')} و${arabicCount(m, 'دقيقة', 'دقيقتين', 'دقائق')}`;
+}
+
+/** Arabic counting: 1 ساعة, 2 ساعتين, 3-10 ساعات, 11+ ساعة. */
+function arabicCount(n: number, one: string, two: string, few: string): string {
+  if (n === 1) return one;
+  if (n === 2) return two;
+  return `${n} ${n >= 3 && n <= 10 ? few : one}`;
 }
 
 function updateInfo(bodies: BodyFrame[]) {
