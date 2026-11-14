@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Licensed under the GNU AGPL v3.0 or later (`LICENSE`). Copyright (C) 2026 Iyass-A.
+- Data for 36 asteroids, dwarf planets and comets from JPL: current orbits, plus each orbit's covariance (its uncertainty) for the coming uncertainty clouds. A GitHub workflow fetches them; `npm run check` compares our positions with JPL Horizons (largest difference a year from the epoch: 0.15°). Not shown on the site yet.
 - The page links to its source code, and the licence notices of three.js, Astronomy Engine and the star data are published with it (`THIRD-PARTY-LICENSES.txt`).
 
 ## v0.2.0 (14 November 2026), public beta

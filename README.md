@@ -35,6 +35,8 @@ That is plenty for seeing where the planets are, but it is not meant for pointin
 | Kepler's equation, positions and orbits | `src/astro/kepler.ts` |
 | Equatorial to ecliptic coordinates | `src/astro/frames.ts` |
 | Saturn's pole (IAU) | `src/astro/poles.ts` |
+| Asteroid and comet orbits (Sun only, any eccentricity below 1) | `src/astro/smallbody.ts` |
+| Fetching asteroid and comet data from JPL (runs on GitHub) | `scripts/fetch-small-bodies.ts`, `.github/workflows/fetch-small-bodies.yml` |
 | 2D map (canvas) | `src/view/orrery.ts` |
 | 3D scene (Three.js) and the stars | `src/view/scene3d.ts`, `src/view/stars.ts` |
 | Texts in three languages | `src/i18n.ts` |
@@ -67,6 +69,7 @@ Every push to `main` runs the checks, builds the site and publishes it to GitHub
 - Accuracy check: [Astronomy Engine](https://github.com/cosinekitty/astronomy) by Don Cross (MIT)
 - Saturn's pole: Archinal et al. 2018, [Report of the IAU Working Group on Cartographic Coordinates and Rotational Elements: 2015](https://doi.org/10.1007/s10569-017-9805-5)
 - Stars: Yale Bright Star Catalogue, 5th revised edition (Hoffleit & Warren 1991), in the [JSON conversion by Bretton Wade](https://github.com/brettonw/YaleBrightStarCatalog) (MIT). `scripts/make-stars.ts` turns it into `src/data/stars.json`.
+- Asteroids and comets: orbits and their covariance from the [JPL Small-Body Database](https://ssd-api.jpl.nasa.gov/doc/sbdb.html), checked against [JPL Horizons](https://ssd.jpl.nasa.gov/horizons/). The list is in `data/small-bodies.txt`; the "Fetch small-body data" workflow refreshes it into the branch `data-update` for review.
 - 3D: [Three.js](https://threejs.org/) (MIT)
 
 Their licence notices are collected in `public/THIRD-PARTY-LICENSES.txt`, which is published with the site.

@@ -11,6 +11,10 @@ import { VIEWS, toScene } from '../src/view/views';
 import { SATURN_POLE } from '../src/astro/poles';
 import { equatorialToEcliptic, eclipticLatitude } from '../src/astro/frames';
 import starFile from '../src/data/stars.json' with { type: 'json' };
+import smallFile from '../src/data/small-bodies.json' with { type: 'json' };
+import smallRef from './reference/small-bodies-horizons.json' with { type: 'json' };
+import { smallBodyPosition, type SmallBodyOrbit } from '../src/astro/smallbody';
+import { readFileSync } from 'node:fs';
 import { STRINGS, LANGS } from '../src/i18n';
 
 const MAX_ERROR_DEG = 1;
@@ -127,7 +131,66 @@ if (!near(betaRegulus, 0.46, 0.02) || !near(betaSpica, -2.05, 0.02)) {
 failed ||= !starsOk;
 console.log(`Stars: ${starCount} up to magnitude ${starFile.magLimit}, Sirius first, Regulus at ${betaRegulus.toFixed(2)}° from the ecliptic: ${starsOk ? 'OK' : 'FAIL'}`);
 
-// 8. Languages: every text exists in all three, and the light time reads right in each
+// 8. Asteroids and comets: our Kepler positions against JPL Horizons, and the covariance matrices
+let smallOk = true;
+const listed = readFileSync('data/small-bodies.txt', 'utf8').split('\n').map((l) => l.replace(/#.*/, '').trim()).filter(Boolean);
+const sbodies = smallFile.bodies as (SmallBodyOrbit & {
+  short: string; spkid: string; query: string; elementsFrom: string;
+  cov: { epoch: number; elements: Omit<SmallBodyOrbit, 'epoch'>; labels: string[]; matrix: number[][] } | null;
+})[];
+if (sbodies.length !== listed.length || listed.some((q) => !sbodies.some((b) => b.query === q))) {
+  smallOk = false; console.log(`  data/small-bodies.txt lists ${listed.length} bodies, the data file has ${sbodies.length}: run the fetch workflow`);
+}
+const separation = (a: { x: number; y: number; z: number }, b: number[]) => {
+  const c = (a.x * b[0] + a.y * b[1] + a.z * b[2]) / (Math.hypot(a.x, a.y, a.z) * Math.hypot(b[0], b[1], b[2]));
+  return Math.acos(Math.min(1, Math.max(-1, c))) * 180 / Math.PI;
+};
+const worstAt = { now: { v: 0, who: '' }, year: { v: 0, who: '' }, cov: { v: 0, who: '' } };
+const note = (k: keyof typeof worstAt, v: number, who: string) => { if (v > worstAt[k].v) worstAt[k] = { v, who }; };
+let withCov = 0;
+let covBad = 0;
+for (const b of sbodies) {
+  if (!(b.e < 1) || b.epoch !== smallFile.standardEpoch) { smallOk = false; console.log(`  ${b.short}: e ${b.e}, epoch ${b.epoch}`); }
+  const r = smallRef.reference.find((x) => x.spkid === b.spkid);
+  if (!r) { smallOk = false; console.log(`  ${b.short}: no Horizons reference`); continue; }
+  r.jd.forEach((jd, k) => note(k === 1 ? 'now' : 'year', separation(smallBodyPosition(b, jd), r.pos[k]), b.short));
+  if (!b.cov) continue;
+  withCov++;
+  if (r.covJd && r.covPos) note('cov', separation(smallBodyPosition({ ...b.cov.elements, epoch: b.cov.epoch }, r.covJd), r.covPos), b.short);
+  // The covariance must be usable for uncertainty clouds: right labels, symmetric, positive definite
+  const C = b.cov.matrix, n = C.length;
+  if (b.cov.labels.slice(0, 6).join() !== 'e,q,tp,node,peri,i' || C.some((row) => row.length !== n)) {
+    smallOk = false; console.log(`  ${b.short}: covariance labels ${b.cov.labels.join()}`);
+  }
+  const R = C.map((row, i) => row.map((v, j) => v / Math.sqrt(C[i][i] * C[j][j]))); // correlations
+  const L: number[][] = R.map(() => new Array(n).fill(0));
+  let definite = true;
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j <= i; j++) {
+      if (C[i][j] !== C[j][i]) { smallOk = false; console.log(`  ${b.short}: covariance not symmetric`); }
+      let sum = R[i][j];
+      for (let k = 0; k < j; k++) sum -= L[i][k] * L[j][k];
+      if (i === j) {
+        if (!(sum > 0)) definite = false;
+        L[i][i] = Math.sqrt(Math.max(sum, 0));
+      } else {
+        L[i][j] = sum / (L[j][j] || 1);
+      }
+    }
+  }
+  if (!definite) { smallOk = false; covBad++; console.log(`  ${b.short}: covariance not positive definite`); }
+}
+// At the standard epoch both use the same elements, so only rounding may differ.
+// A year away the planets' pull shows, which our Sun-only orbits leave out.
+if (worstAt.now.v > 0.001 || worstAt.cov.v > 0.001 || worstAt.year.v > 0.5) smallOk = false;
+failed ||= !smallOk;
+console.log(`\nAsteroids and comets: ${sbodies.length} bodies, ${withCov} with covariance (${covBad ? `${covBad} NOT positive definite` : 'all positive definite'}), against JPL Horizons:`);
+console.log(`  at the standard epoch (JD ${smallFile.standardEpoch})  ${worstAt.now.v.toExponential(1)}°  (${worstAt.now.who})  limit 0.001°`);
+console.log(`  a year before or after            ${worstAt.year.v.toFixed(3)}°  (${worstAt.year.who})  limit 0.5°`);
+console.log(`  covariance elements at their epoch ${worstAt.cov.v.toExponential(1)}°  (${worstAt.cov.who})  limit 0.001°`);
+console.log(`  ${smallOk ? 'OK' : 'FAIL'}`);
+
+// 9. Languages: every text exists in all three, and the light time reads right in each
 let langOk = true;
 function sameShape(a: unknown, b: unknown, path: string, l: string) {
   if (typeof a !== typeof b || Array.isArray(a) !== Array.isArray(b)) {
