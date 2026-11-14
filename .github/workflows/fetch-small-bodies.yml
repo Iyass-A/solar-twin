@@ -12,7 +12,7 @@ on:
       mode:
         description: "count: only count the bodies in each group (quick, nothing is pushed); full: fetch everything"
         type: choice
-        options: [full, count]
+        options: [full, count, probe]
         default: full
 
 permissions:
@@ -36,13 +36,16 @@ jobs:
       - name: Count only
         if: inputs.mode == 'count'
         run: npx tsx scripts/count-small-bodies.ts data/small-body-groups.json
+      - name: Probe the SBDB API (temporary diagnosis)
+        if: inputs.mode == 'probe'
+        run: npx tsx scripts/probe-sbdb.ts
       - name: Fetch
-        if: inputs.mode != 'count'
+        if: inputs.mode == 'full'
         run: |
           set -o pipefail
           npx tsx scripts/fetch-small-bodies.ts data/small-bodies.txt data/small-body-groups.json | tee scripts/reference/fetch-log.txt
       - name: Push the result to the data-update branch
-        if: inputs.mode != 'count'
+        if: inputs.mode == 'full'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
