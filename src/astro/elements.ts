@@ -7,6 +7,10 @@
 // w: longitude of perihelion [deg]   O: longitude of ascending node [deg]
 // Each value has a rate per Julian century.
 
+/** Table 1 is valid from 1800 AD to 2050 AD (UTC milliseconds, for the time slider). */
+export const VALID_FROM_MS = Date.UTC(1800, 0, 1);
+export const VALID_TO_MS = Date.UTC(2050, 11, 31);
+
 export type PlanetId =
   | 'mercury' | 'venus' | 'earth' | 'mars'
   | 'jupiter' | 'saturn' | 'uranus' | 'neptune';

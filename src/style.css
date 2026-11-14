@@ -12,7 +12,7 @@ body {
 }
 
 #app {
-  width: min(560px, 100% - 32px);
+  width: min(860px, 100% - 32px);
   padding: 32px 0;
 }
 
@@ -77,3 +77,83 @@ td {
 td[dir="ltr"] {
   text-align: right;
 }
+
+/* ---------- Step 3: map and time controls ---------- */
+
+.card.sky {
+  padding: 0;
+  overflow: hidden;
+  background: #070912;
+}
+
+#sky {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  max-height: 78vh;
+  touch-action: manipulation;
+}
+
+.caption {
+  color: #9aa0b4;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  margin: -4px 4px 14px;
+}
+
+.controls .row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+
+.controls label {
+  color: #9aa0b4;
+  font-size: 0.9rem;
+}
+
+button, select, input[type="date"] {
+  font: inherit;
+  font-size: 0.95rem;
+  color: #e8e8f0;
+  background: #262c45;
+  border: 1px solid #3a4166;
+  border-radius: 8px;
+  padding: 6px 12px;
+}
+
+button { cursor: pointer; }
+button:hover { background: #2f3656; }
+
+.timeline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0;
+  color: #9aa0b4;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline input {
+  flex: 1;
+  accent-color: #4f9dff;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0 12px;
+}
+
+.badge {
+  background: #2e7d4f;
+  color: #fff;
+  font-size: 0.75rem;
+  border-radius: 6px;
+  padding: 1px 7px;
+  margin-inline-start: 6px;
+}
+
+.badge[hidden] { display: none; }
