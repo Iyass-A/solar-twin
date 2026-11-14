@@ -134,6 +134,43 @@ function separationDeg(a: { x: number; y: number; z: number }, b: number[]): num
   return Math.acos(Math.min(1, Math.max(-1, c))) * 180 / Math.PI;
 }
 
+/**
+ * Horizons' own formal position uncertainty at one Julian date (TDB), computed with full dynamics
+ * from the same covariance: XYZ and along-track / cross-track / normal components (VEC_TABLE 1xa).
+ * Returns every column by name, plus Horizons' explanation of the columns.
+ */
+async function horizonsUncertainty(command: string, jd: number) {
+  const params = new URLSearchParams({
+    format: 'json',
+    COMMAND: `'${command}'`,
+    OBJ_DATA: "'NO'",
+    MAKE_EPHEM: "'YES'",
+    EPHEM_TYPE: "'VECTORS'",
+    CENTER: "'500@10'",
+    REF_PLANE: "'ECLIPTIC'",
+    REF_SYSTEM: "'ICRF'",
+    VEC_TABLE: "'1xa'",
+    OUT_UNITS: "'KM-S'",
+    CSV_FORMAT: "'YES'",
+    TIME_TYPE: "'TDB'",
+    START_TIME: `'JD ${jd.toFixed(5)}'`,
+    STOP_TIME: `'JD ${(jd + 1).toFixed(5)}'`,
+    STEP_SIZE: "'1 d'",
+  });
+  const data = await getJson(`${HORIZONS}?${params}`);
+  const text: string = data.result ?? '';
+  const start = text.indexOf('$$SOE'), end = text.indexOf('$$EOE');
+  if (start < 0 || end < 0) throw new Error(`No uncertainties in Horizons answer:\n${text.slice(0, 600)}`);
+  const header = text.slice(0, start).split('\n').reverse().find((l) => l.includes('JDTDB'));
+  if (!header) throw new Error('No CSV header in Horizons uncertainties');
+  const cols = header.split(',').map((c) => c.trim()).filter(Boolean);
+  const row = text.slice(start + 5, end).trim().split('\n')[0].split(',').map((c) => c.trim());
+  const values: Record<string, number> = {};
+  cols.forEach((c, k) => { if (k !== 1) values[c] = Number(row[k]); });
+  const explanation = text.slice(end + 5).split('\n').filter((l) => /_s|sigma|uncertaint/i.test(l)).join('\n').trim();
+  return { values, explanation };
+}
+
 /** Osculating heliocentric ecliptic J2000 elements from Horizons at one Julian date (TDB). */
 async function horizonsElements(command: string, jd: number) {
   const params = new URLSearchParams({
@@ -182,6 +219,7 @@ const queries = readFileSync(listFile, 'utf8')
 const bodies: any[] = [];
 const reference: any[] = [];
 const problems: string[] = [];
+let sigmaExplanation = '';
 let sbdbVersion: string | null = null;
 
 for (const q of queries) {
@@ -292,12 +330,26 @@ for (const b of bodies) {
     const atCov = b.cov ? await horizonsVectors(command, b.cov.epoch, b.cov.epoch + 1, 1) : null;
     const span = LONG_STEPS * LONG_STEP_DAYS;
     const long = await horizonsVectors(command, standardEpoch - span, standardEpoch + span, LONG_STEP_DAYS);
+    // Horizons' own position uncertainty at the standard epoch, to check our clouds against
+    let sigma: Record<string, number> | null = null;
+    if (b.cov) {
+      try {
+        const u = await horizonsUncertainty(command, standardEpoch);
+        sigma = u.values;
+        if (!sigmaExplanation && u.explanation) { sigmaExplanation = u.explanation; console.log(`  Horizons explains:\n${u.explanation}`); }
+        console.log(`  uncertainty columns: ${Object.entries(u.values).map(([k, v]) => `${k}=${v}`).join(' ')}`);
+      } catch (err) {
+        problems.push(`${b.query}: Horizons uncertainty failed: ${(err as Error).message.split('\n')[0]}`);
+      }
+    }
     reference.push({
       spkid: b.spkid, query: b.query, ...ref,
       covJd: atCov ? atCov.jd[0] : null,
       covPos: atCov ? atCov.pos[0] : null,
       longJd: long.jd,
       longPos: long.pos,
+      sigmaJd: sigma ? standardEpoch : null,
+      sigma,
     });
 
     // Validity window: from the epoch outwards, as long as every sample stays within VALID_DEG
@@ -334,6 +386,7 @@ writeFileSync('src/data/small-bodies.json', JSON.stringify({
 writeFileSync('scripts/reference/small-bodies-horizons.json', JSON.stringify({
   source: 'NASA/JPL Horizons API: heliocentric ecliptic J2000 (ICRF) positions in au, TDB',
   fetched,
+  sigmaNote: 'sigma: Horizons formal position uncertainty at sigmaJd (VEC_TABLE 1xa, km), as Horizons explains it:\n' + sigmaExplanation,
   reference,
 }, null, 1));
 
