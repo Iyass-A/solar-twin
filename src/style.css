@@ -157,3 +157,25 @@ button:hover { background: #2f3656; }
 }
 
 .badge[hidden] { display: none; }
+
+.facts {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.facts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid #262c45;
+  padding-top: 8px;
+}
+
+.facts .label { margin: 0; }
+
+#info [hidden] { display: none; }
+
+tr[data-id] { cursor: pointer; }
+tr[data-id]:hover td { background: #1b2140; }
+tr.selected td { background: #222a50; }

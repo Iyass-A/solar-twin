@@ -1,6 +1,6 @@
 import './style.css';
 import { J2000, toJulianDate, centuriesSinceJ2000 } from './astro/julian';
-import { PLANETS, VALID_FROM_MS, VALID_TO_MS } from './astro/elements';
+import { PLANETS, VALID_FROM_MS, VALID_TO_MS, type PlanetId } from './astro/elements';
 import { heliocentricPosition, orbitPath, longitude, distance, wrap180 } from './astro/kepler';
 import { referencePosition } from './astro/reference';
 import { Orrery, VIEWS, type BodyFrame, type ViewMode } from './view/orrery';
@@ -27,7 +27,7 @@ const clamp = (ms: number) => Math.min(VALID_TO_MS, Math.max(VALID_FROM_MS, ms))
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
   <h1>التوأم الرقمي للمجموعة الشمسية</h1>
-  <p class="step">الخطوة 3: رسم الكواكب وشريط الزمن</p>
+  <p class="step">الخطوة 4: معلومات كل كوكب</p>
 
   <div class="card sky">
     <canvas id="sky" aria-label="خريطة الكواكب حول الشمس"></canvas>
@@ -35,6 +35,18 @@ app.innerHTML = `
   <p class="caption"><span id="caption"></span><br>
     منظر من فوق، والكواكب بتدور عكس عقارب الساعة. أحجام الكواكب مو حقيقية.
     الأرقام على الدواير هي البعد بالوحدة الفلكية. دولاب الماوس بيكبّر، ودبل كليك بيرجّع.</p>
+
+  <div class="card" id="info">
+    <div class="sub" id="infoHint">اكبس على أي كوكب بالخريطة أو بالجدول لتشوف معلوماته.</div>
+    <div id="infoBody" hidden>
+      <div class="value" id="infoName"></div>
+      <div class="facts">
+        <div><span class="label">البعد عن الشمس</span><span id="infoSun"></span></div>
+        <div><span class="label">البعد عن الأرض</span><span id="infoEarth"></span></div>
+        <div><span class="label">ضوءه بيوصلنا بعد</span><span id="infoLight"></span></div>
+      </div>
+    </div>
+  </div>
 
   <div class="card controls">
     <div class="row">
@@ -83,7 +95,7 @@ app.innerHTML = `
       </thead>
       <tbody>
         ${PLANETS.map((p) => `
-          <tr>
+          <tr data-id="${p.id}">
             <td>${p.nameAr}</td>
             <td dir="ltr" id="d-${p.id}"></td>
             <td dir="ltr" id="l-${p.id}"></td>
@@ -147,9 +159,65 @@ function setView(mode: ViewMode) {
 viewSel.addEventListener('change', () => setView(viewSel.value as ViewMode));
 setView('compressed');
 
+// ---------- Selecting a planet ----------
+
+const AU_KM = 149_597_870.7;
+const LIGHT_SECONDS_PER_AU = 499.004784;
+
+function select(id: PlanetId | null) {
+  orrery.selected = id;
+  document.querySelectorAll<HTMLTableRowElement>('tr[data-id]').forEach((tr) => {
+    tr.classList.toggle('selected', tr.dataset.id === id);
+  });
+  lastPanels = -Infinity; // refresh the panels right away
+}
+
+$<HTMLCanvasElement>('sky').addEventListener('click', (ev) => {
+  const box = (ev.target as HTMLCanvasElement).getBoundingClientRect();
+  select(orrery.hitTest(ev.clientX - box.left, ev.clientY - box.top));
+});
+
+document.querySelectorAll<HTMLTableRowElement>('tr[data-id]').forEach((tr) => {
+  tr.addEventListener('click', () => select(tr.dataset.id as PlanetId));
+});
+
+const fmtDistance = (au: number) =>
+  `<span dir="ltr">${au.toFixed(3)} AU</span> · <span dir="ltr">${(au * AU_KM / 1e6).toFixed(1)}</span> مليون كم`;
+
+function fmtLightTime(au: number): string {
+  const minutes = au * LIGHT_SECONDS_PER_AU / 60;
+  if (minutes < 60) return `${minutes.toFixed(1)} دقيقة`;
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes - h * 60);
+  return `${h} ساعة و${m} دقيقة`;
+}
+
+function updateInfo(bodies: BodyFrame[]) {
+  const sel = bodies.find((b) => b.id === orrery.selected);
+  $('infoHint').hidden = !!sel;
+  $('infoBody').hidden = !sel;
+  if (!sel) return;
+
+  const earth = bodies.find((b) => b.id === 'earth')!.pos;
+  const toEarth = Math.hypot(sel.pos.x - earth.x, sel.pos.y - earth.y, sel.pos.z - earth.z);
+
+  $('infoName').textContent = sel.name;
+  $('infoSun').innerHTML = fmtDistance(distance(sel.pos));
+  if (sel.id === 'earth') {
+    $('infoEarth').textContent = '—';
+    $('infoLight').textContent = 'نحنا هون 🙂';
+  } else {
+    $('infoEarth').innerHTML = fmtDistance(toEarth);
+    $('infoLight').textContent = fmtLightTime(toEarth);
+  }
+}
+
 // ---------- Panels (updated a few times per second) ----------
 
+let lastPanels = -Infinity;
+
 function updatePanels(date: Date, bodies: BodyFrame[]) {
+  updateInfo(bodies);
   const jd = toJulianDate(date);
   $('time').textContent = date.toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
   $('jd').textContent = `JD ${jd.toFixed(5)}`;
@@ -175,7 +243,6 @@ function updatePanels(date: Date, bodies: BodyFrame[]) {
 // ---------- Animation loop ----------
 
 let last = performance.now();
-let lastPanels = -Infinity;
 
 function frame(now: number) {
   const dt = Math.min((now - last) / 1000, 0.25); // seconds; capped after a hidden tab

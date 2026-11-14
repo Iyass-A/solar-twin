@@ -61,14 +61,30 @@ const overlaps = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 &
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 40;
 
+// How close a tap must be to a planet to select it [px]
+const HIT_RADIUS = 18;
+
 export class Orrery {
   mode: ViewMode = 'compressed';
   zoom = 1;
+  selected: PlanetId | null = null;
 
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private w = 0;
   private h = 0;
+  private lastScreen: { id: PlanetId; x: number; y: number }[] = [];
+
+  /** The planet nearest to a point on the canvas (CSS pixels), or null if none is close. */
+  hitTest(x: number, y: number): PlanetId | null {
+    let best: PlanetId | null = null;
+    let bestD = HIT_RADIUS;
+    for (const p of this.lastScreen) {
+      const d = Math.hypot(p.x - x, p.y - y);
+      if (d < bestD) { bestD = d; best = p.id; }
+    }
+    return best;
+  }
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -177,6 +193,7 @@ export class Orrery {
 
     // Planets
     const screen = bodies.map((b) => project(b.pos));
+    this.lastScreen = bodies.map((b, i) => ({ id: b.id, x: screen[i][0], y: screen[i][1] }));
     bodies.forEach((b, i) => {
       const [x, y] = screen[i];
       const r = DOT[b.id] ?? 4;
@@ -184,7 +201,16 @@ export class Orrery {
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fill();
-      taken.push({ x0: x - r, y0: y - r, x1: x + r, y1: y + r });
+      if (b.id === this.selected) {
+        // Ring around the selected planet
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(x, y, r + 5, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.lineWidth = 1;
+      }
+      taken.push({ x0: x - r - 5, y0: y - r - 5, x1: x + r + 5, y1: y + r + 5 });
     });
     taken.push({ x0: cx - 6, y0: cy - 6, x1: cx + 6, y1: cy + 6 }); // the Sun
 
