@@ -16,7 +16,12 @@ export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** A warning that GitHub shows on the run's summary page. */
 export const warn = (title: string, msg: string) => console.log(`::warning title=${title}::${msg}`);
 
-export const errText = (err: unknown) => (err instanceof Error ? err.message : String(err));
+/** The error's message, with its cause when Node gives one ("fetch failed" alone says little). */
+export function errText(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  const cause = (err as { cause?: { code?: string; message?: string } }).cause;
+  return cause ? `${err.message} (${cause.code ?? ''} ${cause.message ?? ''})`.replace(/\s+\)/, ')') : err.message;
+}
 
 /** GET JSON. Tries again when the server is busy or the connection drops; not after 400 or 404. */
 export async function getJson(url: string): Promise<any> {

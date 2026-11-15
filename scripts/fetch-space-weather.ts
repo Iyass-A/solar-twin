@@ -31,20 +31,23 @@ async function main() {
   const missing: PartName[] = [];
 
   for (const name of PART_NAMES) {
-    console.log(`${name}: ${urls[name]}`);
-    try {
-      const raw = await getJson(urls[name]);
-      // For review: how the source answered (the start of it)
-      console.log(`  answer starts: ${JSON.stringify(raw).slice(0, 700)}`);
-      const part = { fetchedAt: new Date().toISOString(), data: PARSERS[name](raw) } as never;
-      const problems = partProblems(name, part);
-      if (problems.length) throw new Error(problems.slice(0, 3).join('; '));
-      file[name] = part;
-      console.log(`  OK`);
-    } catch (err) {
-      warn(`${name}: ${errText(err)}`);
-      missing.push(name);
+    for (const url of urls[name]) {
+      console.log(`${name}: ${url.replace(/api_key=[^&]+/, 'api_key=…')}`);
+      try {
+        const raw = await getJson(url);
+        // For review: how the source answered (the start of it)
+        console.log(`  answer starts: ${JSON.stringify(raw).slice(0, 700)}`);
+        const part = { fetchedAt: new Date().toISOString(), data: PARSERS[name](raw) } as never;
+        const problems = partProblems(name, part);
+        if (problems.length) throw new Error(problems.slice(0, 3).join('; '));
+        file[name] = part;
+        console.log('  OK');
+        break;
+      } catch (err) {
+        warn(`${name}: ${errText(err)}`);
+      }
     }
+    if (!file[name]) missing.push(name);
   }
 
   if (missing.length && fallbackUrl) {

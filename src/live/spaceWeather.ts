@@ -265,13 +265,21 @@ export function fileProblems(f: any): string[] {
 
 const isoDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
-export function sources(nowMs: number): Record<PartName, string> {
+/** Where each part comes from; when a part has more than one address, they are tried in order. */
+export function sources(nowMs: number): Record<PartName, string[]> {
+  // Model runs of the last 7 days (a CME takes 1 to 5 days to reach Earth)
+  const window = `startDate=${isoDay(nowMs - 7 * DAY_MS)}&endDate=${isoDay(nowMs)}`;
   return {
-    scales: 'https://services.swpc.noaa.gov/products/noaa-scales.json',
-    kp: 'https://services.swpc.noaa.gov/products/noaa-planetary-k-index-forecast.json',
-    flares: 'https://services.swpc.noaa.gov/json/goes/primary/xray-flares-7-day.json',
-    // Model runs of the last 7 days (a CME takes 1 to 5 days to reach Earth)
-    cmes: `https://kauai.ccmc.gsfc.nasa.gov/DONKI/WS/get/WSAEnlilSimulations?startDate=${isoDay(nowMs - 7 * DAY_MS)}&endDate=${isoDay(nowMs)}`,
+    scales: ['https://services.swpc.noaa.gov/products/noaa-scales.json'],
+    kp: ['https://services.swpc.noaa.gov/products/noaa-planetary-k-index-forecast.json'],
+    flares: ['https://services.swpc.noaa.gov/json/goes/primary/xray-flares-7-day.json'],
+    // DONKI is served by CCMC on two hosts, and through api.nasa.gov (its shared demo key allows
+    // only a few requests an hour per address, so it is the last resort)
+    cmes: [
+      `https://webtools.ccmc.gsfc.nasa.gov/DONKI/WS/get/WSAEnlilSimulations?${window}`,
+      `https://kauai.ccmc.gsfc.nasa.gov/DONKI/WS/get/WSAEnlilSimulations?${window}`,
+      `https://api.nasa.gov/DONKI/WSAEnlilSimulations?${window}&api_key=DEMO_KEY`,
+    ],
   };
 }
 
