@@ -10,7 +10,7 @@ on:
   schedule:
     # Every 3 hours (UTC; GitHub may start it some minutes late). GitHub runs a schedule as whoever
     # last changed the cron line, and may not run it for an app: that line is changed by hand on GitHub.
-    - cron: '17 */3 * * *'
+    - cron: '23 */3 * * *'
   workflow_dispatch:
 
 permissions:
