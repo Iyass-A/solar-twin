@@ -18,6 +18,7 @@ import { SATURN_POLE } from '../astro/poles';
 import { numGrouped, t } from '../i18n';
 import { makeStars, type StarData } from './stars';
 import { SMALL_COLORS, cloudZoom, type SmallFrame, type SmallGroup } from './smallbodies';
+import type { Ghost } from './branch';
 
 const CLOUD_PX = 14; // the cloud's 1-sigma size on screen when it has to be enlarged (at least)
 import { VIEWS, COLORS, radialScale, sceneAxes, toScene, type BodyFrame, type ViewInfo, type ViewMode } from './views';
@@ -35,6 +36,8 @@ const SMALL_HIT_PENALTY = 6; // asteroids and comets count as this much farther 
 const DEFAULT_PX = 5;
 const SUN_PX = 6;
 const GLOW_PX = 22;
+const GHOST_PX = 4; // a branch body's empty circle is this much wider than the planet [px]
+const TRAIL_MAX = 1200;
 
 const HIT_RADIUS = 18;   // how close a tap must be to a planet to select it [px]
 const DRAG_PX = 6;       // a pointer that moved more than this was a drag, not a tap
@@ -109,6 +112,9 @@ export class Scene3D {
   private lastDraw = 0;
   private w = 0;
   private h = 0;
+  // "Branch reality": per body an empty circle, its recent path, and a line to the real planet
+  private readonly ghosts = new Map<string, { ring: THREE.Sprite; trail: THREE.Line; link: THREE.Line }>();
+  private ghostTexture: THREE.Texture | null = null;
 
   get selected(): string | null { return this.sel; }
 
@@ -341,7 +347,7 @@ export class Scene3D {
   }
 
   draw(bodies: BodyFrame[], smalls: SmallFrame[] = [], selectedOrbit: { path: Vec3[]; color: string } | null = null,
-    cloud: { offsets: Vec3[]; color: string } | null = null) {
+    cloud: { offsets: Vec3[]; color: string } | null = null, ghosts: Ghost[] | null = null) {
     const now = performance.now();
     const dt = Math.min((now - this.lastDraw) / 1000, 0.1);
     this.lastDraw = now;
@@ -397,6 +403,7 @@ export class Scene3D {
       p.mesh.scale.setScalar(p.px * p.grow * this.worldPerPixel(p.mesh.position));
     }
     this.updateCloud(cloud, smalls, view3);
+    this.updateGhosts(ghosts, view3);
     const wpp = this.worldPerPixel(this.sun.position);
     this.sun.scale.setScalar(SUN_PX * wpp);
     this.glow.scale.setScalar(GLOW_PX * 2 * wpp);
@@ -407,6 +414,47 @@ export class Scene3D {
   }
 
   // ---------- Helpers ----------
+
+  /** The branch's bodies: an empty circle each (sized on screen), their recent path, and a line to the real planet. */
+  private updateGhosts(ghosts: Ghost[] | null, view3: (v: Vec3) => [number, number, number]) {
+    const wanted = new Set((ghosts ?? []).map((g) => g.id));
+    for (const [id, o] of this.ghosts) {
+      if (wanted.has(id)) continue;
+      this.scene.remove(o.ring, o.trail, o.link);
+      o.trail.geometry.dispose(); o.link.geometry.dispose();
+      (o.ring.material as THREE.Material).dispose(); (o.trail.material as THREE.Material).dispose(); (o.link.material as THREE.Material).dispose();
+      this.ghosts.delete(id);
+    }
+    for (const g of ghosts ?? []) {
+      let o = this.ghosts.get(g.id);
+      if (!o) {
+        this.ghostTexture ??= ringTexture();
+        const ring = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.ghostTexture, color: g.color, transparent: true, depthWrite: false }));
+        const trail = new THREE.Line(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(TRAIL_MAX * 3), 3)),
+          new THREE.LineBasicMaterial({ color: g.color, transparent: true, opacity: 0.45, depthWrite: false }));
+        const link = new THREE.Line(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3)),
+          new THREE.LineBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.4, depthWrite: false }));
+        trail.frustumCulled = link.frustumCulled = false;
+        this.scene.add(ring, trail, link);
+        o = { ring, trail, link };
+        this.ghosts.set(g.id, o);
+      }
+      const [x, y, z] = view3(g.pos);
+      o.ring.position.set(x, y, z);
+      const planet = this.planets.get(g.id);
+      const px = (planet?.px ?? DEFAULT_PX) + GHOST_PX;
+      o.ring.scale.setScalar(2 * px * this.worldPerPixel(o.ring.position));
+      const tp = o.trail.geometry.getAttribute('position') as THREE.BufferAttribute;
+      const n = Math.min(g.trail.length, TRAIL_MAX), start = g.trail.length - n;
+      for (let i = 0; i < n; i++) { const [a, b, c] = view3(g.trail[start + i]); tp.setXYZ(i, a, b, c); }
+      tp.needsUpdate = true;
+      o.trail.geometry.setDrawRange(0, n);
+      const lp = o.link.geometry.getAttribute('position') as THREE.BufferAttribute;
+      const real = planet?.mesh.position;
+      o.link.visible = !!real;
+      if (real) { lp.setXYZ(0, real.x, real.y, real.z); lp.setXYZ(1, x, y, z); lp.needsUpdate = true; }
+    }
+  }
 
   /** The uncertainty cloud around the selected asteroid or comet, enlarged if it would be too small to see. */
   private updateCloud(cloud: { offsets: Vec3[]; color: string } | null, smalls: SmallFrame[],
@@ -650,6 +698,21 @@ export class Scene3D {
       place(label, s.x, s.y, [[3, -h / 2], [-w - 3, -h / 2], [-w / 2, 4]]);
     }
   }
+}
+
+/** An empty white circle (tinted by each sprite), drawn once on a small canvas. */
+function ringTexture(): THREE.Texture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const ctx = c.getContext('2d')!;
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.arc(32, 32, 27, 0, Math.PI * 2);
+  ctx.stroke();
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
 
 /** A soft round glow for the Sun, drawn once on a small canvas. */

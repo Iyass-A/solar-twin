@@ -226,6 +226,34 @@ export interface Strings {
   nowWeatherAheadCalm: string;
   nowCme: (when: string) => string;
   nowApproaches: (count: number, until: string) => string;
+  // "Branch reality" (phase 5): a copy of the solar system, changed, run by the physics engine
+  branch: {
+    title: string;
+    badge: string;
+    intro: string;
+    action: string;
+    actions: { remove: string; mass: string; push: string; star: string };
+    body: string;
+    sun: string;
+    factor: string;
+    speed: string;
+    pushHint: string;
+    starMass: string;
+    starDistance: string;
+    starNote: string;
+    go: string;
+    reset: string;
+    /** What the branch is, e.g. "without Jupiter" (numbers come formatted) */
+    what: { remove: (name: string) => string; mass: (name: string, factor: string) => string;
+      push: (name: string, kmS: string, faster: boolean) => string; star: (mass: string, distance: string) => string };
+    from: (date: string) => string;
+    computing: (year: string) => string;
+    before: (date: string) => string;
+    legend: string;
+    error: (message: string) => string;
+    tooFar: string;
+    starLate: (year: number) => string;
+  };
 }
 
 /** Keys whose value is plain text, for data-t / data-html / data-aria in the page. */
@@ -599,6 +627,36 @@ const AR: Strings = {
   nowWeatherAheadCalm: 'والأيام الجاية هادية كمان',
   nowCme: (when) => `موجة من الشمس متوقعة ${when}`,
   nowApproaches: (n, until) => `${flybysAr(n)} لحد ${until}`,
+  branch: {
+    title: 'فرّع الواقع',
+    badge: 'تجريبي',
+    intro: 'خود نسخة من المجموعة الشمسية من اللحظة اللي عالشاشة، غيّر فيها شي، وشوف كيف بتمشي الكواكب بعدها. محرك الفيزياء بيحسب الجاذبية بين الشمس والكواكب لحاله، مع النسبية العامة.',
+    action: 'شو بدك تغيّر',
+    actions: { remove: 'شيل كوكب', mass: 'غيّر الكتلة', push: 'زقّ كوكب', star: 'مرّق نجم' },
+    body: 'مين',
+    sun: 'الشمس',
+    factor: 'الكتلة ×',
+    speed: 'التغيير بالسرعة (كم/ث)',
+    pushHint: 'موجب: أسرع، سالب: أبطأ',
+    starMass: 'كتلة النجم (من كتلة الشمس)',
+    starDistance: 'أقرب مسافة (AU)',
+    starNote: 'بيمرّ بعد 10 سنين بسرعة 20 كم/ث، بنفس مستوى مدار الأرض',
+    go: 'فرّع',
+    reset: 'رجوع للواقع',
+    what: {
+      remove: (n) => `الفرع: بلا ${n}`,
+      mass: (n, f) => `الفرع: كتلة ${n} ×${f}`,
+      push: (n, v, faster) => `الفرع: ${n} ${faster ? 'أسرع' : 'أبطأ'} بـ ${v} كم/ث`,
+      star: (m, d) => `الفرع: نجم كتلته ×${m} من كتلة الشمس بيمرّ على بعد ${d}`,
+    },
+    from: (d) => `من ${d}`,
+    computing: (y) => `عم يحسب… وصل لـ ${y}`,
+    before: (d) => `هالوقت قبل التفريع (${d})، فالفرع ما بيبيّن هون`,
+    legend: 'النقطة المليانة: الواقع · الدايرة الفاضية: الفرع، مع خط لمكانها الحقيقي',
+    error: (m) => `ما زبط: ${m}`,
+    tooFar: 'التفريع بيشتغل بس بين 1800 و2050',
+    starLate: (y) => `النجم لازم يمرّ قبل 2050: فرّع من ${y} أو قبل`,
+  },
 };
 
 const DE: Strings = {
@@ -864,6 +922,36 @@ const DE: Strings = {
   nowWeatherAheadCalm: 'Auch die nächsten Tage ruhig',
   nowCme: (when) => `Wolke von der Sonne erwartet: ${when}`,
   nowApproaches: (n, until) => (n === 0 ? `Kein Vorbeiflug bis ${until}` : `${plural(n, 'Vorbeiflug', 'Vorbeiflüge')} bis ${until}`),
+  branch: {
+    title: 'Wirklichkeit verzweigen',
+    badge: 'Experimentell',
+    intro: 'Nimm eine Kopie des Sonnensystems ab dem Moment auf dem Bildschirm, ändere etwas und sieh, wie die Planeten danach laufen. Die Physik-Engine rechnet die Schwerkraft zwischen Sonne und Planeten selbst, mit allgemeiner Relativitätstheorie.',
+    action: 'Was ändern',
+    actions: { remove: 'Planet entfernen', mass: 'Masse ändern', push: 'Planet anschubsen', star: 'Stern vorbeiziehen lassen' },
+    body: 'Wer',
+    sun: 'Sonne',
+    factor: 'Masse ×',
+    speed: 'Geschwindigkeit ändern (km/s)',
+    pushHint: 'positiv: schneller, negativ: langsamer',
+    starMass: 'Masse des Sterns (Sonnenmassen)',
+    starDistance: 'Kleinster Abstand (AE)',
+    starNote: 'zieht in 10 Jahren mit 20 km/s vorbei, in der Ebene der Erdbahn',
+    go: 'Verzweigen',
+    reset: 'Zurück zur Wirklichkeit',
+    what: {
+      remove: (n) => `Zweig: ohne ${n}`,
+      mass: (n, f) => `Zweig: Masse ${n === 'Sonne' ? 'der Sonne' : `von ${n}`} ×${f}`,
+      push: (n, v, faster) => `Zweig: ${n} ${v} km/s ${faster ? 'schneller' : 'langsamer'}`,
+      star: (m, d) => `Zweig: ein Stern mit ${m}-facher Sonnenmasse zieht in ${d} Abstand vorbei`,
+    },
+    from: (d) => `ab ${d}`,
+    computing: (y) => `rechnet… bei ${y}`,
+    before: (d) => `Diese Zeit liegt vor der Verzweigung (${d}), hier gibt es den Zweig nicht`,
+    legend: 'Voller Punkt: Wirklichkeit · leerer Kreis: Zweig, mit einer Linie zur echten Position',
+    error: (m) => `Hat nicht geklappt: ${m}`,
+    tooFar: 'Verzweigen geht nur zwischen 1800 und 2050',
+    starLate: (y) => `Der Stern muss vor 2050 vorbeiziehen: bis ${y} verzweigen`,
+  },
 };
 
 const EN: Strings = {
@@ -1133,6 +1221,36 @@ const EN: Strings = {
   nowWeatherAheadCalm: 'The next days look quiet too',
   nowCme: (when) => `Cloud from the Sun expected ${when}`,
   nowApproaches: (n, until) => (n === 0 ? `No close approaches until ${until}` : `${plural(n, 'close approach', 'close approaches')} until ${until}`),
+  branch: {
+    title: 'Branch reality',
+    badge: 'Experimental',
+    intro: 'Take a copy of the solar system from the moment on screen, change something, and see how the planets move from then on. The physics engine computes the gravity between the Sun and the planets itself, with general relativity.',
+    action: 'What to change',
+    actions: { remove: 'Remove a planet', mass: 'Change a mass', push: 'Push a planet', star: 'Let a star pass' },
+    body: 'Which',
+    sun: 'Sun',
+    factor: 'Mass ×',
+    speed: 'Change in speed (km/s)',
+    pushHint: 'positive: faster, negative: slower',
+    starMass: 'Mass of the star (Suns)',
+    starDistance: 'Closest distance (au)',
+    starNote: 'passes in 10 years at 20 km/s, in the plane of Earth\'s orbit',
+    go: 'Branch',
+    reset: 'Back to reality',
+    what: {
+      remove: (n) => `Branch: without ${n}`,
+      mass: (n, f) => `Branch: ${n === 'Sun' ? 'the Sun' : n} at ×${f} the mass`,
+      push: (n, v, faster) => `Branch: ${n} ${v} km/s ${faster ? 'faster' : 'slower'}`,
+      star: (m, d) => `Branch: a star with ${m}× the Sun\'s mass passes ${d} away`,
+    },
+    from: (d) => `from ${d}`,
+    computing: (y) => `computing… at ${y}`,
+    before: (d) => `This is before the branch (${d}), so it does not show here`,
+    legend: 'Full dot: reality · empty circle: the branch, with a line to the real position',
+    error: (m) => `That did not work: ${m}`,
+    tooFar: 'Branching works only between 1800 and 2050',
+    starLate: (y) => `The star must pass before 2050: branch in ${y} or earlier`,
+  },
 };
 
 export const STRINGS: Record<Lang, Strings> = { ar: AR, de: DE, en: EN };

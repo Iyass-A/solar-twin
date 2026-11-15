@@ -9,7 +9,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { BODIES, SYSTEMS, AU_KM, SUN_GM, toAuDay } from '../src/physics/bodies';
 import { createNBody, advance, energy, momenta, defaultStep, removeBody, addBody, setGm, kick, type NBody, type Order } from '../src/physics/nbody';
 import { Engine } from '../src/physics/engine';
-import { utcMsToTdbJd, tdbJdToUtcMs, type Edit, type FromWorker, type Mode } from '../src/physics/protocol';
+import { utcMsToTdbJd, tdbJdToUtcMs, PATH_SAMPLES, type Edit, type FromWorker, type Mode } from '../src/physics/protocol';
 import { startBodies, startSystems, EPOCH_JD, type Vec } from '../src/physics/state';
 import stateFile from '../src/data/state-vectors.json' with { type: 'json' };
 import { PLANETS } from '../src/astro/elements';
@@ -385,13 +385,18 @@ export async function checkEngine(): Promise<boolean> {
     const year = await next('state', 'real');
     const dYear = maxDiffKm(year.r, direct('systems', EPOCH_JD + 365));
     if (year.jd !== EPOCH_JD + 365 || dYear !== 0 || Math.abs(year.energyError) > 1e-9) fail(`a year: ${dYear} km from stepping directly, energy ${year.energyError}`);
+    // positions along the run come too (for the paths drawn behind the bodies), ending at the state
+    const samples = year.path.length / year.r.length;
+    if (!Number.isInteger(samples) || samples < 2 || samples > PATH_SAMPLES || maxDiff(year.path.subarray(year.path.length - year.r.length), year.r) !== 0) {
+      fail(`path along the run: ${samples} samples`);
+    }
     engine.handle({ type: 'start', sim: 'moons', mode: 'bodies' });
     const readyM = await next('ready', 'moons');
     engine.handle({ type: 'goto', sim: 'moons', jd: EPOCH_JD + 30 });
     const month = await next('state', 'moons');
     const dMonth = maxDiffKm(month.r, direct('bodies', EPOCH_JD + 30));
     if (readyM.ids.length !== 16 || dMonth !== 0) fail(`with moons: ${readyM.ids.length} bodies, ${dMonth} km from stepping directly`);
-    console.log(`  a year as systems in ${year.ms.toFixed(0)} ms and 30 days with moons in ${month.ms.toFixed(0)} ms, exactly as stepping directly`);
+    console.log(`  a year as systems in ${year.ms.toFixed(0)} ms and 30 days with moons in ${month.ms.toFixed(0)} ms, exactly as stepping directly; ${samples} positions along the way`);
 
     // 2. A newer time replaces an older one: 300 years asked, then 2 years once it is running.
     //    Only the 2 years are reported. It ran forwards and then back in other steps, so it differs a

@@ -595,3 +595,23 @@ button.now-tile[aria-selected="true"] { border-color: #4f9dff; box-shadow: inset
 .now-tile.empty .now-main { font-weight: 400; color: #9aa0b4; }
 .now-sub { font-size: 0.85rem; }
 .now-updated { margin-top: auto; padding-top: 4px; color: #9aa0b4; font-size: 0.75rem; }
+
+/* ---------- Phase 5: "branch reality" ---------- */
+
+.branch .br-intro { margin: 4px 0 12px; line-height: 1.6; }
+.branch input[type="number"] {
+  font: inherit; font-size: 0.95rem; color: #e8e8f0; background: #262c45;
+  border: 1px solid #3a4166; border-radius: 8px; padding: 6px 8px; width: 6.5em;
+}
+.branch .br-go { background: #3a4fa0; border-color: #5368c0; }
+.branch .br-go:hover { background: #4459b0; }
+.branch .br-go:disabled { opacity: 0.6; cursor: progress; }
+.branch .br-hint { margin: 8px 0 0; }
+.branch .br-hint[hidden] { display: none; }
+.branch .br-status { margin-top: 12px; border-top: 1px solid #2a3050; padding-top: 10px; }
+.branch .br-status[hidden] { display: none; }
+.branch .br-status p { margin: 4px 0; line-height: 1.6; }
+.branch .br-what { font-weight: 600; color: #e8e8f0; }
+.branch .br-legend[hidden] { display: none; }
+.branch .br-reset { margin-top: 6px; }
+.branch label[hidden] { display: none; }

@@ -18,6 +18,7 @@ import { SpaceWeatherCard } from './view/spaceWeather';
 import { DsnCard } from './view/dsn';
 import { DSN_WORKER_URL } from './live/dsn';
 import { NowScreen } from './view/now';
+import { BranchCard } from './view/branch';
 
 const DAY_MS = 86_400_000;
 
@@ -110,6 +111,8 @@ app.innerHTML = `
       <label><span data-t="goToDate"></span> <input id="date" type="date" dir="ltr" min="1800-01-01" max="2050-12-31"></label>
     </div>
   </div>
+
+  <section class="card controls branch" id="branch"></section>
 
   <section class="now" id="now" aria-labelledby="nowTitle">
     <h2 class="now-head"><span class="now-title" id="nowTitle"></span> <span class="badge live-data" data-t="caBadge"></span></h2>
@@ -231,6 +234,8 @@ for (const card of [approaches, spaceWeather, dsn]) card.onData = () => nowScree
 nowScreen.render();
 dsn.load(DSN_WORKER_URL);
 let scene3d: Scene3D | null = null; // loaded on first use (Three.js is a separate file)
+// "Branch reality": the physics worker starts only when the card is first used
+const branch = new BranchCard($('branch'), () => ({ ms: clock.ms, min: VALID_FROM_MS, max: VALID_TO_MS }));
 
 // Asteroids, dwarf planets and comets: their own file, loaded after the page
 let smallBodies: SmallBody[] = [];
@@ -503,6 +508,7 @@ function applyLanguage(l: Lang) {
   spaceWeather.render();
   dsn.render();
   nowScreen.render();
+  branch.render();
   lastPanels = -Infinity;
 }
 
@@ -590,8 +596,9 @@ function frame(now: number) {
     }
   }
 
-  if (kind === '2d') orrery.draw(bodies, smalls, selectedOrbit, cloud);
-  else scene3d?.draw(bodies, smalls, selectedOrbit, cloud);
+  const ghosts = branch.frame(clock.ms);
+  if (kind === '2d') orrery.draw(bodies, smalls, selectedOrbit, cloud, ghosts);
+  else scene3d?.draw(bodies, smalls, selectedOrbit, cloud, ghosts);
   if (!dragging) slider.valueAsNumber = (clock.ms - VALID_FROM_MS) / DAY_MS;
   if (now - lastPanels > 250) {
     lastPanels = now;

@@ -5,7 +5,7 @@
 import { startBodies, startSystems, EPOCH_JD } from './state';
 import { createNBody, cloneNBody, step, energy, defaultStep, removeBody, addBody, setGm, kick, type NBody } from './nbody';
 import { toAuDay, AU_KM } from './bodies';
-import type { Edit, FromWorker, Mode, ToWorker } from './protocol';
+import { PATH_SAMPLES, type Edit, type FromWorker, type Mode, type ToWorker } from './protocol';
 
 const KMS_TO_AU_DAY = 86400 / AU_KM;
 
@@ -24,6 +24,7 @@ interface Sim {
   // The run towards the target: n equal steps of hRun from `from`, k done (as advance() in nbody.ts
   // plans them, so the result is the same as one advance() call)
   run: { from: number; hRun: number; n: number; k: number } | null;
+  path: number[];       // positions along the current run, for the state message
   since: number;        // when the current run began [ms]
   lastProgress: number;
 }
@@ -61,6 +62,7 @@ export class Engine {
         const span = msg.jd - sim.s.jd;
         const n = Math.max(1, Math.ceil(Math.abs(span) / sim.h - 1e-9));
         sim.run = span === 0 ? null : { from: sim.s.jd, hRun: span / n, n, k: 0 };
+        sim.path = [];
         this.schedule();
       } else if (msg.type === 'edit') {
         const sim = this.get(msg.sim);
@@ -123,9 +125,9 @@ export class Engine {
     return sim;
   }
 
-  private add(id: string, base: Omit<Sim, 'target' | 'run' | 'since' | 'lastProgress'>) {
+  private add(id: string, base: Omit<Sim, 'target' | 'run' | 'path' | 'since' | 'lastProgress'>) {
     if (this.sims.has(id)) throw new Error(`sim "${id}" exists already`);
-    this.sims.set(id, { ...base, target: null, run: null, since: 0, lastProgress: -Infinity });
+    this.sims.set(id, { ...base, target: null, run: null, path: [], since: 0, lastProgress: -Infinity });
     this.post({ type: 'ready', sim: id, mode: base.mode, relativity: base.s.relSun >= 0, ids: base.ids, jd: base.s.jd, step: base.h });
   }
 
@@ -143,14 +145,19 @@ export class Engine {
       const { s } = sim, run = sim.run;
       while (run && run.k < run.n && this.now() < end) {
         const stop = Math.min(run.n, run.k + STEPS_PER_CHUNK);
-        for (; run.k < stop; ) { step(s, run.hRun, 4); run.k++; s.jd = run.from + run.k * run.hRun; }
+        const every = Math.ceil(run.n / PATH_SAMPLES);
+        for (; run.k < stop; ) {
+          step(s, run.hRun, 4); run.k++; s.jd = run.from + run.k * run.hRun;
+          if (run.k % every === 0 || run.k === run.n) for (let c = 0; c < s.r.length; c++) sim.path.push(s.r[c]);
+        }
         if (run.k === run.n) { s.jd = sim.target!; sim.run = null; }
       }
       if (s.jd === sim.target) {
-        const r = s.r.slice();
-        this.post({ type: 'state', sim: id, jd: s.jd, r, energyError: energy(s) / sim.e0 - 1, ms: this.now() - sim.since }, [r.buffer]);
+        const r = s.r.slice(), path = new Float64Array(sim.path.length ? sim.path : r);
+        this.post({ type: 'state', sim: id, jd: s.jd, r, path, energyError: energy(s) / sim.e0 - 1, ms: this.now() - sim.since }, [r.buffer, path.buffer]);
         sim.target = null;
         sim.run = null;
+        sim.path = [];
       } else if (sim.target !== null && this.now() - sim.lastProgress >= PROGRESS_MS) {
         sim.lastProgress = this.now();
         this.post({ type: 'progress', sim: id, jd: s.jd, target: sim.target });

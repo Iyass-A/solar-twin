@@ -10,6 +10,7 @@ import type { Vec3 } from '../astro/kepler';
 import { VIEWS, COLORS, radialScale, type BodyFrame, type ViewMode } from './views';
 import { langInfo, numGrouped, t } from '../i18n';
 import { SMALL_COLORS, cloudZoom, type SmallFrame } from './smallbodies';
+import type { Ghost } from './branch';
 
 const CLOUD_PX = 14; // the cloud's 1-sigma size on screen when it has to be enlarged
 
@@ -75,7 +76,7 @@ export class Orrery {
   }
 
   draw(bodies: BodyFrame[], smalls: SmallFrame[] = [], selectedOrbit: { path: Vec3[]; color: string } | null = null,
-    cloud: { offsets: Vec3[]; color: string } | null = null) {
+    cloud: { offsets: Vec3[]; color: string } | null = null, ghosts: Ghost[] | null = null) {
     // Hidden (3D tab), or just shown and not measured yet: the ResizeObserver catches up next frame
     if (this.w < 60 || this.h < 60) return;
     const { ctx, w, h } = this;
@@ -254,6 +255,58 @@ export class Orrery {
       taken.push({ x0: x - r - 5, y0: y - r - 5, x1: x + r + 5, y1: y + r + 5, id: b.id });
     });
     taken.push({ x0: cx - 6, y0: cy - 6, x1: cx + 6, y1: cy + 6 }); // the Sun
+
+    // "Branch reality": each body of the branch as an empty circle, with its recent path, and a
+    // dotted line to the same planet in reality once they have drifted apart
+    for (const g of ghosts ?? []) {
+      ctx.strokeStyle = g.color;
+      if (g.trail.length > 1) {
+        ctx.globalAlpha = 0.45;
+        ctx.beginPath();
+        g.trail.forEach((v, i) => { const [x, y] = project(v); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
+        ctx.stroke();
+      }
+      const [x, y] = project(g.pos);
+      const ri = bodies.findIndex((b) => b.id === g.id);
+      // Off the map: a planet is left out like the real one; a passing star (which has no real twin)
+      // gets an arrow at the edge, pointing to it, with its distance in au
+      const M = 14;
+      if (x < M || x > w - M || y < M || y > h - M) {
+        if (ri >= 0) continue;
+        const dx = x - cx, dy = y - cy;
+        const k = Math.min((dx > 0 ? w - M - cx : cx - M) / Math.abs(dx || 1e-9), (dy > 0 ? h - M - cy : cy - M) / Math.abs(dy || 1e-9));
+        const ex = cx + dx * k, ey = cy + dy * k, a = Math.atan2(dy, dx);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = g.color;
+        ctx.beginPath();
+        ctx.moveTo(ex + 8 * Math.cos(a), ey + 8 * Math.sin(a));
+        ctx.lineTo(ex + 6 * Math.cos(a + 2.3), ey + 6 * Math.sin(a + 2.3));
+        ctx.lineTo(ex + 6 * Math.cos(a - 2.3), ey + 6 * Math.sin(a - 2.3));
+        ctx.fill();
+        ctx.font = '11px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(Math.round(Math.hypot(g.pos.x, g.pos.y, g.pos.z))), ex - 16 * Math.cos(a) - 12 * Math.sin(a), ey - 16 * Math.sin(a) + 12 * Math.cos(a));
+        continue;
+      }
+      if (ri >= 0 && Math.hypot(screen[ri][0] - x, screen[ri][1] - y) > 4) {
+        ctx.globalAlpha = 0.5;
+        ctx.strokeStyle = '#ffffff';
+        ctx.setLineDash([2, 3]);
+        ctx.beginPath();
+        ctx.moveTo(screen[ri][0], screen[ri][1]);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = g.color;
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.arc(x, y, (DOT[g.id as PlanetId] ?? 4) + 2.5, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.lineWidth = 1;
+    }
 
     // Arabic names: try a few spots around each planet, skip the label if all are taken.
     // (Crowded labels show up again in the inner view or when zooming in.)

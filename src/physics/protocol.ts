@@ -33,8 +33,13 @@ export type Edit =
 export type FromWorker =
   | { type: 'ready'; sim: string; mode: Mode; relativity: boolean; ids: string[]; jd: number; step: number }
   | { type: 'progress'; sim: string; jd: number; target: number }
-  | { type: 'state'; sim: string; jd: number; r: Float64Array; energyError: number; ms: number }
+  // path: positions along the run (up to PATH_SAMPLES of them, the last one at jd), 3n numbers each,
+  // so a path drawn behind a body follows its curve even when time runs fast
+  | { type: 'state'; sim: string; jd: number; r: Float64Array; path: Float64Array; energyError: number; ms: number }
   | { type: 'error'; sim?: string; message: string };
+
+/** At most this many positions along a run come with its state. */
+export const PATH_SAMPLES = 64;
 
 const TDB_MINUS_UTC_S = 69.184; // TT − UTC since 2017 (37 leap seconds + 32.184 s); TDB stays within 2 ms of TT
 
