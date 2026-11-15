@@ -36,7 +36,8 @@ async function main() {
       try {
         const raw = await getJson(url);
         // For review: how the source answered (the start of it)
-        console.log(`  answer starts: ${JSON.stringify(raw).slice(0, 700)}`);
+        // (the model runs in full: they are few, and the grouping by CME is worth checking)
+        console.log(`  answer${name === 'cmes' ? '' : ' starts'}: ${JSON.stringify(raw).slice(0, name === 'cmes' ? 200_000 : 700)}`);
         const part = { fetchedAt: new Date().toISOString(), data: PARSERS[name](raw) } as never;
         const problems = partProblems(name, part);
         if (problems.length) throw new Error(problems.slice(0, 3).join('; '));

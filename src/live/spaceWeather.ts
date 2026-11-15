@@ -168,7 +168,7 @@ export function parseEnlil(raw: unknown): CmeArrival[] {
   for (const sim of raw) {
     const done = isoTime(sim?.modelCompletionTime);
     if (!done) throw new Error(`run without completion time: ${JSON.stringify(sim).slice(0, 200)}`);
-    const ids: string[] = (sim.cmeInputs ?? []).map((c: any) => c?.cmeid).filter(Boolean);
+    const ids: string[] = (sim.cmeInputs ?? []).map((c: any) => c?.CMEID ?? c?.cmeid ?? c?.cmeID).filter(Boolean);
     const id = ids[0] ?? sim.simulationID ?? done;
     byCme.set(id, [...(byCme.get(id) ?? []), sim]);
   }
@@ -273,12 +273,12 @@ export function sources(nowMs: number): Record<PartName, string[]> {
     scales: ['https://services.swpc.noaa.gov/products/noaa-scales.json'],
     kp: ['https://services.swpc.noaa.gov/products/noaa-planetary-k-index-forecast.json'],
     flares: ['https://services.swpc.noaa.gov/json/goes/primary/xray-flares-7-day.json'],
-    // DONKI is served by CCMC on two hosts, and through api.nasa.gov (its shared demo key allows
-    // only a few requests an hour per address, so it is the last resort)
+    // DONKI through api.nasa.gov, with its shared demo key (a few requests an hour per address are
+    // allowed, we need one every 3 hours). CCMC's own hosts did not answer GitHub's machines
+    // (connection timed out, November 2026); one stays as a second try.
     cmes: [
-      `https://webtools.ccmc.gsfc.nasa.gov/DONKI/WS/get/WSAEnlilSimulations?${window}`,
-      `https://kauai.ccmc.gsfc.nasa.gov/DONKI/WS/get/WSAEnlilSimulations?${window}`,
       `https://api.nasa.gov/DONKI/WSAEnlilSimulations?${window}&api_key=DEMO_KEY`,
+      `https://webtools.ccmc.gsfc.nasa.gov/DONKI/WS/get/WSAEnlilSimulations?${window}`,
     ],
   };
 }
