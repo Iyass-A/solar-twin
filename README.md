@@ -20,7 +20,7 @@ Version 0.4, public beta.
 - **Close approaches to Earth, live.** Every asteroid and comet passing closer than 7.5 million km (19.5 times the Moon's distance), from a week ago to two months ahead, from NASA/JPL's CNEOS, refreshed every 3 hours: when, how close (in lunar distances and km, with the range where the orbit is still uncertain), how fast, and about how big. Those on the map can be picked from the list.
 - **Space weather, live.** NOAA's storm levels now, over the last 24 hours and for the next days (radio blackouts, solar radiation storms, geomagnetic storms), the 3-hour Kp index of the last 3 days with its forecast as a chart, the solar flares of the last week, and the clouds from the Sun (CMEs) that NASA's WSA-Enlil model expects to reach Earth.
 - **Deep Space Network, live.** Which spacecraft NASA's antennas at Goldstone, Madrid and Canberra are talking to right now (NASA's DSN Now), refreshed every minute: how many are in contact and the farthest, and for each antenna the spacecraft, its data rate, its distance, how long its signal takes, and roughly where it is.
-- **Branch reality (experimental).** Take a copy of the solar system at the date on screen, change one thing (take a planet out, change the Sun's or a planet's mass, push a planet faster or slower, or let a star pass), and watch both run on: the copy's planets are empty circles with their recent path, and a dotted line to where the real planet is. Our own physics engine computes it in the background (gravity between the Sun and the planets, with general relativity).
+- **Branch reality (experimental).** Take a copy of the solar system at the date on screen, change one thing (take a planet out, change the Sun's or a planet's mass, push a planet faster or slower, or let a star pass), and watch both run on: the copy's planets are empty circles with their recent path, and a dotted line to where the real planet is. A table compares each planet with reality at the same moment: its year on its orbit now, its distance from the Sun, and how far it is from where it would be. Our own physics engine computes it in the background (gravity between the Sun and the planets, with general relativity).
 - **Pick a planet** to see its distance from the Sun and from Earth, and how long its light takes to reach us.
 - **Three languages.** Arabic (right to left), German and English. Add `?lang=ar`, `?lang=de` or `?lang=en` to the address to share a link in one language.
 
@@ -59,7 +59,7 @@ That is plenty for seeing where things are, but it is not meant for pointing a t
 | Physics engine (in progress): bodies and masses, and their starting state from JPL Horizons (runs on GitHub) | `src/physics/bodies.ts`, `src/physics/state.ts`, `src/data/state-vectors.json`, `scripts/fetch-state-vectors.ts`, `.github/workflows/fetch-state-vectors.yml` |
 | Physics engine (in progress): the N-body integrator (leapfrog and Yoshida 4th order, with the giant planets' equatorial bulges and relativity near the Sun) | `src/physics/nbody.ts` |
 | Physics engine (in progress): runs in a Web Worker, towards the latest time asked, in slices of a few ms; the page's side, the messages, and a browser test page | `src/physics/worker.ts`, `src/physics/engine.ts`, `src/physics/client.ts`, `src/physics/protocol.ts`, `scripts/browser/physics-worker.html` |
-| "Branch reality": the card, and the copy's planets on the map and in 3D | `src/view/branch.ts`, `src/view/orrery.ts`, `src/view/scene3d.ts` |
+| "Branch reality": the card with its comparison, and the copy's planets on the map and in 3D; a planet's year from its position and velocity | `src/view/branch.ts`, `src/view/orrery.ts`, `src/view/scene3d.ts`, `src/physics/orbit.ts` |
 | 2D map (canvas) | `src/view/orrery.ts` |
 | 3D scene (Three.js) and the stars | `src/view/scene3d.ts`, `src/view/stars.ts` |
 | Texts in three languages | `src/i18n.ts` |
@@ -123,7 +123,7 @@ See the GNU Affero General Public License for more details.
 
 ## What's next
 
-Comparing a branch with reality side by side, ready-made scenarios for "branch reality", a trip planner, and a guide you can ask questions in three languages.
+Ready-made scenarios for "branch reality", a trip planner, and a guide you can ask questions in three languages.
 
 Found something wrong, or have an idea? [Open an issue](https://github.com/Iyass-A/solar-twin/issues/new).
 

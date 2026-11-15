@@ -286,6 +286,9 @@ tr.selected td { background: #222a50; }
   text-shadow: 0 0 3px #070912, 0 0 3px #070912;
 }
 
+.labels span.edge { font-size: 11px; }
+.labels span.edge i { display: inline-block; font-style: normal; margin-inline-end: 3px; }
+
 .labels span.dim {
   font-size: 10px;
   line-height: 12px;
@@ -613,5 +616,24 @@ button.now-tile[aria-selected="true"] { border-color: #4f9dff; box-shadow: inset
 .branch .br-status p { margin: 4px 0; line-height: 1.6; }
 .branch .br-what { font-weight: 600; color: #e8e8f0; }
 .branch .br-legend[hidden] { display: none; }
-.branch .br-reset { margin-top: 6px; }
+.branch .br-buttons { margin-top: 8px; gap: 8px; }
+.branch .br-buttons button[hidden] { display: none; }
+.branch .br-compare { margin-top: 12px; }
+.branch .br-compare[hidden] { display: none; }
+.branch .br-compare h3 { font-size: 0.95rem; font-weight: 600; margin: 0 0 6px; color: #e8e8f0; }
+.branch .br-table-wrap { overflow-x: auto; }
+.branch .br-table { font-size: 0.85rem; }
+.branch .br-table th, .branch .br-table td { padding: 5px 8px; vertical-align: top; }
+.branch .br-table tbody th { color: #e8e8f0; white-space: nowrap; }
+.branch .br-table tbody tr { border-top: 1px solid #262c45; }
+.branch .br-v { display: block; color: #e8e8f0; white-space: nowrap; }
+.branch .br-real { display: block; color: #8a90a6; font-size: 0.78rem; white-space: nowrap; }
+.branch .br-gone td { color: #8a90a6; }
+.branch .br-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-inline-end: 6px; }
+.branch .br-note { margin-top: 6px; }
+@media (max-width: 520px) {
+  .branch .br-table { font-size: 0.78rem; }
+  .branch .br-table th, .branch .br-table td { padding: 4px 4px; }
+  .branch .br-real { font-size: 0.72rem; }
+}
 .branch label[hidden] { display: none; }

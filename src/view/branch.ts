@@ -5,14 +5,17 @@
 //
 // The real planets stay as the site draws them (Kepler); the branch starts from the engine's own
 // reality at the same moment, which agrees with them within 0.02° (see scripts/check-physics.ts).
+// For the numbers, the engine's reality runs on next to the branch ("control"): the same calculation
+// without the change, so every difference in the table comes from the change alone.
 
 import { Physics } from '../physics/client';
 import { utcMsToTdbJd, type Edit } from '../physics/protocol';
+import { orbitOf } from '../physics/orbit';
 import { AU_KM, SUN_GM } from '../physics/bodies';
 import { PLANETS, type PlanetId } from '../astro/elements';
 import type { Vec3 } from '../astro/kepler';
 import { COLORS } from './views';
-import { t, num, dayMonth, type Strings } from '../i18n';
+import { t, num, numGrouped, dayMonth, type Strings } from '../i18n';
 
 type Action = 'remove' | 'mass' | 'push' | 'star';
 
@@ -31,12 +34,21 @@ const DAY_MS = 86_400_000;
 
 const DEFAULTS: Record<Action, number> = { remove: 0, mass: 2, push: 5, star: 1 };
 
+/** A sim's state as the table needs it: positions, velocities and masses, by id. */
+interface Snapshot { jd: number; ids: string[]; gm: number[]; r: Float64Array; v: Float64Array }
+
 export class BranchCard {
   /** Called when the branch starts or ends (the page redraws its legend and caption). */
   onChange: (() => void) | null = null;
+  /** Called to move the time on screen (the button that goes back to where the branch began). */
+  onJump: ((ms: number) => void) | null = null;
 
   private physics: Physics | null = null;
   private realAt: number | null = null; // where the engine's "real" sim is (JD)
+  private realGm: { ids: string[]; gm: number[] } | null = null;
+  private branchGm: number[] = [];
+  private control: Snapshot | null = null; // the engine's reality at the same time as the branch
+  private snap: Snapshot | null = null;    // the branch, as the table needs it
   private active: { forkMs: number; ids: string[]; action: Action; target: string; value: number; star?: number } | null = null;
   private state: { jd: number; r: Float64Array; ids: string[] } | null = null;
   private asked: number | null = null;   // the time last asked of the worker [JD]
@@ -51,7 +63,8 @@ export class BranchCard {
     intro: HTMLElement; action: HTMLSelectElement; target: HTMLSelectElement; value: HTMLInputElement;
     targetLabel: HTMLElement; valueLabel: HTMLElement; valueText: HTMLElement; extra: HTMLElement; extraText: HTMLElement;
     extraValue: HTMLInputElement; hint: HTMLElement; go: HTMLButtonElement; status: HTMLElement; what: HTMLElement;
-    progress: HTMLElement; legend: HTMLElement; reset: HTMLButtonElement;
+    progress: HTMLElement; legend: HTMLElement; reset: HTMLButtonElement; jump: HTMLButtonElement;
+    compare: HTMLElement; compareTitle: HTMLElement; table: HTMLTableElement; note: HTMLElement;
   };
 
   private readonly clockMs: () => { ms: number; min: number; max: number };
@@ -76,7 +89,12 @@ export class BranchCard {
         <p class="br-what"></p>
         <p class="sub br-progress"></p>
         <p class="sub br-legend"></p>
-        <button type="button" class="br-reset"></button>
+        <div class="br-compare" hidden>
+          <h3 class="br-compare-title"></h3>
+          <div class="br-table-wrap"><table class="br-table"></table></div>
+          <p class="sub br-note"></p>
+        </div>
+        <div class="row br-buttons"><button type="button" class="br-jump"></button> <button type="button" class="br-reset"></button></div>
       </div>`;
     const q = <T extends HTMLElement>(c: string) => root.querySelector<T>(c)!;
     this.el = {
@@ -84,13 +102,15 @@ export class BranchCard {
       targetLabel: q('.br-target-label'), valueLabel: q('.br-value-label'), valueText: q('.br-value-text'),
       extra: q('.br-extra'), extraText: q('.br-extra-text'), extraValue: q('.br-extra-value'), hint: q('.br-hint'),
       go: q('.br-go'), status: q('.br-status'), what: q('.br-what'), progress: q('.br-progress'), legend: q('.br-legend'),
-      reset: q('.br-reset'),
+      reset: q('.br-reset'), jump: q('.br-jump'), compare: q('.br-compare'), compareTitle: q('.br-compare-title'),
+      table: q('.br-table'), note: q('.br-note'),
     };
     this.el.action.addEventListener('change', () => { this.el.value.value = String(DEFAULTS[this.action()]); this.render(); });
     this.el.value.value = String(DEFAULTS.remove);
     this.el.extraValue.value = '50';
     this.el.go.addEventListener('click', () => void this.fork());
     this.el.reset.addEventListener('click', () => this.stop());
+    this.el.jump.addEventListener('click', () => { if (this.active) this.onJump?.(this.active.forkMs); });
     this.render();
   }
 
@@ -124,7 +144,10 @@ export class BranchCard {
     this.el.go.textContent = b.go;
     this.el.go.disabled = this.busy;
     this.el.reset.textContent = b.reset;
+    this.el.jump.textContent = b.jump;
     this.el.legend.textContent = b.legend;
+    this.el.compareTitle.textContent = b.compare.title;
+    this.el.note.textContent = b.compare.note;
     this.renderStatus();
   }
 
@@ -135,7 +158,11 @@ export class BranchCard {
   private renderStatus() {
     const s = t(), b = s.branch, act = this.active;
     this.el.status.hidden = !act && !this.error;
-    if (this.error) { this.el.what.textContent = b.error(this.error); this.el.progress.textContent = ''; this.el.legend.hidden = true; return; }
+    this.el.jump.hidden = !act;
+    if (this.error) {
+      this.el.what.textContent = b.error(this.error); this.el.progress.textContent = '';
+      this.el.legend.hidden = true; this.el.compare.hidden = true; return;
+    }
     if (!act) return;
     this.el.legend.hidden = false;
     const fmt = (v: number) => num(v, Number.isInteger(v) ? 0 : Math.abs(v) < 10 ? 1 : 0);
@@ -147,6 +174,51 @@ export class BranchCard {
     this.el.what.textContent = `${what} · ${b.from(date)}`;
     const now = this.clockMs().ms;
     this.el.progress.textContent = now < act.forkMs ? b.before(date) : this.progressYear ? b.computing(this.progressYear) : '';
+    this.renderTable(now >= act.forkMs);
+  }
+
+  /**
+   * The comparison: for each planet (and a passing star) its year on its orbit now, its distance from
+   * the Sun, and how far it is from where it would be without the change; the real value under each.
+   */
+  private renderTable(show: boolean) {
+    const br = this.snap, ctl = this.control;
+    this.el.compare.hidden = !show || !br || !ctl;
+    if (!show || !br || !ctl) return;
+    const s = t(), c = s.branch.compare;
+    // Position and velocity relative to the Sun, and the orbit around it
+    const rel = (x: Snapshot, id: string) => {
+      const i = x.ids.indexOf(id), sun = x.ids.indexOf('sun');
+      if (i < 0) return null;
+      const d = (a: Float64Array, k: number) => a[3 * i + k] - (sun >= 0 ? a[3 * sun + k] : 0);
+      const dr = [d(x.r, 0), d(x.r, 1), d(x.r, 2)], dv = [d(x.v, 0), d(x.v, 1), d(x.v, 2)];
+      return { dr, orbit: orbitOf((sun >= 0 ? x.gm[sun] : 0) + x.gm[i], dr, dv) };
+    };
+    const year = (days: number | null) => {
+      if (days === null) return c.escapes;
+      if (days < 730) return c.days(num(days, 0));
+      const y = days / 365.25;
+      return c.years(num(y, y < 100 ? 1 : 0));
+    };
+    const dist = (au: number) => `${num(au, au < 10 ? 2 : au < 100 ? 1 : 0)} ${s.au}`;
+    const apart = (au: number) => {
+      const km = au * AU_KM;
+      if (km < 1e6) return `${numGrouped(km)} ${s.km}`;
+      if (km < 1e9) return `${num(km / 1e6, km < 1e7 ? 1 : 0)} ${s.millionKm}`;
+      return dist(au);
+    };
+    const cell = (main: string, real?: string) => `<td><span class="br-v">${main}</span>${real ? `<span class="br-real">${c.real(real)}</span>` : ''}</td>`;
+    const rows = [...PLANETS.map((p) => p.id as string), ...(br.ids.includes('star') ? ['star'] : [])].map((id) => {
+      const b = rel(br, id), r = rel(ctl, id);
+      const name = id === 'star' ? c.star : s.planets[id as PlanetId];
+      const color = id === 'star' ? STAR_COLOR : COLORS[id as PlanetId];
+      const head = `<th scope="row"><span class="br-dot" style="background:${color}"></span>${name}</th>`;
+      if (!b) return `<tr class="br-gone">${head}<td colspan="3">${c.removed}</td></tr>`;
+      if (!r) return `<tr>${head}<td>—</td>${cell(dist(b.orbit.r))}<td>—</td></tr>`; // the star: no real one
+      const off = Math.hypot(b.dr[0] - r.dr[0], b.dr[1] - r.dr[1], b.dr[2] - r.dr[2]);
+      return `<tr>${head}${cell(year(b.orbit.period), year(r.orbit.period))}${cell(dist(b.orbit.r), dist(r.orbit.r))}${cell(apart(off))}</tr>`;
+    });
+    this.el.table.innerHTML = `<thead><tr><th scope="col">${c.body}</th><th scope="col">${c.year}</th><th scope="col">${c.distance}</th><th scope="col">${c.offset}</th></tr></thead><tbody>${rows.join('')}</tbody>`;
   }
 
   /** Copies the engine's reality at the time on screen, applies the change, and starts showing it. */
@@ -166,13 +238,14 @@ export class BranchCard {
           this.progressYear = String(new Date((p.jd - 2440587.5) * DAY_MS).getUTCFullYear());
           this.renderStatus();
         };
-        await this.physics.start('real', 'systems');
+        const ready = await this.physics.start('real', 'systems');
+        this.realGm = { ids: ready.ids, gm: ready.gm };
         this.realAt = null;
       }
       const jd = utcMsToTdbJd(ms);
       if (this.realAt !== jd) { await this.physics.goto('real', jd); this.realAt = jd; }
       if (this.active) this.physics.drop('branch');
-      this.active = null; this.state = null; this.trails.clear(); this.gen++; this.inFlight = false;
+      this.active = null; this.state = null; this.snap = null; this.control = null; this.trails.clear(); this.gen++; this.inFlight = false;
       await this.physics.branch('branch', 'real');
       let edit: Edit;
       if (a === 'remove') edit = { kind: 'remove', id: target };
@@ -184,6 +257,7 @@ export class BranchCard {
         edit = { kind: 'add', id: 'star', gm: SUN_GM * value, r: [star, -along, 0], vKmS: [0, STAR_KMS, 0] };
       }
       const ready = await this.physics.edit('branch', edit);
+      this.branchGm = ready.gm;
       this.active = { forkMs: ms, ids: ready.ids, action: a, target, value, star: a === 'star' ? star : undefined };
       this.asked = null; this.lastTrailJd = -Infinity;
       this.onChange?.();
@@ -198,7 +272,7 @@ export class BranchCard {
 
   private stop() {
     if (this.active) this.physics?.drop('branch');
-    this.active = null; this.state = null; this.error = null; this.trails.clear(); this.gen++; this.inFlight = false;
+    this.active = null; this.state = null; this.snap = null; this.control = null; this.error = null; this.trails.clear(); this.gen++; this.inFlight = false;
     this.render();
     this.onChange?.();
   }
@@ -215,16 +289,20 @@ export class BranchCard {
     if (!this.inFlight && this.asked !== jd) {
       this.inFlight = true; this.asked = jd;
       const gen = this.gen;
-      this.physics.goto('branch', jd).then((st) => {
+      // The branch and reality (without the change) to the same time, side by side
+      Promise.all([this.physics.goto('branch', jd), this.physics.goto('real', jd)]).then(([st, real]) => {
         if (gen !== this.gen) return; // an answer for a branch that is gone
         this.inFlight = false;
+        this.realAt = real.jd;
         if (!this.active) return;
         const wasComputing = this.progressYear !== null;
         this.progressYear = null;
         this.state = { jd: st.jd, r: st.r, ids: act.ids };
+        this.snap = { jd: st.jd, ids: act.ids, gm: this.branchGm, r: st.r, v: st.v };
+        this.control = this.realGm && { jd: real.jd, ids: this.realGm.ids, gm: this.realGm.gm, r: real.r, v: real.v };
         this.addTrail(st.jd, st.path);
         if (wasComputing) this.renderStatus(); else this.renderStatusSoon();
-      }, () => { if (gen === this.gen) this.inFlight = false; });
+      }, () => { if (gen === this.gen) { this.inFlight = false; this.realAt = null; } });
     }
     return this.ghosts();
   }

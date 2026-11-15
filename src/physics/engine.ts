@@ -70,7 +70,7 @@ export class Engine {
         this.applyEdit(sim, msg.edit);
         sim.h = Number.isFinite(defaultStep(sim.s)) ? defaultStep(sim.s) : sim.h; // nothing bound any more: keep the step
         sim.e0 = energy(sim.s);
-        this.post({ type: 'ready', sim: msg.sim, mode: sim.mode, relativity: sim.s.relSun >= 0, ids: sim.ids, jd: sim.s.jd, step: sim.h });
+        this.post({ type: 'ready', sim: msg.sim, mode: sim.mode, relativity: sim.s.relSun >= 0, ids: sim.ids, gm: Array.from(sim.s.gm), jd: sim.s.jd, step: sim.h });
       } else if (msg.type === 'drop') {
         this.get(msg.sim);
         this.sims.delete(msg.sim);
@@ -128,7 +128,7 @@ export class Engine {
   private add(id: string, base: Omit<Sim, 'target' | 'run' | 'path' | 'since' | 'lastProgress'>) {
     if (this.sims.has(id)) throw new Error(`sim "${id}" exists already`);
     this.sims.set(id, { ...base, target: null, run: null, path: [], since: 0, lastProgress: -Infinity });
-    this.post({ type: 'ready', sim: id, mode: base.mode, relativity: base.s.relSun >= 0, ids: base.ids, jd: base.s.jd, step: base.h });
+    this.post({ type: 'ready', sim: id, mode: base.mode, relativity: base.s.relSun >= 0, ids: base.ids, gm: Array.from(base.s.gm), jd: base.s.jd, step: base.h });
   }
 
   private schedule() {
@@ -153,8 +153,8 @@ export class Engine {
         if (run.k === run.n) { s.jd = sim.target!; sim.run = null; }
       }
       if (s.jd === sim.target) {
-        const r = s.r.slice(), path = new Float64Array(sim.path.length ? sim.path : r);
-        this.post({ type: 'state', sim: id, jd: s.jd, r, path, energyError: energy(s) / sim.e0 - 1, ms: this.now() - sim.since }, [r.buffer, path.buffer]);
+        const r = s.r.slice(), v = s.v.slice(), path = new Float64Array(sim.path.length ? sim.path : r);
+        this.post({ type: 'state', sim: id, jd: s.jd, r, v, path, energyError: energy(s) / sim.e0 - 1, ms: this.now() - sim.since }, [r.buffer, v.buffer, path.buffer]);
         sim.target = null;
         sim.run = null;
         sim.path = [];

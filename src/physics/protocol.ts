@@ -31,11 +31,13 @@ export type Edit =
   | { kind: 'add'; id: string; gm: number; r: [number, number, number]; vKmS: [number, number, number] };
 
 export type FromWorker =
-  | { type: 'ready'; sim: string; mode: Mode; relativity: boolean; ids: string[]; jd: number; step: number }
+  // gm: each body's GM [au³/day²], in the order of ids (changes show here: a mass, a body taken out or added)
+  | { type: 'ready'; sim: string; mode: Mode; relativity: boolean; ids: string[]; gm: number[]; jd: number; step: number }
   | { type: 'progress'; sim: string; jd: number; target: number }
   // path: positions along the run (up to PATH_SAMPLES of them, the last one at jd), 3n numbers each,
   // so a path drawn behind a body follows its curve even when time runs fast
-  | { type: 'state'; sim: string; jd: number; r: Float64Array; path: Float64Array; energyError: number; ms: number }
+  // r, v: positions [au] and velocities [au/day] at jd, 3n numbers each (barycentric)
+  | { type: 'state'; sim: string; jd: number; r: Float64Array; v: Float64Array; path: Float64Array; energyError: number; ms: number }
   | { type: 'error'; sim?: string; message: string };
 
 /** At most this many positions along a run come with its state. */

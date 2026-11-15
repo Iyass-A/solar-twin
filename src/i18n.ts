@@ -253,6 +253,9 @@ export interface Strings {
     error: (message: string) => string;
     tooFar: string;
     starLate: (year: number) => string;
+    jump: string;
+    compare: { title: string; note: string; body: string; year: string; distance: string; offset: string; removed: string;
+      escapes: string; star: string; real: (value: string) => string; days: (n: string) => string; years: (n: string) => string };
   };
 }
 
@@ -656,6 +659,14 @@ const AR: Strings = {
     error: (m) => `ما زبط: ${m}`,
     tooFar: 'التفريع بيشتغل بس بين 1800 و2050',
     starLate: (y) => `النجم لازم يمرّ قبل 2050: فرّع من ${y} أو قبل`,
+    jump: 'روح لبداية الفرع',
+    compare: {
+      title: 'مقارنة مع الواقع، بنفس اللحظة',
+      note: 'الواقع هون هو نفس الحساب بلا التغيير، فكل فرق جاي من التغيير. السنة: قديش بياخد الكوكب ليلف لفّة حوالين الشمس عمداره هلأ.',
+      body: 'الجسم', year: 'سنته', distance: 'بعده عن الشمس', offset: 'بعده عن مكانه بالواقع',
+      removed: 'انشال', escapes: 'هارب، ما عاد يلف', star: 'النجم',
+      real: (v) => `بالواقع: ${v}`, days: (n) => `${n} يوم`, years: (n) => `${n} سنة`,
+    },
   },
 };
 
@@ -951,6 +962,14 @@ const DE: Strings = {
     error: (m) => `Hat nicht geklappt: ${m}`,
     tooFar: 'Verzweigen geht nur zwischen 1800 und 2050',
     starLate: (y) => `Der Stern muss vor 2050 vorbeiziehen: bis ${y} verzweigen`,
+    jump: 'Zum Beginn des Zweigs',
+    compare: {
+      title: 'Vergleich mit der Wirklichkeit, im selben Moment',
+      note: 'Die Wirklichkeit ist hier dieselbe Rechnung ohne die Änderung, jeder Unterschied kommt also von ihr. Jahr: wie lange der Planet auf seiner jetzigen Bahn für einen Umlauf um die Sonne braucht.',
+      body: 'Körper', year: 'Jahr', distance: 'Abstand zur Sonne', offset: 'Abstand zur wirklichen Position',
+      removed: 'entfernt', escapes: 'entkommt, kein Umlauf mehr', star: 'Stern',
+      real: (v) => `wirklich: ${v}`, days: (n) => `${n} Tage`, years: (n) => `${n} Jahre`,
+    },
   },
 };
 
@@ -1250,6 +1269,14 @@ const EN: Strings = {
     error: (m) => `That did not work: ${m}`,
     tooFar: 'Branching works only between 1800 and 2050',
     starLate: (y) => `The star must pass before 2050: branch in ${y} or earlier`,
+    jump: 'Go to the start of the branch',
+    compare: {
+      title: 'Compared with reality, at the same moment',
+      note: 'Reality here is the same calculation without the change, so every difference comes from the change. Year: how long the planet takes to go once round the Sun on its orbit now.',
+      body: 'Body', year: 'Year', distance: 'From the Sun', offset: 'From its real place',
+      removed: 'removed', escapes: 'escaping, no longer in orbit', star: 'Star',
+      real: (v) => `real: ${v}`, days: (n) => `${n} days`, years: (n) => `${n} years`,
+    },
   },
 };
 

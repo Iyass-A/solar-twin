@@ -9,6 +9,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { BODIES, SYSTEMS, AU_KM, SUN_GM, toAuDay } from '../src/physics/bodies';
 import { createNBody, advance, energy, momenta, defaultStep, removeBody, addBody, setGm, kick, type NBody, type Order } from '../src/physics/nbody';
 import { Engine } from '../src/physics/engine';
+import { orbitOf } from '../src/physics/orbit';
 import { utcMsToTdbJd, tdbJdToUtcMs, PATH_SAMPLES, type Edit, type FromWorker, type Mode } from '../src/physics/protocol';
 import { startBodies, startSystems, EPOCH_JD, type Vec } from '../src/physics/state';
 import stateFile from '../src/data/state-vectors.json' with { type: 'json' };
@@ -540,11 +541,32 @@ export async function checkEdits(): Promise<boolean> {
       setGm(s, 0, s.gm[0] * 2);
       const mu = s.gm[0] + s.gm[e], r = helio(s, e), v = helioV(s, e);
       const a = 1 / (2 / len(r) - dot(v, v) / mu), ev = len(sub(r.map((x) => x * (dot(v, v) / mu - 1 / len(r))) as Vec, v.map((x) => x * dot(r, v) / mu) as Vec));
+      // the page's year length (orbitOf) for this orbit, before stepping
+      const orb = orbitOf(mu, r, v);
       let lo = Infinity, hi = 0;
-      for (let d = 2; d <= 3 * 365; d += 2) { advance(s, EPOCH_JD + d, defaultStep(s), 4); const dist = len(helio(s, e)); lo = Math.min(lo, dist); hi = Math.max(hi, dist); }
+      const dists: number[] = [];
+      for (let d = 1; d <= 3 * 365; d += 1) { advance(s, EPOCH_JD + d, defaultStep(s), 4); const dist = len(helio(s, e)); dists.push(dist); lo = Math.min(lo, dist); hi = Math.max(hi, dist); }
       const qExpect = a * (1 - ev), QExpect = a * (1 + ev);
       if (Math.abs(lo / qExpect - 1) > 0.03 || Math.abs(hi / QExpect - 1) > 0.03) fail(`Sun ×2: Earth ${lo.toFixed(3)}-${hi.toFixed(3)} au, vis-viva says ${qExpect.toFixed(3)}-${QExpect.toFixed(3)}`);
       console.log(`  the Sun twice as heavy: Earth swings between ${lo.toFixed(3)} and ${hi.toFixed(3)} au (vis-viva: ${qExpect.toFixed(3)} to ${QExpect.toFixed(3)})`);
+      // ... and its new year, timed from one closest point to the next, is the one orbitOf gives
+      const minima = dists.flatMap((x, k) => (k > 0 && k < dists.length - 1 && x < dists[k - 1] && x <= dists[k + 1] ? [k + 1] : []));
+      const year = (minima.at(-1)! - minima[0]) / (minima.length - 1);
+      if (!(orb.period !== null && Math.abs(orb.a / a - 1) < 1e-12 && Math.abs(orb.e - ev) < 1e-9 && minima.length >= 5 && Math.abs(year / orb.period - 1) < 0.02)) {
+        fail(`Sun ×2: Earth's year ${year.toFixed(1)} days from closest to closest, orbitOf says ${orb.period?.toFixed(1)}`);
+      }
+      console.log(`  its new year: ${year.toFixed(1)} days from one closest point to the next, ${orb.period!.toFixed(1)} from its orbit (as the page shows it)`);
+    }
+
+    // 2b. orbitOf before any change: the planets' years as known; and a body fast enough escapes
+    {
+      const s = sysNow(), mu = (id: string) => s.gm[0] + s.gm[I(id)];
+      const known: Record<string, number> = { earth: 365.256, mars: 686.98, jupiter: 4332.6, neptune: 60190 };
+      const off = Object.entries(known).map(([id, days]) => Math.abs(orbitOf(mu(id), helio(s, I(id)), helioV(s, I(id))).period! / days - 1));
+      const ve = helioV(s, I('earth'));
+      const away = orbitOf(mu('earth'), helio(s, I('earth')), ve.map((c) => c * (1 + 13 * KMS / len(ve))));
+      if (Math.max(...off) > 0.01 || away.period !== null || !(away.e > 1)) fail(`orbitOf: years off by ${Math.max(...off)}, Earth 13 km/s faster: period ${away.period}, e ${away.e}`);
+      console.log(`  years from the orbits now: Earth, Mars, Jupiter, Neptune within ${(Math.max(...off) * 100).toFixed(2)}% of the known ones; Earth 13 km/s faster escapes (e = ${away.e.toFixed(2)})`);
     }
 
     // 3. Earth pushed by +5 km/s along its motion: a bigger orbit, as vis-viva says
@@ -640,6 +662,8 @@ export async function checkEdits(): Promise<boolean> {
     let diff = 0;
     for (let k = 0; k < d.r.length; k++) diff = Math.max(diff, Math.abs(got.r[k] - d.r[k]));
     if (r1.ids.includes('jupiter') || r4.ids.at(-1) !== 'star' || r4.ids.length !== 10 || diff !== 0) fail(`through the engine: ids ${r4.ids.join(',')}, ${diff * AU_KM} km from doing it directly`);
+    // the velocities and the masses come too (the page works out each planet's year from them)
+    if (maxDiff(got.v, d.v) !== 0 || r4.gm.length !== d.n || r4.gm.some((g, k) => g !== d.gm[k])) fail('through the engine: velocities or masses differ from doing it directly');
     // the energy is measured from the changed system, not from before the change
     if (!(Math.abs(got.energyError) < 1e-8)) fail(`after changes the engine reports an energy error of ${got.energyError}`);
     engine.handle({ type: 'goto', sim: 'real', jd: EPOCH_JD });

@@ -115,6 +115,9 @@ export class Scene3D {
   // "Branch reality": per body an empty circle, its recent path, and a line to the real planet
   private readonly ghosts = new Map<string, { ring: THREE.Sprite; trail: THREE.Line; link: THREE.Line }>();
   private ghostTexture: THREE.Texture | null = null;
+  // A branch body with no real twin (a passing star) that is off the screen: an arrow at the edge
+  private farBody: { pos: THREE.Vector3; dist: number; color: string } | null = null;
+  private edgeMarker!: HTMLSpanElement;
 
   get selected(): string | null { return this.sel; }
 
@@ -235,6 +238,10 @@ export class Scene3D {
     this.resetCamera();
     this.refreshTexts();
     this.cloudLabel = this.label('', 'dim');
+    this.edgeMarker = document.createElement('span');
+    this.edgeMarker.className = 'edge';
+    this.edgeMarker.dir = 'ltr';
+    this.overlay.append(this.edgeMarker);
 
     // The star catalogue is its own file, so the scene shows first and the stars fade in after
     import('../data/stars.json')
@@ -418,6 +425,7 @@ export class Scene3D {
   /** The branch's bodies: an empty circle each (sized on screen), their recent path, and a line to the real planet. */
   private updateGhosts(ghosts: Ghost[] | null, view3: (v: Vec3) => [number, number, number]) {
     const wanted = new Set((ghosts ?? []).map((g) => g.id));
+    this.farBody = null;
     for (const [id, o] of this.ghosts) {
       if (wanted.has(id)) continue;
       this.scene.remove(o.ring, o.trail, o.link);
@@ -449,6 +457,7 @@ export class Scene3D {
       for (let i = 0; i < n; i++) { const [a, b, c] = view3(g.trail[start + i]); tp.setXYZ(i, a, b, c); }
       tp.needsUpdate = true;
       o.trail.geometry.setDrawRange(0, n);
+      if (!planet) this.farBody = { pos: o.ring.position, dist: Math.hypot(g.pos.x, g.pos.y, g.pos.z), color: g.color };
       const lp = o.link.geometry.getAttribute('position') as THREE.BufferAttribute;
       const real = planet?.mesh.position;
       o.link.visible = !!real;
@@ -570,6 +579,30 @@ export class Scene3D {
     return { x: ((v.x + 1) / 2) * this.w, y: ((1 - v.y) / 2) * this.h };
   }
 
+  private placeEdgeMarker() {
+    const far = this.farBody, el = this.edgeMarker;
+    if (!far) { el.style.visibility = 'hidden'; return; }
+    const v = this.tmp.copy(far.pos).project(this.camera);
+    const behind = v.z > 1;
+    const M = 18;
+    let x = ((v.x + 1) / 2) * this.w, y = ((1 - v.y) / 2) * this.h;
+    if (!behind && x >= M && x <= this.w - M && y >= M && y <= this.h - M) { el.style.visibility = 'hidden'; return; }
+    const cx = this.w / 2, cy = this.h / 2;
+    let dx = x - cx, dy = y - cy;
+    if (behind) { dx = -dx; dy = -dy; }
+    const k = Math.min((this.w / 2 - M) / Math.abs(dx || 1e-9), (this.h / 2 - M) / Math.abs(dy || 1e-9));
+    x = cx + dx * k; y = cy + dy * k;
+    const text = String(Math.round(far.dist));
+    if (el.dataset.text !== text) { el.dataset.text = text; el.innerHTML = `<i>➤</i>${text}`; }
+    el.style.color = far.color;
+    (el.firstElementChild as HTMLElement).style.transform = `rotate(${Math.atan2(dy, dx).toFixed(3)}rad)`;
+    // Kept whole inside the view
+    const w = el.offsetWidth || 40, h = el.offsetHeight || 16;
+    const left = Math.min(Math.max(x - w / 2, 4), this.w - w - 4), top = Math.min(Math.max(y - h / 2, 4), this.h - h - 4);
+    el.style.transform = `translate(${left.toFixed(1)}px, ${top.toFixed(1)}px)`;
+    el.style.visibility = 'visible';
+  }
+
   /** Distance rings on the ecliptic plane, the equinox direction, and their labels. */
   private buildGrid(view: ViewInfo) {
     this.gridFor = this.mode;
@@ -689,6 +722,9 @@ export class Scene3D {
     } else {
       this.cloudLabel.el.style.visibility = 'hidden';
     }
+
+    // A passing star off the screen (or behind the camera): an arrow at the edge towards it, with its distance in au
+    this.placeEdgeMarker();
 
     // Ring values and the equinox, wherever there is room
     for (const { pos, label } of this.gridLabels) {

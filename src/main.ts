@@ -313,6 +313,7 @@ function jumpTo(ms: number) {
 }
 
 playBtn.addEventListener('click', () => setPlaying(!clock.playing));
+branch.onJump = (ms) => { setPlaying(false); jumpTo(ms); };
 nowBtn.addEventListener('click', () => { setPlaying(false); clock.live = true; });
 speedSel.addEventListener('change', () => { clock.speed = SPEED_DAYS[Number(speedSel.value)]; });
 
