@@ -250,3 +250,45 @@ export function shortestTimescale(s: NBody): number {
   }
   return shortest;
 }
+
+// ---------- Changes for "branch reality" ----------
+// Each change takes effect at the system's current time and refreshes s.a.
+
+/** Takes body i out. Its bulge goes with it; the indices after it move down by one. */
+export function removeBody(s: NBody, i: number) {
+  if (!(i >= 0 && i < s.n)) throw new Error(`no body ${i}`);
+  const cut = (a: Float64Array, size: number) => {
+    const out = new Float64Array(a.length - size);
+    out.set(a.subarray(0, i * size));
+    out.set(a.subarray((i + 1) * size), i * size);
+    return out;
+  };
+  s.gm = cut(s.gm, 1); s.r = cut(s.r, 3); s.v = cut(s.v, 3); s.a = new Float64Array(3 * (s.n - 1));
+  s.n -= 1;
+  s.bulges = s.bulges.filter((b) => b.i !== i).map((b) => (b.i > i ? { ...b, i: b.i - 1 } : b));
+  s.relSun = s.relSun === i ? -1 : s.relSun > i ? s.relSun - 1 : s.relSun;
+  accelerations(s);
+}
+
+/** Adds a body at the end (position and velocity from the solar-system barycentre); returns its index. */
+export function addBody(s: NBody, b: { gmAu: number; r: ArrayLike<number>; v: ArrayLike<number> }): number {
+  const grow = (a: Float64Array, extra: ArrayLike<number>) => { const out = new Float64Array(a.length + extra.length); out.set(a); out.set(extra, a.length); return out; };
+  s.gm = grow(s.gm, [b.gmAu]); s.r = grow(s.r, [b.r[0], b.r[1], b.r[2]]); s.v = grow(s.v, [b.v[0], b.v[1], b.v[2]]);
+  s.a = new Float64Array(3 * (s.n + 1));
+  s.n += 1;
+  accelerations(s);
+  return s.n - 1;
+}
+
+/** Sets body i's GM [au^3/day^2]. */
+export function setGm(s: NBody, i: number, gmAu: number) {
+  if (!(gmAu >= 0) || !Number.isFinite(gmAu)) throw new Error(`not a mass: ${gmAu}`);
+  s.gm[i] = gmAu;
+  accelerations(s);
+}
+
+/** Adds the velocity dv [au/day] to each of the bodies (a planet and its moons move together). */
+export function kick(s: NBody, bodies: number[], dv: ArrayLike<number>) {
+  for (const i of bodies) for (let k = 0; k < 3; k++) s.v[3 * i + k] += dv[k];
+  accelerations(s);
+}

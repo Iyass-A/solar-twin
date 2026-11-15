@@ -7,7 +7,7 @@
 // goto() settles with the state for the latest time asked of that sim: when the time bar moves on
 // before a run ends, the earlier promises settle with the newer state.
 
-import type { FromWorker, Mode, ToWorker } from './protocol';
+import type { Edit, FromWorker, Mode, ToWorker } from './protocol';
 
 type Ready = Extract<FromWorker, { type: 'ready' }>;
 type State = Extract<FromWorker, { type: 'state' }>;
@@ -68,6 +68,11 @@ export class Physics {
       this.states.set(sim, list);
       this.send({ type: 'goto', sim, jd });
     });
+  }
+
+  /** Changes a sim that has arrived (not running), at its current time; settles with its new bodies. */
+  edit(sim: string, edit: Edit): Promise<Ready> {
+    return new Promise((resolve, reject) => { this.ready.set(sim, { resolve, reject }); this.send({ type: 'edit', sim, edit }); });
   }
 
   drop(sim: string) { this.send({ type: 'drop', sim }); }

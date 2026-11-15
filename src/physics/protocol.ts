@@ -12,7 +12,23 @@ export type ToWorker =
   | { type: 'start'; sim: string; mode: Mode; relativity?: boolean }
   | { type: 'branch'; sim: string; from: string } // a copy of `from`, at its current time
   | { type: 'goto'; sim: string; jd: number }     // run to this time; a newer goto replaces an older one
+  | { type: 'edit'; sim: string; edit: Edit }     // change a sim that is not running, at its current time
   | { type: 'drop'; sim: string };
+
+/**
+ * A change to a sim ("branch reality"), by body id (see `ids` in "ready"):
+ *   remove: take it out (as systems: the planet with its moons; with moons: a planet takes its moons along)
+ *   mass:   multiply its mass (GM) by factor
+ *   push:   change its speed round the Sun by dvKmS [km/s] along its motion (negative: against it);
+ *           a planet's moons get the same push
+ *   add:    a new body, such as a passing star or an asteroid, with its GM [km^3/s^2], its position [au]
+ *           and velocity [km/s] relative to the Sun (J2000 ecliptic)
+ */
+export type Edit =
+  | { kind: 'remove'; id: string }
+  | { kind: 'mass'; id: string; factor: number }
+  | { kind: 'push'; id: string; dvKmS: number }
+  | { kind: 'add'; id: string; gm: number; r: [number, number, number]; vKmS: [number, number, number] };
 
 export type FromWorker =
   | { type: 'ready'; sim: string; mode: Mode; relativity: boolean; ids: string[]; jd: number; step: number }

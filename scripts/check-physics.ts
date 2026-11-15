@@ -7,9 +7,9 @@
 import * as Astronomy from 'astronomy-engine';
 import { existsSync, readFileSync } from 'node:fs';
 import { BODIES, SYSTEMS, AU_KM, SUN_GM, toAuDay } from '../src/physics/bodies';
-import { createNBody, advance, energy, momenta, defaultStep, type NBody, type Order } from '../src/physics/nbody';
+import { createNBody, advance, energy, momenta, defaultStep, removeBody, addBody, setGm, kick, type NBody, type Order } from '../src/physics/nbody';
 import { Engine } from '../src/physics/engine';
-import { utcMsToTdbJd, tdbJdToUtcMs, type FromWorker, type Mode } from '../src/physics/protocol';
+import { utcMsToTdbJd, tdbJdToUtcMs, type Edit, type FromWorker, type Mode } from '../src/physics/protocol';
 import { startBodies, startSystems, EPOCH_JD, type Vec } from '../src/physics/state';
 import stateFile from '../src/data/state-vectors.json' with { type: 'json' };
 import { PLANETS } from '../src/astro/elements';
@@ -490,3 +490,189 @@ export function checkLongRange(): boolean {
   console.log(`Physics engine over the whole time bar: ${ok ? 'OK' : 'FAIL'} (limit ${DISPLAY_LIMIT_DEG}°)`);
   return ok;
 }
+
+// ---------------------------------------------------------------------------------------------
+// "Branch reality" (step 5): changes to a sim. Each is checked against what physics says it must
+// do, and through the worker's engine against doing the same change directly.
+export async function checkEdits(): Promise<boolean> {
+  let ok = true;
+  const fail = (msg: string) => { ok = false; console.log(`  FAIL ${msg}`); };
+  console.log('\nPhysics engine: changes for "branch reality"');
+  const KMS = 86400 / AU_KM; // km/s -> au/day
+  const sysList = () => [startBodies()[0], ...startSystems()];
+  const sysNow = () => createNBody(sysList(), EPOCH_JD, { relativity: true });
+  const vec = (a: Float64Array, i: number): Vec => [a[3 * i], a[3 * i + 1], a[3 * i + 2]];
+  const helio = (s: NBody, i: number): Vec => sub(vec(s.r, i), vec(s.r, 0));
+  const helioV = (s: NBody, i: number): Vec => sub(vec(s.v, i), vec(s.v, 0));
+  const ids = sysList().map((b) => b.id);
+  const I = (id: string) => ids.indexOf(id);
+
+  try {
+    // 1. Without Jupiter: the others stay where they are at that moment, the momentum drops by
+    //    Jupiter's own, the energy is kept from then on, and Saturn moves differently afterwards
+    {
+      const s = sysNow(), m0 = momenta(s).p as Vec, pJ = vec(s.v, I('jupiter')).map((x) => x * s.gm[I('jupiter')]) as Vec;
+      const saturnBefore = vec(s.r, I('saturn'));
+      removeBody(s, I('jupiter'));
+      const m1 = momenta(s).p as Vec;
+      const dp = len(sub(sub(m0, m1), pJ)) / len(pJ);
+      const jS = ids.filter((id) => id !== 'jupiter').indexOf('saturn');
+      if (s.n !== 9 || len(sub(vec(s.r, jS), saturnBefore)) !== 0 || dp > 1e-12) fail(`removing Jupiter: ${s.n} bodies, momentum off by ${dp}`);
+      const e0 = energy(s), h = defaultStep(s);
+      const control = sysNow();
+      advance(s, EPOCH_JD + 100 * 365.25, h, 4); advance(control, EPOCH_JD + 100 * 365.25, defaultStep(control), 4);
+      const de = Math.abs(energy(s) / e0 - 1);
+      const satDeg = sep(helio(s, jS), helio(control, I('saturn')));
+      // (small: the Sun keeps its 12 m/s wobble from Jupiter, which partly makes up for the lost mass)
+      if (de > 1e-8 || !(satDeg > 0.02)) fail(`without Jupiter: energy ${de}, Saturn only ${satDeg.toFixed(3)}° off after a century`);
+      console.log(`  without Jupiter: momentum drops by exactly Jupiter's; a century on, Saturn is ${satDeg.toFixed(2)}° from where it would be; energy within ${de.toExponential(1)}`);
+    }
+
+    // 2. The Sun twice as heavy: Earth (moving as before) falls onto the orbit that energy and
+    //    angular momentum give with twice the pull: from vis-viva, about 0.33 to 1 au
+    {
+      const s = sysNow(), e = I('earth');
+      setGm(s, 0, s.gm[0] * 2);
+      const mu = s.gm[0] + s.gm[e], r = helio(s, e), v = helioV(s, e);
+      const a = 1 / (2 / len(r) - dot(v, v) / mu), ev = len(sub(r.map((x) => x * (dot(v, v) / mu - 1 / len(r))) as Vec, v.map((x) => x * dot(r, v) / mu) as Vec));
+      let lo = Infinity, hi = 0;
+      for (let d = 2; d <= 3 * 365; d += 2) { advance(s, EPOCH_JD + d, defaultStep(s), 4); const dist = len(helio(s, e)); lo = Math.min(lo, dist); hi = Math.max(hi, dist); }
+      const qExpect = a * (1 - ev), QExpect = a * (1 + ev);
+      if (Math.abs(lo / qExpect - 1) > 0.03 || Math.abs(hi / QExpect - 1) > 0.03) fail(`Sun ×2: Earth ${lo.toFixed(3)}-${hi.toFixed(3)} au, vis-viva says ${qExpect.toFixed(3)}-${QExpect.toFixed(3)}`);
+      console.log(`  the Sun twice as heavy: Earth swings between ${lo.toFixed(3)} and ${hi.toFixed(3)} au (vis-viva: ${qExpect.toFixed(3)} to ${QExpect.toFixed(3)})`);
+    }
+
+    // 3. Earth pushed by +5 km/s along its motion: a bigger orbit, as vis-viva says
+    {
+      const s = sysNow(), e = I('earth'), v0 = helioV(s, e);
+      kick(s, [e], v0.map((c) => c / len(v0) * 5 * KMS));
+      const mu = s.gm[0] + s.gm[e], r = helio(s, e), v = helioV(s, e);
+      const a = 1 / (2 / len(r) - dot(v, v) / mu);
+      let hi = 0;
+      for (let d = 5; d <= 3 * 365; d += 5) { advance(s, EPOCH_JD + d, defaultStep(s), 4); hi = Math.max(hi, len(helio(s, e))); }
+      const ecc = len(sub(r.map((x) => x * (dot(v, v) / mu - 1 / len(r))) as Vec, v.map((x) => x * dot(r, v) / mu) as Vec));
+      if (Math.abs(hi / (a * (1 + ecc)) - 1) > 0.03) fail(`push: Earth reaches ${hi.toFixed(3)} au, vis-viva says ${(a * (1 + ecc)).toFixed(3)}`);
+      console.log(`  Earth pushed by 5 km/s: out to ${hi.toFixed(3)} au (vis-viva: ${(a * (1 + ecc)).toFixed(3)})`);
+    }
+
+    // 4. A star of one solar mass passing 1,000 au away at 20 km/s, closest in 100 years: it comes
+    //    that close then (bent by only some au), and the momentum stays exactly as it was
+    {
+      const s = sysNow(), years = 100, q = 1000, vInf = 20;
+      const vAu = vInf * KMS, along = vAu * years * 365.25;
+      const at: Vec = [q, -along, 0], vel: Vec = [0, vAu, 0]; // passes the +x side, moving along +y
+      const m0 = momenta(s).p as Vec;
+      const sun0 = vec(s.r, 0), sunV0 = vec(s.v, 0);
+      const star = addBody(s, { gmAu: toAuDay(SUN_GM), r: at.map((x, k) => sun0[k] + x), v: vel.map((x, k) => sunV0[k] + x) });
+      const pStar = vel.map((x, k) => (sunV0[k] + x) * s.gm[star]) as Vec;
+      const dp = len(sub(sub(momenta(s).p as Vec, m0), pStar)) / len(pStar);
+      let closest = Infinity, when = 0;
+      for (let d = 365.25 * 80; d <= 365.25 * 120; d += 30) {
+        advance(s, EPOCH_JD + d, defaultStep(s), 4);
+        const dist = len(sub(vec(s.r, star), vec(s.r, 0)));
+        if (dist < closest) { closest = dist; when = d / 365.25; }
+      }
+      if (dp > 1e-12 || Math.abs(closest - q) > 10 || Math.abs(when - years) > 1) fail(`passing star: closest ${closest.toFixed(1)} au after ${when.toFixed(1)} years, momentum ${dp}`);
+      console.log(`  a star passing at 1,000 au: closest ${closest.toFixed(1)} au after ${when.toFixed(1)} years (aimed: 1,000 au in 100 years)`);
+    }
+
+    // 4b. With moons: after taking Mercury out, the bulges still belong to Jupiter, Saturn and Neptune;
+    //     pushing Jupiter by 1 km/s takes its moons along (Io stays on its orbit); the Sun can go too
+    {
+      const list = startBodies(), s = createNBody(list, EPOCH_JD, { relativity: true });
+      const gmOf = (id: string) => list.find((b) => b.id === id)!.gmAu;
+      removeBody(s, list.findIndex((b) => b.id === 'mercury'));
+      const owners = s.bulges.map((b) => s.gm[b.i]);
+      if (owners.length !== 3 || owners.some((g, k) => g !== gmOf(['jupiter', 'saturn', 'neptune'][k]))) fail('bulges moved to the wrong bodies');
+      const ids2 = list.map((b) => b.id).filter((id) => id !== 'mercury'), J = ids2.indexOf('jupiter'), io = ids2.indexOf('io');
+      const jv = sub(vec(s.v, J), vec(s.v, 0));
+      kick(s, ids2.flatMap((id, k) => (list.find((b) => b.id === id)!.system === 'jupiter' ? [k] : [])), jv.map((c) => c / len(jv) * KMS));
+      advance(s, EPOCH_JD + 10, defaultStep(s), 4);
+      const ioKm = len(sub(vec(s.r, io), vec(s.r, J))) * AU_KM;
+      if (ioKm < 419_000 || ioKm > 425_000) fail(`Jupiter pushed: Io ${ioKm.toFixed(0)} km from it`);
+      removeBody(s, 0);
+      if (s.relSun !== -1 || s.n !== list.length - 2) fail('removing the Sun');
+      console.log(`  with moons: bulges stay with their planets after a removal; Jupiter pushed by 1 km/s keeps Io on its orbit (${(ioKm / 1000).toFixed(0)} thousand km)`);
+    }
+
+    // 5. The same changes through the worker's engine: the same numbers as doing them directly,
+    //    the bodies' ids follow, the sim it was branched from stays as it was, and bad changes are refused
+    const inbox: FromWorker[] = [];
+    let wake: (() => void) | null = null;
+    const engine = new Engine((m) => { inbox.push(m); wake?.(); }, (fn) => setImmediate(fn));
+    const next = <T extends FromWorker['type']>(type: T, sim?: string): Promise<Extract<FromWorker, { type: T }>> =>
+      new Promise((resolve, reject) => {
+        const timer = setTimeout(() => { wake = null; reject(new Error(`no "${type}" within 30 s`)); }, 30_000);
+        const look = () => {
+          const i = inbox.findIndex((m) => m.type === type && (sim === undefined || ('sim' in m && m.sim === sim)));
+          if (i >= 0) { clearTimeout(timer); wake = null; resolve(inbox.splice(i, 1)[0] as Extract<FromWorker, { type: T }>); }
+        };
+        wake = look; look();
+      });
+    engine.handle({ type: 'start', sim: 'real', mode: 'systems' });
+    await next('ready', 'real');
+    engine.handle({ type: 'branch', sim: 'what-if', from: 'real' });
+    await next('ready', 'what-if');
+    engine.handle({ type: 'edit', sim: 'what-if', edit: { kind: 'remove', id: 'jupiter' } });
+    const r1 = await next('ready', 'what-if');
+    engine.handle({ type: 'edit', sim: 'what-if', edit: { kind: 'mass', id: 'sun', factor: 2 } });
+    await next('ready', 'what-if');
+    engine.handle({ type: 'edit', sim: 'what-if', edit: { kind: 'push', id: 'earth', dvKmS: 5 } });
+    await next('ready', 'what-if');
+    engine.handle({ type: 'edit', sim: 'what-if', edit: { kind: 'add', id: 'star', gm: SUN_GM, r: [1000, -42200, 0], vKmS: [0, 20, 0] } });
+    const r4 = await next('ready', 'what-if');
+    engine.handle({ type: 'goto', sim: 'what-if', jd: EPOCH_JD + 365 });
+    const got = await next('state', 'what-if');
+    // directly
+    const d = sysNow();
+    removeBody(d, I('jupiter'));
+    setGm(d, 0, d.gm[0] * 2);
+    const ids2 = ids.filter((id) => id !== 'jupiter'), e2 = ids2.indexOf('earth');
+    const ve = helioV(d, e2);
+    kick(d, [e2], ve.map((c) => c / len(ve) * 5 * KMS));
+    addBody(d, { gmAu: toAuDay(SUN_GM), r: [1000, -42200, 0].map((x, k) => d.r[k] + x), v: [0, 20 * KMS, 0].map((x, k) => d.v[k] + x) });
+    advance(d, EPOCH_JD + 365, defaultStep(d), 4);
+    let diff = 0;
+    for (let k = 0; k < d.r.length; k++) diff = Math.max(diff, Math.abs(got.r[k] - d.r[k]));
+    if (r1.ids.includes('jupiter') || r4.ids.at(-1) !== 'star' || r4.ids.length !== 10 || diff !== 0) fail(`through the engine: ids ${r4.ids.join(',')}, ${diff * AU_KM} km from doing it directly`);
+    // the energy is measured from the changed system, not from before the change
+    if (!(Math.abs(got.energyError) < 1e-8)) fail(`after changes the engine reports an energy error of ${got.energyError}`);
+    engine.handle({ type: 'goto', sim: 'real', jd: EPOCH_JD });
+    const real = await next('state', 'real');
+    if (real.r.length !== 30 || maxDiff(real.r, sysNow().r) !== 0) fail('the sim it was branched from changed');
+    // with moons: removing a planet takes its moons along; pushing it pushes them too
+    engine.handle({ type: 'start', sim: 'moons', mode: 'bodies' });
+    await next('ready', 'moons');
+    engine.handle({ type: 'edit', sim: 'moons', edit: { kind: 'remove', id: 'jupiter' } });
+    const rm = await next('ready', 'moons');
+    if (rm.ids.some((id) => ['jupiter', 'io', 'europa', 'ganymede', 'callisto'].includes(id)) || rm.ids.length !== 11) fail(`with moons, removing Jupiter left ${rm.ids.join(',')}`);
+    engine.handle({ type: 'edit', sim: 'moons', edit: { kind: 'push', id: 'saturn', dvKmS: 1 } });
+    const pm = await next('ready', 'moons');
+    engine.handle({ type: 'goto', sim: 'moons', jd: EPOCH_JD + 10 });
+    const ms = await next('state', 'moons');
+    const at3 = (id: string): Vec => { const i = pm.ids.indexOf(id); return [ms.r[3 * i], ms.r[3 * i + 1], ms.r[3 * i + 2]]; };
+    const titanKm = len(sub(at3('titan'), at3('saturn'))) * AU_KM;
+    if (titanKm < 1_186_000 || titanKm > 1_258_000) fail(`with moons, Saturn pushed: Titan ${titanKm.toFixed(0)} km from it`);
+    console.log(`  through the engine: four changes give exactly the numbers of doing them directly; a planet goes with its moons, and pushed, takes them along`);
+    // refusals
+    engine.handle({ type: 'goto', sim: 'what-if', jd: EPOCH_JD + 3000 });
+    engine.handle({ type: 'edit', sim: 'what-if', edit: { kind: 'mass', id: 'sun', factor: 3 } }); // running
+    const errs: string[] = [(await next('error', 'what-if')).message];
+    await next('state', 'what-if');
+    for (const edit of [{ kind: 'mass', id: 'pluto', factor: -1 }, { kind: 'push', id: 'sun', dvKmS: 1 }, { kind: 'remove', id: 'vulcan' },
+      { kind: 'add', id: 'star', gm: 1, r: [1, 0, 0], vKmS: [0, 1, 0] }, { kind: 'push', id: 'earth', dvKmS: Number.NaN }] as Edit[]) {
+      engine.handle({ type: 'edit', sim: 'what-if', edit });
+      errs.push((await next('error', 'what-if')).message);
+    }
+    const want = [/is running/, /not a factor/, /not the Sun/, /no body "vulcan"/, /exists already/, /not a speed/];
+    if (!want.every((re, k) => re.test(errs[k]))) fail(`refusals: ${errs.join(' | ')}`);
+    console.log('  refuses a change while running, a negative mass, pushing the Sun, an unknown body, a name twice, a speed that is not a number');
+  } catch (err) {
+    fail(String(err));
+  }
+  console.log(`Physics engine changes: ${ok ? 'OK' : 'FAIL'}`);
+  return ok;
+}
+
+function maxDiff(a: ArrayLike<number>, b: ArrayLike<number>) { let m = 0; for (let k = 0; k < a.length; k++) m = Math.max(m, Math.abs(a[k] - b[k])); return m; }
+function sep(a: Vec, b: Vec) { return Math.atan2(len(cross(a, b)), dot(a, b)) * 180 / Math.PI; }
