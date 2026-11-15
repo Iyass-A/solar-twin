@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Live data: fetched on GitHub before each deploy, never committed
+public/data/live/

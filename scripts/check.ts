@@ -13,7 +13,8 @@ import { equatorialToEcliptic, eclipticLatitude } from '../src/astro/frames';
 import starFile from '../src/data/stars.json' with { type: 'json' };
 import smallFile from '../src/data/small-bodies.json' with { type: 'json' };
 import { smallBodyPosition } from '../src/astro/smallbody';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { cadQuery, fileProblems, fromCad, LD_AU, parseSigma, sizeRange, tdbToUtcMs } from '../src/live/closeApproaches';
 import { SMALL_BODY_NAMES } from '../src/data/small-body-names';
 import { sampleOrbits, cloudOffsets, cholesky6 } from '../src/astro/uncertainty';
 import { loadSmallBodies, covarianceFrom, type CovEntry } from '../src/view/smallbodies';
@@ -327,6 +328,65 @@ for (const [min, ar, de, en] of LIGHT_CASES) {
 }
 failed ||= !langOk;
 console.log(`Texts in ${LANGS.map((l) => l.id).join(', ')}, with names for all ${listed.length} well-known asteroids and comets: ${langOk ? 'OK' : 'FAIL'}`);
+
+// 11. Live data: close approaches to Earth (CNEOS). The parser, sizes and times always; the file itself
+//     only where it exists, which is on GitHub before a deploy (it is fetched there, never committed).
+let liveOk = true;
+const liveFail = (msg: string) => { liveOk = false; console.log(`  ${msg}`); };
+const SIGMA_CASES: [unknown, number | null][] = [['< 00:01', 0], ['00:12', 12], ['13:02', 782], ['2_09:08', 3428], ['', null], [null, null], ['soon', null]];
+for (const [s, want] of SIGMA_CASES) if (parseSigma(s) !== want) liveFail(`time uncertainty "${s}": got ${parseSigma(s)}, want ${want}`);
+// CNEOS: H 22 is about 110 to 240 m
+const [dSmall, dLarge] = sizeRange(22);
+if (Math.abs(dSmall - 0.106) > 0.003 || Math.abs(dLarge - 0.237) > 0.003) liveFail(`size for H 22: ${dSmall} to ${dLarge} km`);
+// 2026-01-01 00:00 TDB is 69.184 s earlier in UTC (TT - UTC since 2017; J2000 itself is 2451545)
+const tdb2026 = J2000 + 9496.5;
+if (new Date(tdbToUtcMs(tdb2026)).toISOString() !== '2025-12-31T23:58:50.816Z') liveFail(`2026-01-01 00:00 TDB in UTC: ${new Date(tdbToUtcMs(tdb2026)).toISOString()}`);
+const q = cadQuery(Date.UTC(2026, 10, 15, 4, 17));
+if (q.dateMin !== '2026-11-08' || q.dateMax !== '2027-01-14' || !q.url.includes('dist-max=0.05') || !q.url.includes('fullname=true')) liveFail(`query ${q.url}`);
+// An answer in JPL's format (rows as in its documentation; values come as strings)
+const cadSample = () => ({
+  signature: { source: 'NASA/JPL SBDB Close Approach Data API', version: '1.5' },
+  count: 3,
+  fields: ['des', 'orbit_id', 'jd', 'cd', 'dist', 'dist_min', 'dist_max', 'v_rel', 'v_inf', 't_sigma_f', 'h', 'diameter', 'diameter_sigma', 'fullname'],
+  data: [
+    ['153814', '84', '2461948.724', '2028-Jun-26 05:23', '0.00165833', '0.00165821', '0.00165845', '10.2409', '10.2339', '< 00:01', '18.33', '0.932', '0.011', '153814 (2001 WN5)'],
+    ['99942', '219', '2462240.407', '2029-Apr-13 21:46', '0.000254128', '0.000254120', '0.000254136', '7.42291', '5.84105', '< 00:01', '19.7', '0.34', '0.04', '99942 Apophis (2004 MN4)'],
+    ['2001 AV43', '12', '2462452.142', '2029-Nov-11 15:25', '0.00209', '0.00203', '0.00215', '4.0', '3.9', '00:03', '24.6', null, null, '       (2001 AV43)'],
+  ],
+});
+const info = { fetchedAt: '2026-11-15T04:17:00.000Z', dateMin: '2028-01-01', dateMax: '2030-01-01', distMaxAu: 0.05 };
+try {
+  const { file, dropped } = fromCad(cadSample(), info);
+  const [wn5, apophis, av43] = file.approaches;
+  if (dropped.length || file.approaches.length !== 3) liveFail(`sample: ${file.approaches.length} rows, dropped ${dropped.join('; ')}`);
+  if (apophis.name !== '99942 Apophis (2004 MN4)' || av43.name !== '2001 AV43' || wn5.diameter !== 0.932 || av43.diameter !== null) liveFail('sample: names or diameters');
+  if (Math.abs(apophis.dist / LD_AU - 0.0989) > 0.001 || av43.tSigmaMin !== 3 || apophis.h !== 19.7) liveFail(`sample: Apophis at ${apophis.dist / LD_AU} LD`);
+  if (fileProblems(file).length) liveFail(`sample file: ${fileProblems(file).join('; ')}`);
+} catch (err) { liveFail(`sample: ${err}`); }
+// What must be refused: another version, a missing field, mostly broken rows. One broken row is only left out.
+const refused = (label: string, change: (r: any) => void, mustThrow = true) => {
+  const r = cadSample(); change(r);
+  let threw = false, dropped = 0;
+  try { dropped = fromCad(r, info).dropped.length; } catch { threw = true; }
+  if (mustThrow ? !threw : threw || dropped !== 1) liveFail(`${label}: ${threw ? 'refused' : `accepted, ${dropped} rows left out`}`);
+};
+refused('version 2.0', (r) => { r.signature.version = '2.0'; });
+refused('no v_rel field', (r) => { r.fields[7] = 'speed'; });
+refused('count does not match', (r) => { r.count = 4; });
+refused('two of three rows broken', (r) => { r.data[0][4] = '-1'; r.data[1][7] = 'fast'; });
+refused('one row too far', (r) => { r.data[2][4] = '0.2'; r.data[2][6] = '0.2'; }, false);
+if (fromCad({ signature: { source: 'NASA/JPL SBDB Close Approach Data API', version: '1.5' }, count: 0 }, info).file.approaches.length !== 0) liveFail('empty answer');
+const livePath = 'public/data/live/close-approaches.json';
+let liveNote = 'no file here (it is fetched on GitHub before each deploy)';
+if (existsSync(livePath)) {
+  const live = JSON.parse(readFileSync(livePath, 'utf8'));
+  const problems = fileProblems(live);
+  for (const p of problems.slice(0, 5)) liveFail(`${livePath}: ${p}`);
+  const ahead = (live.approaches ?? []).filter((a: { jd: number }) => tdbToUtcMs(a.jd) >= Date.now()).length;
+  liveNote = `${live.approaches?.length} approaches in ${livePath} (${ahead} ahead), fetched ${live.fetchedAt}`;
+}
+failed ||= !liveOk;
+console.log(`\nClose approaches (CNEOS): parser, sizes and times ${liveOk ? 'OK' : 'FAIL'}; ${liveNote}`);
 
 console.log(failed ? '\nRESULT: FAIL' : '\nRESULT: OK');
 if (failed) process.exitCode = 1;

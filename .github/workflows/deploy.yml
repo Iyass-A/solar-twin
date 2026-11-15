@@ -1,9 +1,14 @@
-# Builds the site and publishes it to GitHub Pages on every push to main.
+# Builds the site and publishes it to GitHub Pages on every push to main, and once a day
+# to bring in fresh live data from JPL (close approaches to Earth). The live data goes only into
+# the published site, nothing is committed, so the same permissions as before are enough.
+# To stop the daily run, delete the two "schedule" lines.
 name: Deploy to GitHub Pages
 
 on:
   push:
     branches: [main]
+  schedule:
+    - cron: '17 4 * * *' # every day at 04:17 UTC
   workflow_dispatch:
 
 permissions:
@@ -25,6 +30,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Close approaches from CNEOS (JPL), straight into this build. If JPL does not answer,
+      # the copy on the site now is kept. Never stops the deploy: see scripts/fetch-close-approaches.ts.
+      - name: Fetch live data from JPL
+        run: npx tsx scripts/fetch-close-approaches.ts public/data/live/close-approaches.json https://iyass-a.github.io/solar-twin/data/live/close-approaches.json
+        timeout-minutes: 10
+        continue-on-error: true
       - run: npm run check
       - run: npm run build
       - uses: actions/configure-pages@v5
