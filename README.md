@@ -5,9 +5,9 @@
 
 **Open it:** https://iyass-a.github.io/solar-twin/ (Arabic, German, English)
 
-![The planets around the Sun in 3D, with the real stars behind them](public/og.jpg)
+![The planets, asteroids and comets around the Sun in 3D, with the real stars behind them](public/og.jpg)
 
-Version 0.2, public beta.
+Version 0.3, public beta.
 
 ## What you can do
 

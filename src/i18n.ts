@@ -140,7 +140,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 const AR: Strings = {
   title: 'التوأم الرقمي للمجموعة الشمسية',
-  tagline: 'مواقع الكواكب الحقيقية، من سنة 1800 لـ 2050',
+  tagline: 'المواقع الحقيقية للكواكب وأكتر من 2,000 كويكب ومذنب',
   beta: 'تجريبية',
   feedback: 'عندك ملاحظة؟',
   language: 'اللغة',
@@ -247,7 +247,7 @@ const AR: Strings = {
 
 const DE: Strings = {
   title: 'Digitaler Zwilling des Sonnensystems',
-  tagline: 'Die echten Positionen der Planeten, von 1800 bis 2050',
+  tagline: 'Die echten Positionen der Planeten und von über 2.000 Asteroiden und Kometen',
   beta: 'Beta',
   feedback: 'Feedback geben',
   language: 'Sprache',
@@ -354,7 +354,7 @@ const DE: Strings = {
 
 const EN: Strings = {
   title: 'Digital Twin of the Solar System',
-  tagline: 'The real positions of the planets, from 1800 to 2050',
+  tagline: 'The real positions of the planets and over 2,000 asteroids and comets',
   beta: 'beta',
   feedback: 'Send feedback',
   language: 'Language',

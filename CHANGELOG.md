@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.3.0 (15 November 2026), public beta
 
 - Licensed under the GNU AGPL v3.0 or later (`LICENSE`). Copyright (C) 2026 Iyass-A.
 - 2,092 asteroids, dwarf planets and comets from JPL, in the 3D view and on the map, as coloured dots by group (dwarf planet, asteroid, near-Earth asteroid, comet): every near-Earth asteroid of about 1 km and larger, the 400 brightest numbered asteroids of the main belt and Jupiter trojans, the 300 brightest bodies beyond Neptune, all numbered periodic comets, and 36 well-known ones with names in all three languages and a table of their own. The others use JPL's names; a search box finds any of them by name or number, and the legend counts each group. Pick one to see its orbit, its type, size and distances, and to follow it with the camera. A switch hides them.
