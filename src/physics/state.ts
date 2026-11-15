@@ -4,7 +4,8 @@
 // Frame: ICRF, J2000 ecliptic plane, origin at the solar-system barycentre. Units: au, au/day, TDB.
 
 import file from '../data/state-vectors.json';
-import { BODIES, SYSTEMS, toAuDay, type BodyDef, type SystemDef } from './bodies';
+import { BODIES, SYSTEMS, AU_KM, toAuDay, type BodyDef, type SystemDef } from './bodies';
+import { equatorialToEcliptic } from '../astro/frames';
 
 export type Vec = [number, number, number];
 
@@ -12,6 +13,8 @@ export interface StartState {
   gmAu: number; // GM [au^3/day^2]
   r: Vec;       // position [au]
   v: Vec;       // velocity [au/day]
+  /** For an oblate planet: J2, its reference radius [au], and its north pole (unit vector, J2000 ecliptic) */
+  bulge?: { j2: number; radiusAu: number; pole: Vec };
 }
 
 /** Julian date (TDB) of the starting state. */
@@ -21,7 +24,13 @@ function join<T extends { naif: number; gm: number }>(defs: T[], states: { naif:
   return defs.map((d) => {
     const s = states.find((x) => x.naif === d.naif);
     if (!s) throw new Error(`No starting state for NAIF ${d.naif}`);
-    return { ...d, gmAu: toAuDay(d.gm), r: [...s.r] as Vec, v: [...s.v] as Vec };
+    const ob = (d as Partial<BodyDef>).oblateness;
+    const p = ob && ob.pole((EPOCH_JD - 2451545) / 36525);
+    const pole = p && equatorialToEcliptic(p.ra, p.dec);
+    return {
+      ...d, gmAu: toAuDay(d.gm), r: [...s.r] as Vec, v: [...s.v] as Vec,
+      ...(ob && pole ? { bulge: { j2: ob.j2, radiusAu: ob.radiusKm / AU_KM, pole: [pole.x, pole.y, pole.z] as Vec } } : {}),
+    };
   });
 }
 

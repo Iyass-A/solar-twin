@@ -9,6 +9,14 @@
 //   Moons: https://ssd.jpl.nasa.gov/sats/phys_par (Galilean moons: JUP365; Titan: SAT441; Triton: NEP097).
 // A planet here stands for the planet with its smaller moons: its GM is its system's minus the moons
 // listed here, so a system weighs the same whether it is one point or a planet with its moons.
+//
+// Oblateness (J2): the planets with moons listed here bulge at the equator, and that bulge pulls the
+// moons round faster and turns their orbits; without it Io would be tens of degrees off after a year.
+//   Jupiter: J2 = 14696.514e-6, reference radius 71,492 km (Folkner et al. 2017, Juno)
+//   Saturn:  J2 = 16290.573e-6, reference radius 60,330 km (Iess et al. 2019, Science 364, Cassini)
+//   Neptune: J2 = 3408.43e-6, reference radius 25,225 km (Jacobson 2009, AJ 137:4322)
+//   Poles: IAU (Archinal et al. 2018), as right ascension and declination at T Julian centuries from J2000.
+// The Earth's bulge moves the Moon by only some km a year, so it is left out.
 
 export type SystemId =
   | 'mercury' | 'venus' | 'earth' | 'mars' | 'jupiter' | 'saturn' | 'uranus' | 'neptune' | 'pluto';
@@ -19,13 +27,31 @@ export interface SystemDef {
   gm: number;     // the whole system [km^3/s^2]
 }
 
+export interface Oblateness {
+  j2: number;
+  radiusKm: number;
+  /** North pole [deg], ICRF, at T Julian centuries from J2000 */
+  pole: (T: number) => { ra: number; dec: number };
+}
+
 export interface BodyDef {
   id: string;
   naif: number;
   kind: 'star' | 'planet' | 'moon';
   system?: SystemId; // the planetary system it belongs to (not for the Sun)
   gm: number;        // [km^3/s^2]
+  oblateness?: Oblateness;
 }
+
+const DEG = Math.PI / 180;
+export const OBLATENESS: Partial<Record<SystemId, Oblateness>> = {
+  jupiter: { j2: 14696.514e-6, radiusKm: 71492, pole: (T) => ({ ra: 268.056595 - 0.006499 * T, dec: 64.495303 + 0.002413 * T }) },
+  saturn: { j2: 16290.573e-6, radiusKm: 60330, pole: (T) => ({ ra: 40.589 - 0.036 * T, dec: 83.537 - 0.004 * T }) },
+  neptune: {
+    j2: 3408.43e-6, radiusKm: 25225,
+    pole: (T) => { const N = (357.85 + 52.316 * T) * DEG; return { ra: 299.36 + 0.7 * Math.sin(N), dec: 43.46 - 0.51 * Math.cos(N) }; },
+  },
+};
 
 export const AU_KM = 149597870.7;
 const DAY_S = 86400;
@@ -66,6 +92,7 @@ const planets: BodyDef[] = SYSTEMS.filter((s) => PLANET_NAIF[s.id]).map((s) => (
   kind: 'planet',
   system: s.id,
   gm: s.gm - MOONS.filter((m) => m.system === s.id).reduce((sum, m) => sum + m.gm, 0),
+  ...(OBLATENESS[s.id] ? { oblateness: OBLATENESS[s.id] } : {}),
 }));
 
 /** Sun, planets, moons: each planet followed by its moons. */

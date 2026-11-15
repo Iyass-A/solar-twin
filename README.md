@@ -54,6 +54,7 @@ That is plenty for seeing where things are, but it is not meant for pointing a t
 | The "Now in space" screen: a tile for each live source, one card at a time | `src/view/now.ts` |
 | Live data: Deep Space Network, through a small server on Cloudflare Workers (see below) | `workers/dsn/`, `src/live/dsn.ts`, `src/view/dsn.ts`, `src/data/spacecraft.ts`, `.github/workflows/deploy-worker.yml` |
 | Physics engine (in progress): bodies and masses, and their starting state from JPL Horizons (runs on GitHub) | `src/physics/bodies.ts`, `src/physics/state.ts`, `src/data/state-vectors.json`, `scripts/fetch-state-vectors.ts`, `.github/workflows/fetch-state-vectors.yml` |
+| Physics engine (in progress): the N-body integrator (leapfrog and Yoshida 4th order, with the giant planets' equatorial bulges) | `src/physics/nbody.ts` |
 | 2D map (canvas) | `src/view/orrery.ts` |
 | 3D scene (Three.js) and the stars | `src/view/scene3d.ts`, `src/view/stars.ts` |
 | Texts in three languages | `src/i18n.ts` |
@@ -91,7 +92,7 @@ Locally there is no live data, and the live cards say so. The Deep Space Network
 - Close approaches: [CNEOS](https://cneos.jpl.nasa.gov/ca/), NASA/JPL, through the [SBDB Close-Approach Data API](https://ssd-api.jpl.nasa.gov/doc/cad.html). Sizes without a measured diameter are estimated from the brightness (albedo 0.05 to 0.25), as CNEOS does.
 - Space weather: [NOAA Space Weather Prediction Center](https://www.swpc.noaa.gov/) (storm scales, Kp index and forecast, GOES flares), and CME arrival forecasts from NASA's [DONKI](https://kauai.ccmc.gsfc.nasa.gov/DONKI/) (CCMC, WSA-Enlil model, experimental) through api.nasa.gov.
 - Deep Space Network: [DSN Now](https://eyes.nasa.gov/dsn/), NASA/JPL (`dsn.xml` and `config.xml`), read by our server on Cloudflare Workers.
-- Physics engine: positions and velocities of the Sun, planets, system barycentres and the seven largest moons from [JPL Horizons](https://ssd.jpl.nasa.gov/horizons/) (DE441 and JPL's satellite ephemerides); masses (GM) from DE440 ([Park et al. 2021](https://doi.org/10.3847/1538-3881/abd414), as listed in JPL's [Astrodynamic Parameters](https://ssd.jpl.nasa.gov/astro_par.html)) and JPL's [satellite physical parameters](https://ssd.jpl.nasa.gov/sats/phys_par). The "Fetch state vectors" workflow prints them in its log for review.
+- Physics engine: positions and velocities of the Sun, planets, system barycentres and the seven largest moons from [JPL Horizons](https://ssd.jpl.nasa.gov/horizons/) (DE441 and JPL's satellite ephemerides); masses (GM) from DE440 ([Park et al. 2021](https://doi.org/10.3847/1538-3881/abd414), as listed in JPL's [Astrodynamic Parameters](https://ssd.jpl.nasa.gov/astro_par.html)) and JPL's [satellite physical parameters](https://ssd.jpl.nasa.gov/sats/phys_par). The "Fetch state vectors" workflow prints them in its log for review. Oblateness (J2) of Jupiter (Folkner et al. 2017), Saturn ([Iess et al. 2019](https://doi.org/10.1126/science.aat2965)) and Neptune (Jacobson 2009), with the planets' poles from the IAU report above.
 - 3D: [Three.js](https://threejs.org/) (MIT)
 
 Their licence notices are collected in `public/THIRD-PARTY-LICENSES.txt`, which is published with the site.

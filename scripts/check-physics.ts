@@ -6,7 +6,8 @@
 
 import * as Astronomy from 'astronomy-engine';
 import { existsSync, readFileSync } from 'node:fs';
-import { BODIES, SYSTEMS, AU_KM, SUN_GM } from '../src/physics/bodies';
+import { BODIES, SYSTEMS, AU_KM, SUN_GM, toAuDay } from '../src/physics/bodies';
+import { createNBody, advance, energy, momenta, defaultStep, type NBody, type Order } from '../src/physics/nbody';
 import { startBodies, startSystems, EPOCH_JD, type Vec } from '../src/physics/state';
 import stateFile from '../src/data/state-vectors.json' with { type: 'json' };
 import { PLANETS } from '../src/astro/elements';
@@ -189,5 +190,140 @@ export function checkStartingState(): boolean {
   console.log(`  reference: ${Object.keys(ref.targets).length} positions every ${ref.stepDays} days for a year`);
 
   console.log(`Physics engine starting state: ${ok ? 'OK' : 'FAIL'}`);
+  return ok;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The integrator (src/physics/nbody.ts): its order, that it runs backwards to where it started,
+// what it keeps (momentum, angular momentum, energy), the bulges, and a year against Horizons.
+export function checkIntegrator(): boolean {
+  let ok = true;
+  const fail = (msg: string) => { ok = false; console.log(`  FAIL ${msg}`); };
+  console.log('\nPhysics engine: integrator');
+  const gmSun = toAuDay(SUN_GM);
+  // Angle between two directions, precise also when they are very close
+  const sep = (a: Vec, b: Vec) => Math.atan2(len(cross(a, b)), dot(a, b)) * 180 / Math.PI;
+  const at = (s: NBody, i: number): Vec => [s.r[3 * i], s.r[3 * i + 1], s.r[3 * i + 2]];
+
+  // 1. Order: a test body on an orbit of eccentricity 0.5 around a fixed Sun, 10 orbits. Halving the
+  //    step must cut the error by 4 (leapfrog, 2nd order) or by 16 (Yoshida, 4th order).
+  const a = 1, e = 0.5, P = 2 * Math.PI * Math.sqrt(a ** 3 / gmSun);
+  const kepler = (stepsPerOrbit: number, order: Order) => {
+    const rp = a * (1 - e), vp = Math.sqrt(gmSun * (1 + e) / rp);
+    const s = createNBody([{ gmAu: gmSun, r: [0, 0, 0], v: [0, 0, 0] }, { gmAu: 0, r: [rp, 0, 0], v: [0, vp, 0] }], 0);
+    advance(s, 10 * P, P / stepsPerOrbit, order);
+    return len(sub(at(s, 1), [rp, 0, 0]));
+  };
+  const orders: string[] = [];
+  for (const [order, steps, lo, hi] of [[2, 400, 3.5, 4.5], [4, 200, 13, 19]] as [Order, number, number, number][]) {
+    const e1 = kepler(steps, order), e2 = kepler(2 * steps, order);
+    const ratio = e1 / e2;
+    if (!(ratio > lo && ratio < hi)) fail(`order ${order}: halving the step cuts the error by ${ratio.toFixed(2)}`);
+    orders.push(`order ${order}: ×${ratio.toFixed(1)}`);
+  }
+  console.log(`  Kepler orbit (e = 0.5), halving the step cuts the error: ${orders.join(', ')}`);
+
+  // 2. Backwards: a year forwards and back again returns to the start (rounding only)
+  const sys = () => createNBody([body('sun'), ...startSystems()], EPOCH_JD);
+  const bodiesNow = () => createNBody(startBodies(), EPOCH_JD);
+  const body = (id: string) => startBodies().find((b) => b.id === id)!;
+  {
+    const s = bodiesNow(), r0 = s.r.slice(), h = defaultStep(s);
+    advance(s, EPOCH_JD + 30, h, 4); advance(s, EPOCH_JD, h, 4);
+    let worst = 0;
+    for (let k = 0; k < r0.length; k++) worst = Math.max(worst, Math.abs(s.r[k] - r0[k]));
+    if (worst * AU_KM > 0.01) fail(`30 days forwards and back: ${(worst * AU_KM * 1000).toFixed(1)} m off the start`);
+    console.log(`  30 days forwards and back (with moons): back to the start within ${(worst * AU_KM * 1000).toFixed(2)} m`);
+  }
+
+  // 3. A year as systems, and as bodies with moons and bulges, against Horizons every 5 days.
+  //    Kept: momentum (exactly), angular momentum (without bulges), energy (within its small wobble).
+  const ref = JSON.parse(readFileSync(REFERENCE, 'utf8'));
+  const refAt = (naif: number, k: number) => ref.targets[naif].pos[k] as Vec;
+  type Row = { id: string; deg: number; km: number };
+  const run = (label: string, s: NBody, list: { id: string; naif: number; kind?: string; system?: string; gmAu: number }[], years: number) => {
+    const h = defaultStep(s), e0 = energy(s), m0 = momenta(s);
+    const worst = new Map<string, Row>();
+    let eWorst = 0;
+    const t0 = performance.now();
+    for (let k = 1; k < ref.targets[10].pos.length; k++) {
+      advance(s, EPOCH_JD + k * ref.stepDays, h, 4);
+      eWorst = Math.max(eWorst, Math.abs(energy(s) / e0 - 1));
+      const sun = at(s, 0), sunRef = refAt(10, k);
+      list.forEach((b, i) => {
+        if (b.id === 'sun') return;
+        let ours: Vec, theirs: Vec;
+        if (b.kind === 'moon') {
+          const p = list.findIndex((x) => x.kind === 'planet' && x.system === b.system);
+          ours = sub(at(s, i), at(s, p)); theirs = sub(refAt(b.naif, k), refAt(list[p].naif, k));
+        } else {
+          // a planet with moons is compared as its system: the centre of mass of planet and moons
+          const members = list.map((x, j) => [x, j] as const).filter(([x]) => (b.system ? x.system === b.system : x === b));
+          const c = centre(members.map(([x, j]) => ({ gm: x.gmAu, r: at(s, j), v: [0, 0, 0] as Vec })));
+          const naif = b.system ? SYSTEMS.find((x) => x.id === b.system)!.naif : b.naif;
+          ours = sub(c.r, sun); theirs = sub(refAt(naif, k), sunRef);
+        }
+        const row = { id: b.id, deg: sep(ours, theirs), km: len(sub(ours, theirs)) * AU_KM };
+        if (row.deg > (worst.get(b.id)?.deg ?? -1)) worst.set(b.id, row);
+      });
+    }
+    const ms = performance.now() - t0;
+    const m1 = momenta(s);
+    const pRel = len(sub(m1.p as Vec, m0.p as Vec)) / Math.max(...list.map((b, i) => b.gmAu * Math.hypot(s.v[3 * i], s.v[3 * i + 1], s.v[3 * i + 2])));
+    const lRel = len(sub(m1.L as Vec, m0.L as Vec)) / len(m0.L as Vec);
+    console.log(`  ${label}: step ${h.toFixed(4)} day, a year in ${ms.toFixed(0)} ms, energy within ${eWorst.toExponential(1)}, momentum ${pRel.toExponential(1)}, angular momentum ${lRel.toExponential(1)}`);
+    return { worst: [...worst.values()], eWorst, pRel, lRel, h, years };
+  };
+
+  const s1 = sys(), list1 = [body('sun'), ...startSystems()];
+  const r1 = run('planets as systems', s1, list1, 1);
+  if (r1.eWorst > 1e-9 || r1.pRel > 1e-12 || r1.lRel > 1e-12) fail('systems: energy or momentum not kept');
+  for (const w of r1.worst) if (w.deg > 0.01) fail(`systems: ${w.id} ${w.deg.toFixed(4)}° from Horizons after a year`);
+  const top = (rows: Row[], n: number) => [...rows].sort((x, y) => y.deg - x.deg).slice(0, n)
+    .map((w) => `${w.id} ${w.deg < 0.001 ? w.deg.toExponential(0) : w.deg.toFixed(3)}° (${w.km < 10 ? w.km.toFixed(1) : w.km.toFixed(0)} km)`).join(', ');
+  console.log(`    largest after a year: ${top(r1.worst, 3)}`);
+
+  const s2 = bodiesNow(), list2 = startBodies();
+  const r2 = run('with moons and bulges', s2, list2, 1);
+  if (r2.eWorst > 1e-9 || r2.pRel > 1e-12) fail('bodies: energy or momentum not kept');
+  const planets2 = r2.worst.filter((w) => list2.find((b) => b.id === w.id)!.kind !== 'moon');
+  const moons2 = r2.worst.filter((w) => list2.find((b) => b.id === w.id)!.kind === 'moon');
+  for (const w of planets2) if (w.deg > 0.01) fail(`bodies: ${w.id} ${w.deg.toFixed(4)}° from Horizons after a year`);
+  // Moons: the angle is around their planet. What is left: the bulges' finer terms (J4), the
+  // smaller moons not listed (counted inside the planet), and relativity (for Mercury: some 500 km).
+  for (const w of moons2) if (w.deg > 0.5) fail(`bodies: ${w.id} ${w.deg.toFixed(3)}° round its planet from Horizons after a year`);
+  console.log(`    planets: ${top(planets2, 2)}; moons round their planet: ${top(moons2, 7)}`);
+
+  // 4. The bulges are needed, and point the right way: without them Io is tens of degrees off,
+  //    and each moon orbits near its planet's equator (Triton backwards, 157° from it)
+  {
+    const s = createNBody(startBodies().map(({ bulge: _drop, ...b }) => b), EPOCH_JD);
+    const io = list2.findIndex((b) => b.id === 'io'), jup = list2.findIndex((b) => b.id === 'jupiter');
+    advance(s, EPOCH_JD + 365, defaultStep(s), 4);
+    const k = 73, deg = sep(sub(at(s, io), at(s, jup)), sub(refAt(501, k), refAt(599, k)));
+    if (deg < 5) fail(`without bulges Io is only ${deg.toFixed(2)}° off: the bulge test says nothing`);
+    const planes: string[] = [];
+    for (const m of list2.filter((b) => b.kind === 'moon')) {
+      const p = list2.find((b) => b.kind === 'planet' && b.system === m.system)!;
+      if (!p.bulge) continue;
+      const tilt = sep(cross(sub(m.r, p.r), sub(m.v, p.v)), p.bulge.pole);
+      const okTilt = m.id === 'triton' ? tilt > 155 && tilt < 160 : tilt < 1;
+      if (!okTilt) fail(`${m.id}: orbit ${tilt.toFixed(2)}° from its planet's equator`);
+      planes.push(`${m.id} ${tilt.toFixed(2)}°`);
+    }
+    console.log(`  bulges: without them Io is ${deg.toFixed(0)}° off after a year; orbits to the planet's equator: ${planes.join(', ')}`);
+  }
+
+  // 5. A century as systems: the energy error stays bounded instead of drifting
+  {
+    const s = sys(), e0 = energy(s), h = defaultStep(s);
+    let worst = 0;
+    const t0 = performance.now();
+    for (let y = 1; y <= 100; y++) { advance(s, EPOCH_JD + 365.25 * y, h, 4); worst = Math.max(worst, Math.abs(energy(s) / e0 - 1)); }
+    if (worst > 1e-9) fail(`a century: energy off by ${worst.toExponential(1)}`);
+    console.log(`  a century as systems in ${((performance.now() - t0) / 1000).toFixed(1)} s: energy within ${worst.toExponential(1)}`);
+  }
+
+  console.log(`Physics engine integrator: ${ok ? 'OK' : 'FAIL'}`);
   return ok;
 }
