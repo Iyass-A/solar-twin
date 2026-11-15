@@ -1,0 +1,35 @@
+# Fetches the starting state of the physics engine (phase 5) from JPL Horizons: position and velocity
+# of the Sun, the planets, their system barycentres and the seven moons larger than Pluto, plus their
+# positions every 5 days for a year after, to check the engine against. See scripts/fetch-state-vectors.ts.
+#
+# Runs only when started by hand (Actions tab -> "Fetch state vectors" -> Run workflow). It commits
+# nothing and only reads the repository: both files are printed in the log (between BEGIN and END),
+# to be reviewed and committed from there. To remove it, delete this file.
+name: Fetch state vectors
+
+on:
+  workflow_dispatch:
+    inputs:
+      epoch:
+        description: "Day of the starting state, at 00:00 TDB (YYYY-MM-DD). Empty: today."
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20 # about 25 requests, one at a time
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Fetch from JPL Horizons
+        env:
+          EPOCH: ${{ inputs.epoch }}
+        run: npx tsx scripts/fetch-state-vectors.ts "$EPOCH" .
