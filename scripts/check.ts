@@ -15,6 +15,7 @@ import smallFile from '../src/data/small-bodies.json' with { type: 'json' };
 import { smallBodyPosition } from '../src/astro/smallbody';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { cadQuery, fileProblems, fromCad, LD_AU, parseSigma, sizeRange, tdbToUtcMs } from '../src/live/closeApproaches';
+import * as sw from '../src/live/spaceWeather';
 import { SMALL_BODY_NAMES } from '../src/data/small-body-names';
 import { sampleOrbits, cloudOffsets, cholesky6 } from '../src/astro/uncertainty';
 import { loadSmallBodies, covarianceFrom, type CovEntry } from '../src/view/smallbodies';
@@ -415,6 +416,19 @@ if (existsSync(livePath)) {
 }
 failed ||= !liveOk;
 console.log(`\nClose approaches (CNEOS): parser, sizes and times ${liveOk ? 'OK' : 'FAIL'}; ${liveNote}`);
+
+// 12. Live data: space weather (NOAA SWPC, NASA DONKI). The file only where it exists (on GitHub).
+let swOk = true;
+const swFail = (msg: string) => { swOk = false; console.log(`  ${msg}`); };
+const swPath = 'public/data/live/space-weather.json';
+let swNote = 'no file here (it is fetched on GitHub before each deploy)';
+if (existsSync(swPath)) {
+  const f = JSON.parse(readFileSync(swPath, 'utf8'));
+  for (const p of sw.fileProblems(f).slice(0, 5)) swFail(`${swPath}: ${p}`);
+  swNote = `${swPath}: ${sw.PART_NAMES.map((n) => `${n} ${f[n] ? `from ${f[n].fetchedAt}` : 'missing'}`).join(', ')}`;
+}
+failed ||= !swOk;
+console.log(`\nSpace weather: ${swOk ? 'OK' : 'FAIL'}; ${swNote}`);
 
 console.log(failed ? '\nRESULT: FAIL' : '\nRESULT: OK');
 if (failed) process.exitCode = 1;

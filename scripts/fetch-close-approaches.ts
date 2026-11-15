@@ -15,16 +15,8 @@
 //
 // API: https://ssd-api.jpl.nasa.gov/doc/cad.html
 
-import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
 import { cadQuery, fileProblems, fromCad, LD_AU, tdbToUtcMs, type CloseApproachFile } from '../src/live/closeApproaches';
-
-const USER_AGENT = 'solar-twin (https://github.com/Iyass-A/solar-twin)';
-const ATTEMPTS = 3;
-const TIMEOUT_MS = 60_000;
-// JPL's API answers "403 Forbidden" for about a minute when it gets too many requests (see
-// scripts/fetch-small-bodies.ts); then we wait longer than that.
-const BLOCKED_WAIT_MS = 75_000;
+import { errText, getJson, warn as warnTitled, writeJson } from './live-common';
 
 const [out, fallbackUrl] = process.argv.slice(2);
 if (!out) {
@@ -32,34 +24,8 @@ if (!out) {
   process.exit(2);
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const warn = (msg: string) => console.log(`::warning title=Live data::${msg}`);
-
-async function getJson(url: string): Promise<any> {
-  for (let attempt = 1; ; attempt++) {
-    let wait = 20_000 * attempt;
-    try {
-      const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(TIMEOUT_MS) });
-      const text = await res.text();
-      if (res.ok) return JSON.parse(text);
-      if (res.status === 403 || res.status === 429) wait = BLOCKED_WAIT_MS;
-      const msg = `HTTP ${res.status}: ${text.slice(0, 200).replace(/\s+/g, ' ')}`;
-      if (res.status === 400 || res.status === 404 || attempt >= ATTEMPTS) throw new Error(msg);
-      console.log(`  ${msg}, trying again in ${wait / 1000} s`);
-    } catch (err) {
-      if (attempt >= ATTEMPTS || (err instanceof Error && /^HTTP (400|404)/.test(err.message))) throw err;
-      console.log(`  ${err instanceof Error ? err.message : err}, trying again in ${wait / 1000} s`);
-    }
-    await sleep(wait);
-  }
-}
-
-function write(file: CloseApproachFile) {
-  mkdirSync(dirname(out), { recursive: true });
-  const tmp = `${out}.tmp`;
-  writeFileSync(tmp, JSON.stringify(file));
-  renameSync(tmp, out); // never a half-written file
-}
+const warn = (msg: string) => warnTitled('Close approaches', msg);
+const write = (file: CloseApproachFile) => writeJson(out, file);
 
 function summary(file: CloseApproachFile) {
   const now = Date.now();
@@ -97,7 +63,7 @@ async function main() {
     console.log('----- END close-approaches.json -----');
     return;
   } catch (err) {
-    warn(`JPL: ${err instanceof Error ? err.message : err}`);
+    warn(`JPL: ${errText(err)}`);
   }
 
   if (fallbackUrl) {
@@ -111,7 +77,7 @@ async function main() {
       summary(old);
       return;
     } catch (err) {
-      warn(`no copy from the site either: ${err instanceof Error ? err.message : err}`);
+      warn(`no copy from the site either: ${errText(err)}`);
     }
   }
   console.log('LIVE DATA: none (the card will say so)');
