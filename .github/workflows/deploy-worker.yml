@@ -1,0 +1,90 @@
+# Publishes the small server for live DSN data (workers/dsn/) to Cloudflare Workers, free plan.
+#
+# Needs two secrets in this repository (Settings > Secrets and variables > Actions):
+#   CLOUDFLARE_API_TOKEN   a Cloudflare token that may only edit Workers on the one account
+#   CLOUDFLARE_ACCOUNT_ID  that account's id
+# Without them it publishes nothing and still passes, so it never stands in the way.
+# Only the publishing step gets the token; GitHub hides it in the log.
+# To stop it: delete this file, and the token on Cloudflare (My Profile > API Tokens > Delete).
+name: Deploy DSN worker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'workers/dsn/**'
+      - 'src/live/dsn.ts'
+      - '.github/workflows/deploy-worker.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dsn-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Cloudflare secrets set?
+        id: secrets
+        env:
+          HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+          HAS_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+        run: |
+          if [ "$HAS_TOKEN" = "true" ] && [ "$HAS_ACCOUNT" = "true" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=DSN worker::No Cloudflare secrets yet (CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID): nothing published."
+          fi
+      - uses: actions/checkout@v4
+        if: steps.secrets.outputs.ok == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.secrets.outputs.ok == 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            workers/dsn/package-lock.json
+      # The same checks as before each site deploy, the server's rules among them
+      - if: steps.secrets.outputs.ok == 'true'
+        run: npm ci && npm run check
+      - if: steps.secrets.outputs.ok == 'true'
+        run: npm ci
+        working-directory: workers/dsn
+      - name: Publish to Cloudflare
+        if: steps.secrets.outputs.ok == 'true'
+        working-directory: workers/dsn
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: 'false'
+        run: npx wrangler deploy 2>&1 | tee "$RUNNER_TEMP/deploy.log"; exit "${PIPESTATUS[0]}"
+      # Asks the published server as our page would, and as another site would (that must be refused)
+      - name: Test the published server
+        if: steps.secrets.outputs.ok == 'true'
+        run: |
+          url=$(grep -oE 'https://solar-twin-dsn\.[a-z0-9-]+\.workers\.dev' "$RUNNER_TEMP/deploy.log" | head -1)
+          if [ -z "$url" ]; then echo "::error title=DSN worker::No workers.dev address in Wrangler's output"; exit 1; fi
+          echo "WORKER URL: $url/"
+          # A new workers.dev address can take a minute or two to answer
+          for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            code=$(curl -s -o body.json -D headers.txt -w '%{http_code}' -H 'Origin: https://iyass-a.github.io' "$url/" || echo 000)
+            [ "$code" = "200" ] && break
+            echo "  try $i: HTTP $code $(head -c 200 body.json 2>/dev/null)"; sleep 10
+          done
+          echo "--- our site: HTTP $code"; cat headers.txt; head -c 1500 body.json; echo
+          foreign=$(curl -s -o /dev/null -w '%{http_code}' -H 'Origin: https://example.com' "$url/")
+          echo "--- another site: HTTP $foreign (want 403)"
+          node -e '
+            const f = JSON.parse(require("fs").readFileSync("body.json", "utf8"));
+            const n = f.stations.reduce((a, s) => a + s.dishes.length, 0);
+            const on = f.stations.flatMap((s) => s.dishes.flatMap((d) => d.links.filter((l) => l.up || l.down.length).map((l) => l.sc)));
+            console.log(`DSN DATA: NASA time ${f.at}, fetched ${f.fetchedAt}, ${f.stations.length} stations, ${n} antennas, in contact: ${on.join(" ")}`);
+          '
+          [ "$code" = "200" ] && [ "$foreign" = "403" ]

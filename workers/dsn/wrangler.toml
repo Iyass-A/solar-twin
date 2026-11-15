@@ -1,0 +1,14 @@
+# The small server for live DSN data on Cloudflare Workers (free plan): see src/index.ts.
+# Published by .github/workflows/deploy-worker.yml, at https://solar-twin-dsn.<account>.workers.dev
+name = "solar-twin-dsn"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+workers_dev = true
+# No extra public addresses for each version
+preview_urls = false
+# No usage data from Wrangler to Cloudflare
+send_metrics = false
+
+# No logs: this code writes none, and Cloudflare's Workers Logs stay off
+[observability]
+enabled = false

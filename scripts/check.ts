@@ -20,6 +20,10 @@ import { SMALL_BODY_NAMES } from '../src/data/small-body-names';
 import { sampleOrbits, cloudOffsets, cholesky6 } from '../src/astro/uncertainty';
 import { loadSmallBodies, covarianceFrom, type CovEntry } from '../src/view/smallbodies';
 import { STRINGS, LANGS } from '../src/i18n';
+import * as dsn from '../src/live/dsn';
+import * as dsnView from '../src/view/dsn';
+import * as worker from '../workers/dsn/src/index';
+import { SPACECRAFT, WHERE_KEYS } from '../src/data/spacecraft';
 
 const MAX_ERROR_DEG = 1;
 const DAY_MS = 86_400_000;
@@ -494,6 +498,182 @@ if (existsSync(swPath)) {
 }
 failed ||= !swOk;
 console.log(`\nSpace weather: ${swOk ? 'OK' : 'FAIL'}; ${swNote}`);
+
+// 13. Live data: Deep Space Network now (NASA's DSN Now, through our server on Cloudflare, workers/dsn/).
+//     The reader and parser on real files from NASA (November 2026), what must be refused, the server's
+//     rules (only our site, NASA at most once a minute, an old copy when NASA fails), and the texts.
+let dsnOk = true;
+const dsnFail = (msg: string) => { dsnOk = false; console.log(`  ${msg}`); };
+const dsnCase = async (label: string, fn: () => unknown) => { try { await fn(); } catch (err) { dsnFail(`${label}: ${err}`); } };
+const dsnThrows = (label: string, fn: () => unknown) => { let threw = false; try { fn(); } catch { threw = true; } if (!threw) dsnFail(`${label} was not refused`); };
+const dsnXml = readFileSync('scripts/reference/dsn-sample.xml', 'utf8');
+const dsnCfgXml = readFileSync('scripts/reference/dsn-config-sample.xml', 'utf8');
+let dsnSummaryNote = '';
+await dsnCase('NASA files', () => {
+  const cfg = dsn.parseConfig(dsnCfgXml);
+  if (cfg.sizes.DSS43 !== '70M' || cfg.sizes.DSS65 !== '34MHEF' || cfg.names.vgr1 !== 'Voyager 1' || Object.keys(cfg.names).length < 100) dsnFail(`config.xml: ${JSON.stringify(cfg).slice(0, 200)}`);
+  const f = dsn.parseDsn(dsnXml, cfg, Date.UTC(2026, 10, 15, 11, 23));
+  for (const p of dsn.dsnProblems(f).slice(0, 5)) dsnFail(`sample: ${p}`);
+  if (f.at !== '2026-11-15T11:22:56.000Z' || f.stations.map((s) => s.id).join() !== 'gdscc,mdscc,cdscc') dsnFail(`sample: ${f.at} ${f.stations.map((s) => s.id)}`);
+  const dishes = f.stations.flatMap((s) => s.dishes);
+  const dish = (id: string) => dishes.find((d) => d.id === id)!;
+  if (dishes.length !== 14) dsnFail(`${dishes.length} antennas, want 14`);
+  // Juno: sent to and heard from, the same downlink listed twice counts once
+  const jno = dish('DSS24').links[0];
+  if (jno?.sc !== 'JNO' || jno.naif !== -61 || jno.name !== 'Juno' || jno.km !== 789e6 || jno.rtlt !== 5270 || jno.up?.kw !== 18 || jno.down.length !== 1 || jno.down[0].bps !== 22000)
+    dsnFail(`Juno: ${JSON.stringify(jno)}`);
+  // Webb: two downlinks (S and K band); Voyager 1 at 40 bit/s; the Mars orbiters pointed at, but no signal on
+  const jwst = dish('DSS34').links[0];
+  if (jwst?.down.map((d) => `${d.band}${d.bps}`).join() !== 'S40000,K28000000') dsnFail(`Webb: ${JSON.stringify(jwst)}`);
+  if (dish('DSS63').links[0]?.down[0]?.bps !== 40 || dish('DSS63').size !== '70M') dsnFail('Voyager 1 at DSS 63');
+  const mars = dish('DSS23');
+  if (mars.links.map((l) => l.sc).join() !== 'M01O,MRO,TGO,MEX' || mars.links.some(dsn.inContact)) dsnFail(`Mars orbiters: ${JSON.stringify(mars.links)}`);
+  // Not spacecraft: radio astronomy (VLBI) and upgrades point at "DSN"
+  if (dish('DSS26').links.length || dish('DSS14').links.length || !/Interferometry/.test(dish('DSS26').activity)) dsnFail('VLBI or upgrades counted as spacecraft');
+  // The distances and light times NASA gives fit each other: distance = c × round trip / 2 (NASA rounds to 3 digits)
+  let worst = 0;
+  for (const d of dishes) for (const l of d.links) if (l.km && l.rtlt) worst = Math.max(worst, Math.abs(l.rtlt * dsn.C_KM_S / 2 / l.km - 1));
+  if (worst > 0.02) dsnFail(`distance and light time differ by ${(worst * 100).toFixed(1)}%`);
+  const c = dsn.contacts(f);
+  if (c.links.length !== 7 || c.dishes !== 7) dsnFail(`${c.links.length} spacecraft through ${c.dishes} antennas, want 7 and 7`);
+  dsnSummaryNote = `${dishes.length} antennas, ${c.links.length} spacecraft in contact, light time and distance within ${(worst * 100).toFixed(1)}%`;
+  // Without config.xml the data still works, only without NASA's names and sizes
+  const bare = dsn.parseDsn(dsnXml, null, Date.now());
+  if (dsn.dsnProblems(bare).length || bare.stations[0].dishes[2].links[0].name !== null) dsnFail('without config.xml');
+});
+// The XML reader
+await dsnCase('XML', () => {
+  const x = dsn.parseXml('<?xml version="1.0"?><!-- c --><a b="1 &amp; 2" c=\'&lt;x&gt;\'><d/><e>t&#233;st</e></a>');
+  if (x.attrs.b !== '1 & 2' || x.attrs.c !== '<x>' || x.children.length !== 2 || x.children[1].text !== 'tést') dsnFail(`XML reader: ${JSON.stringify(x)}`);
+});
+dsnThrows('a tag never closed', () => dsn.parseXml('<a><b></a>'));
+dsnThrows('two root elements', () => dsn.parseXml('<a/><b/>'));
+dsnThrows('a broken tag', () => dsn.parseXml('<a><b c="1></a>'));
+dsnThrows('another root than <dsn>', () => dsn.parseDsn('<html><body/></html>', null, Date.now()));
+dsnThrows('no <timestamp>', () => dsn.parseDsn(dsnXml.replace(/<timestamp>.*<\/timestamp>/, ''), null, Date.now()));
+dsnThrows('an antenna before any station', () => dsn.parseDsn('<dsn><dish name="DSS14"/><timestamp>1794741776000</timestamp></dsn>', null, Date.now()));
+dsnThrows('an antenna with a strange name', () => dsn.parseDsn(dsnXml.replace('name="DSS26"', 'name="Dish 26"'), null, Date.now()));
+// The checks catch what should never reach the page
+{
+  const good = dsn.parseDsn(dsnXml, dsn.parseConfig(dsnCfgXml), Date.now());
+  const bad = (label: string, change: (f: any) => void) => {
+    const f = JSON.parse(JSON.stringify(good));
+    change(f);
+    if (!dsn.dsnProblems(f).length) dsnFail(`check misses: ${label}`);
+  };
+  bad('another version', (f) => { f.v = 2; });
+  bad('markup in a name', (f) => { f.stations[0].dishes[2].links[0].name = '<img src=x onerror=alert(1)>'; });
+  bad('elevation 120°', (f) => { f.stations[1].dishes[0].el = 120; });
+  bad('a negative data rate', (f) => { f.stations[2].dishes[1].links[0].down[0].bps = -5; });
+  bad('no stations', (f) => { f.stations = []; });
+  bad('no time', (f) => { f.at = 'soon'; });
+}
+
+// The server (workers/dsn/src/index.ts), with a fake NASA and a fake clock
+{
+  let nowMs = Date.UTC(2026, 10, 15, 12, 0);
+  const calls: string[] = [];
+  let nasaDown = false, nasaBroken = false, configDown = false;
+  const fakeFetch = (async (input: string | URL | Request) => {
+    const url = String(input instanceof Request ? input.url : input);
+    calls.push(url);
+    if (url.startsWith(dsn.DSN_CONFIG_URL)) return configDown ? new Response('', { status: 503 }) : new Response(dsnCfgXml);
+    if (!url.startsWith(dsn.DSN_XML_URL)) return new Response('', { status: 404 });
+    if (nasaDown) throw new Error('connection timed out');
+    return new Response(nasaBroken ? '<dsn><station name="gdscc"' : dsnXml.replace(/<timestamp>\d+/, `<timestamp>${nowMs - 3000}`));
+  }) as typeof fetch;
+  const deps = { fetch: fakeFetch, now: () => nowMs, cache: null };
+  const get = (st: ReturnType<typeof worker.newState>, init: RequestInit & { origin?: string | null; path?: string } = {}) => {
+    const headers = new Headers();
+    if (init.origin !== null) headers.set('Origin', init.origin ?? dsn.ALLOWED_ORIGIN);
+    return worker.handle(new Request(`https://solar-twin-dsn.example.workers.dev${init.path ?? '/'}`, { method: init.method ?? 'GET', headers }), deps, st);
+  };
+  const nasa = () => calls.filter((u) => u.startsWith(dsn.DSN_XML_URL)).length;
+  await dsnCase('server', async () => {
+    const st = worker.newState();
+    const r1 = await get(st);
+    const body = await r1.json();
+    if (r1.status !== 200 || r1.headers.get('Access-Control-Allow-Origin') !== dsn.ALLOWED_ORIGIN || r1.headers.get('Set-Cookie') !== null || dsn.dsnProblems(body).length
+      || body.stations[0].dishes[2].links[0].name !== 'Juno') dsnFail(`first answer: ${r1.status} ${JSON.stringify(body).slice(0, 150)}`);
+    // Within a minute: no new request to NASA, however many visitors (and the same copy)
+    nowMs += 30_000;
+    const r2 = await Promise.all([get(st), get(st), get(st, { origin: null })]);
+    if (nasa() !== 1 || r2.some((r) => r.status !== 200) || r2[0].headers.get('Age') !== '30') dsnFail(`within a minute: ${nasa()} requests to NASA, Age ${r2[0].headers.get('Age')}`);
+    // After a minute: one new request (several visitors at once share it); config.xml not again
+    nowMs += 31_000;
+    await Promise.all([get(st), get(st), get(st)]);
+    if (nasa() !== 2 || calls.filter((u) => u.startsWith(dsn.DSN_CONFIG_URL)).length !== 1) dsnFail(`after a minute: ${nasa()} requests to NASA, ${calls.length} in all`);
+    // Other sites get nothing, and cost NASA nothing; only GET; only /
+    const before = calls.length;
+    const foreign = await get(st, { origin: 'https://example.com' });
+    if (foreign.status !== 403 || calls.length !== before) dsnFail(`another site: ${foreign.status}, ${calls.length - before} requests to NASA`);
+    if ((await get(st, { method: 'POST' })).status !== 405) dsnFail('POST was not refused');
+    if ((await get(st, { method: 'OPTIONS' })).status !== 204) dsnFail('OPTIONS');
+    if ((await get(st, { path: '/admin' })).status !== 404) dsnFail('another path');
+    const head = await get(st, { method: 'HEAD' });
+    if (head.status !== 200 || (await head.text()) !== '') dsnFail('HEAD');
+    // NASA down: a copy up to 10 minutes old is still given, then an error (not cached)
+    nasaDown = true;
+    nowMs += 5 * 60_000;
+    const old = await get(st);
+    if (old.status !== 200 || Number(old.headers.get('Age')) < 290) dsnFail(`NASA down, 5 minutes: ${old.status} Age ${old.headers.get('Age')}`);
+    nowMs += 6 * 60_000;
+    const gone = await get(st);
+    if (gone.status !== 502 || gone.headers.get('Cache-Control') !== 'no-store') dsnFail(`NASA down, 11 minutes: ${gone.status}`);
+    nasaDown = false;
+    // A changed or broken answer from NASA is refused, not passed on
+    nasaBroken = true;
+    const broken = await get(worker.newState());
+    if (broken.status !== 502) dsnFail(`broken XML from NASA: ${broken.status}`);
+    nasaBroken = false;
+    // Without config.xml: the data still comes, without names
+    configDown = true;
+    const r3 = await get(worker.newState());
+    const b3 = await r3.json();
+    if (r3.status !== 200 || b3.stations[0].dishes[2].links[0].name !== null) dsnFail(`config.xml down: ${r3.status}`);
+    configDown = false;
+  });
+}
+
+// The card's texts: [value, Arabic, German, English]
+const plain = (h: string) => h.replace(/<[^>]+>/g, '');
+const dsnText = (label: string, got: string[], want: string[]) => want.forEach((w, i) => { if (got[i] !== w) dsnFail(`${label}: got "${got[i]}", want "${w}"`); });
+const all3 = <A extends unknown[]>(fn: (s: typeof STRINGS.ar) => (...a: A) => string, ...a: A) => [fn(STRINGS.ar)(...a), fn(STRINGS.de)(...a), fn(STRINGS.en)(...a)];
+dsnText('7 in contact', all3((s) => s.dsnSummary, 7, 7),
+  ['هلأ في 7 مركبات على اتصال، عبر 7 هوائيات.', 'Gerade stehen 7 Raumfahrzeuge über 7 Antennen in Kontakt.', 'Right now 7 spacecraft are in contact, through 7 antennas.']);
+dsnText('1 in contact', all3((s) => s.dsnSummary, 1, 1),
+  ['هلأ في مركبة وحدة على اتصال، عبر هوائي واحد.', 'Gerade steht 1 Raumfahrzeug über 1 Antenne in Kontakt.', 'Right now 1 spacecraft is in contact, through 1 antenna.']);
+dsnText('12 through 2', all3((s) => s.dsnSummary, 12, 2),
+  ['هلأ في 12 مركبة على اتصال، عبر هوائيين.', 'Gerade stehen 12 Raumfahrzeuge über 2 Antennen in Kontakt.', 'Right now 12 spacecraft are in contact, through 2 antennas.']);
+dsnText('none in contact', all3((s) => s.dsnSummary, 0, 0),
+  ['هلأ ولا مركبة على اتصال.', 'Gerade steht kein Raumfahrzeug in Kontakt.', 'Right now no spacecraft is in contact.']);
+// One-way light times: Chandra 0.37 s, Webb 5.6 s, 30 s, Juno 43.9 min, Voyager 1 about a day
+dsnText('0.37 s', all3((s) => s.dsnLight, 0.37), ['0.4 ثانية', '0,4 Sekunden', '0.4 seconds']);
+dsnText('5.55 s', all3((s) => s.dsnLight, 5.55), ['5.6 ثانية', '5,6 Sekunden', '5.6 seconds']);
+dsnText('30 s', all3((s) => s.dsnLight, 30), ['30 ثانية', '30 Sekunden', '30 seconds']);
+dsnText('2635 s', all3((s) => s.dsnLight, 2635), ['43.9 دقيقة', '43,9 Minuten', '43.9 minutes']);
+dsnText('86500 s', all3((s) => s.dsnLight, 86_500), ['24 ساعة ودقيقتين', '24 Stunden und 2 Minuten', '24 hours 2 minutes']);
+dsnText('no signal', [STRINGS.ar.dsnNoSignal(4), STRINGS.de.dsnNoSignal(1), STRINGS.en.dsnNoSignal(1)],
+  ['الهوائي موجّه عليهم، بس ما في إشارة هلأ', 'Antenne ausgerichtet, gerade ohne Signal', 'antenna pointed at it, no signal right now']);
+dsnText('rate 22.0', [plain(dsnView.rateText(22_000, 'ar')), plain(dsnView.rateText(1_049_000, 'de')), plain(dsnView.distanceText(1_250_000, 'en'))],
+  ['22 كيلوبت/ث', '1,05 Mbit/s', '1.25 million km']);
+dsnText('ago', all3((s) => s.dsnAgo, 20), ['من أقل من دقيقة', 'vor weniger als 1 Minute', 'under a minute ago']);
+dsnText('ago 15 min', all3((s) => s.dsnAgo, 900), ['من 15 دقيقة', 'vor 15 Minuten', '15 minutes ago']);
+// Distances and data rates (numbers come wrapped left-to-right)
+dsnText('distances', [plain(dsnView.distanceText(399_000, 'ar')), plain(dsnView.distanceText(1_660_000, 'de')), plain(dsnView.distanceText(25.9e9, 'en'))],
+  ['399,000 كم', '1,66 Mio. km', '25.9 billion km']);
+dsnText('rates', [plain(dsnView.rateText(40, 'ar')), plain(dsnView.rateText(245_800, 'de')), plain(dsnView.rateText(28e6, 'en'))],
+  ['40 بت/ث', '246 kbit/s', '28 Mbit/s']);
+if (dsnView.activityKind('Spacecraft Telemetry, Tracking, and Command') !== 'link' || dsnView.activityKind('Engineering Upgrades') !== 'maint'
+  || dsnView.activityKind('DSN Very Long Baseline Interferometry') !== 'vlbi' || dsnView.activityKind('Something new') !== null) dsnFail('kinds of activity');
+// Every spacecraft's place has its words in all three languages, and names have no markup
+for (const [code, e] of Object.entries(SPACECRAFT)) {
+  if (e.where && !WHERE_KEYS.includes(e.where)) dsnFail(`${code}: place "${e.where}"`);
+  for (const l of LANGS) if (e[l.id] !== undefined && (!e[l.id]!.trim() || /[<>]/.test(e[l.id]!))) dsnFail(`${code}: name in ${l.id}`);
+}
+for (const l of LANGS) for (const w of WHERE_KEYS) if (!STRINGS[l.id].dsnWhere[w]?.trim()) dsnFail(`${l.id}: no words for "${w}"`);
+failed ||= !dsnOk;
+console.log(`\nDeep Space Network: ${dsnOk ? 'OK' : 'FAIL'}; ${dsnSummaryNote}; server ${dsn.DSN_WORKER_URL || 'not deployed yet'}`);
 
 console.log(failed ? '\nRESULT: FAIL' : '\nRESULT: OK');
 if (failed) process.exitCode = 1;

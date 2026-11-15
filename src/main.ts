@@ -15,6 +15,8 @@ import { LANGS, detectLang, lang, langInfo, num, numGrouped, setLang, t, type La
 import { cloudOffsets, cloudSpread } from './astro/uncertainty';
 import { ApproachesCard } from './view/approaches';
 import { SpaceWeatherCard } from './view/spaceWeather';
+import { DsnCard } from './view/dsn';
+import { DSN_WORKER_URL } from './live/dsn';
 
 const DAY_MS = 86_400_000;
 
@@ -120,6 +122,12 @@ app.innerHTML = `
     <div class="sw-body"></div>
   </section>
 
+  <section class="card" id="dsn" aria-labelledby="dsnTitle">
+    <h2 class="card-title"><span id="dsnTitle" data-t="dsnTitle"></span> <span class="badge live-data" data-t="caBadge"></span></h2>
+    <p class="sub dsn-intro"></p>
+    <div class="dsn-body"></div>
+  </section>
+
   <div class="grid">
     <div class="card">
       <div class="label"><span data-t="simTime"></span> <span id="live" class="badge" data-t="live"></span></div>
@@ -207,6 +215,9 @@ const approaches = new ApproachesCard($('approaches'));
 approaches.load(`${import.meta.env.BASE_URL}data/live/close-approaches.json`);
 const spaceWeather = new SpaceWeatherCard($('spaceWeather'));
 spaceWeather.load(`${import.meta.env.BASE_URL}data/live/space-weather.json`);
+// Deep Space Network: live from our server on Cloudflare (workers/dsn/), once a minute while the tab is visible
+const dsn = new DsnCard($('dsn'));
+dsn.load(DSN_WORKER_URL);
 let scene3d: Scene3D | null = null; // loaded on first use (Three.js is a separate file)
 
 // Asteroids, dwarf planets and comets: their own file, loaded after the page
@@ -478,6 +489,7 @@ function applyLanguage(l: Lang) {
   scene3d?.refreshTexts();
   approaches.render();
   spaceWeather.render();
+  dsn.render();
   lastPanels = -Infinity;
 }
 

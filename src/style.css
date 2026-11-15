@@ -542,3 +542,24 @@ details.card[hidden] { display: none; }
 .sw-table table { margin-top: 6px; }
 .sw-cmes { margin: 6px 0; padding-inline-start: 20px; line-height: 1.6; }
 #spaceWeather a { color: #8f9bd0; }
+
+/* ---------- Phase 4: live data, Deep Space Network now ---------- */
+.dsn-summary { font-size: 1rem; }
+.dsn-sites {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 8px;
+  margin: 10px 0;
+}
+.dsn-site { border: 1px solid #262c45; border-radius: 8px; padding: 10px 12px; }
+.dsn-site .sw-h { margin-top: 0; }
+.dsn-dishes, .dsn-links { list-style: none; margin: 0; padding: 0; }
+.dsn-dish { padding: 8px 0; border-top: 1px solid #1d2236; }
+.dsn-dish:first-child { border-top: 0; }
+.dsn-dish.idle { opacity: 0.65; }
+.dsn-dish-head { font-size: 0.8rem; color: #9aa0b4; }
+.dsn-links li { margin-top: 4px; }
+.dsn-links li.off { opacity: 0.6; }
+.dsn-craft { font-weight: 600; }
+.dsn-line { display: block; color: #9aa0b4; font-size: 0.8rem; margin-top: 1px; }
+#dsn a { color: #8f9bd0; }

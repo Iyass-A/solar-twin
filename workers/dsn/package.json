@@ -1,0 +1,13 @@
+{
+  "name": "solar-twin-dsn",
+  "private": true,
+  "description": "The small server for live DSN data (see src/index.ts). Only needed to publish it: .github/workflows/deploy-worker.yml",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "build": "wrangler deploy --dry-run --outdir dist"
+  },
+  "devDependencies": {
+    "wrangler": "4.162.0"
+  }
+}

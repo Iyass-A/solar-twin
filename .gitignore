@@ -25,3 +25,7 @@ dist-ssr
 
 # Live data: fetched on GitHub before each deploy, never committed
 public/data/live/
+
+# Cloudflare Wrangler (workers/dsn/): local state and build output
+.wrangler/
+workers/dsn/dist/

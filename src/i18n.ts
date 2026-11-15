@@ -4,6 +4,7 @@
 import type { PlanetId } from './astro/elements';
 import type { ViewMode } from './view/views';
 import type { SmallGroup } from './view/smallbodies';
+import type { Where } from './data/spacecraft';
 
 export type Lang = 'ar' | 'de' | 'en';
 
@@ -175,6 +176,39 @@ export interface Strings {
   swMissing: (part: string) => string;
   swStale: (part: string, date: string) => string;
   swNone: string;
+  // Deep Space Network now (live data from NASA's DSN Now, through our server on Cloudflare)
+  dsnTitle: string;
+  dsnIntro: string;
+  /** The three sites, with their country */
+  dsnStations: { gdscc: string; mdscc: string; cdscc: string };
+  dsnLocalTime: (clock: string) => string;
+  /** Spacecraft in contact now, and through how many antennas */
+  dsnSummary: (craft: number, antennas: number) => string;
+  dsnFarthest: (name: string, distance: string, light: string) => string;
+  /** One-way light time, from seconds */
+  dsnLight: (seconds: number) => string;
+  dsnSignalTime: (light: string) => string;
+  dsnSize: (metres: string) => string;
+  /** Elevation, the number comes with its ° */
+  dsnElevation: (degrees: string) => string;
+  /** What an antenna is doing, by kind (NASA's words are used for kinds not listed) */
+  dsnActivity: { link: string; maint: string; vlbi: string; radar: string; astro: string; calib: string; test: string };
+  dsnDown: string;
+  dsnUp: string;
+  /** Under the names of spacecraft an antenna points at without a signal (n of them) */
+  dsnNoSignal: (n: number) => string;
+  dsnMspa: string;
+  /** bit/s, kbit/s, Mbit/s */
+  dsnRate: [string, string, string];
+  billionKm: string;
+  dsnWhere: Record<Where, string>;
+  dsnNote: string;
+  dsnUpdated: (clock: string, ago: string) => string;
+  /** How long ago, from seconds (under a minute, minutes, hours) */
+  dsnAgo: (seconds: number) => string;
+  dsnOld: (ago: string) => string;
+  dsnOff: string;
+  dsnNone: string;
 }
 
 /** Keys whose value is plain text, for data-t / data-html / data-aria in the page. */
@@ -476,6 +510,64 @@ const AR: Strings = {
   swMissing: (part) => `ما في بيانات هلأ عن ${part}.`,
   swStale: (part, d) => `انتبه: ${part} من ${d}، وما قدرنا نجيب أجدد.`,
   swNone: 'ما في بيانات طقس فضاء هون. عالموقع المنشور بتتحدّث كل 3 ساعات.',
+  dsnTitle: 'شبكة الفضاء العميق هلأ',
+  dsnIntro: 'مين من المركبات الفضائية عم يحكي هلأ مع الهوائيات الكبيرة تبع ناسا بتلات محطات حوالين الأرض. '
+    + 'كل محطة بعيدة عن التانية تقريباً تلت دورة، فدايماً في وحدة منهم شايفة أي مركبة بعيدة.',
+  dsnStations: { gdscc: 'غولدستون، كاليفورنيا', mdscc: 'مدريد، إسبانيا', cdscc: 'كانبيرا، أستراليا' },
+  dsnLocalTime: (c) => `الساعة هونيك ${c}`,
+  dsnSummary: (n, d) => (n === 0 ? 'هلأ ولا مركبة على اتصال.'
+    : `هلأ في ${n === 1 ? 'مركبة وحدة' : arabicCount(n, 'مركبة', 'مركبتين', 'مركبات')} على اتصال، `
+      + `عبر ${d === 1 ? 'هوائي واحد' : arabicCount(d, 'هوائي', 'هوائيين', 'هوائيات')}.`),
+  dsnFarthest: (name, dist, light) => `الأبعد: ${name}، على ${dist}، وإشارتها بتوصلنا بعد ${light}.`,
+  dsnLight: (sec) => {
+    if (sec >= 59.95) return AR.light(sec / 60);
+    if (sec < 9.95) return `${num(sec, 1, 'ar')} ثانية`;
+    return arabicCount(Math.round(sec), 'ثانية', 'ثانيتين', 'ثواني');
+  },
+  dsnSignalTime: (x) => `الإشارة بتاخد ${x}`,
+  dsnSize: (m) => `${m} متر`,
+  dsnElevation: (d) => `${d} فوق الأفق`,
+  dsnActivity: {
+    link: 'اتصال مع مركبات',
+    maint: 'شغل صيانة وتحديث',
+    vlbi: 'قياس راديوي مع محطات بعيدة (VLBI)',
+    radar: 'رادار للكواكب والكويكبات',
+    astro: 'رصد فلكي راديوي',
+    calib: 'معايرة',
+    test: 'تجربة',
+  },
+  dsnDown: 'عم يستقبل من المركبة',
+  dsnUp: 'عم يبعت للمركبة',
+  dsnNoSignal: (n) => `الهوائي موجّه ${n === 1 ? 'عليها' : 'عليهم'}، بس ما في إشارة هلأ`,
+  dsnMspa: 'كذا مركبة عبر نفس الهوائي',
+  dsnRate: ['بت/ث', 'كيلوبت/ث', 'ميغابت/ث'],
+  billionKm: 'مليار كم',
+  dsnWhere: {
+    interstellar: 'بالفضاء بين النجوم',
+    kuiper: 'بحزام كايبر، ورا نبتون',
+    jupiter: 'حول المشتري',
+    toJupiter: 'بالطريق للمشتري',
+    toTrojans: 'بالطريق لطرواديات المشتري',
+    toPsyche: 'بالطريق للكويكب سايكي',
+    toApophis: 'بالطريق للكويكب أبوفيس',
+    toAsteroid: 'بالطريق لكويكب صغير',
+    mars: 'حول المريخ',
+    marsSurface: 'على سطح المريخ',
+    toMars: 'بالطريق للمريخ',
+    moon: 'حول القمر',
+    l1: 'بين الأرض والشمس، على 1.5 مليون كم من الأرض',
+    l2: 'ورا الأرض من الجهة المعتمة، على 1.5 مليون كم منها',
+    sun: 'حول الشمس',
+    earth: 'حول الأرض',
+  },
+  dsnNote: '↓ يعني الهوائي عم يستقبل بيانات من المركبة (والرقم سرعتها)، و↑ يعني عم يبعتلها أوامر. '
+    + 'الصحون الكبيرة قطرها 70 متر، والباقي 34 متر. البعد وزمن الإشارة من ناسا. '
+    + 'أحياناً هوائي واحد بيسمع لكذا مركبة سوا، متل المركبات اللي حول المريخ.',
+  dsnUpdated: (c, ago) => `بيانات ناسا تبع الساعة ${c} (${ago})، وبتتحدّث كل دقيقة`,
+  dsnAgo: (sec) => (sec < 60 ? 'من أقل من دقيقة' : `من ${arDuration(sec / 60)}`),
+  dsnOld: (ago) => `انتبه: آخر بيانات بعتتها ناسا كانت ${ago}. يمكن في مشكلة عندهم.`,
+  dsnOff: 'الربط المباشر مع شبكة الفضاء العميق لسا ما انعمل. قريباً بيشتغل هون.',
+  dsnNone: 'ما قدرنا نجيب بيانات من ناسا هلأ. منرجع منجرّب بعد دقيقة.',
 };
 
 const DE: Strings = {
@@ -671,6 +763,63 @@ const DE: Strings = {
   swMissing: (part) => `Gerade keine Daten: ${part}.`,
   swStale: (part, d) => `Achtung: ${part} vom ${d}, neuere konnten wir nicht holen.`,
   swNone: 'Hier gibt es keine Weltraumwetter-Daten. Auf der veröffentlichten Seite kommen sie alle 3 Stunden neu.',
+  dsnTitle: 'Deep Space Network jetzt',
+  dsnIntro: 'Welche Raumfahrzeuge gerade mit den großen NASA-Antennen an drei Standorten rund um die Erde sprechen. '
+    + 'Die Standorte liegen etwa ein Drittel Erdumdrehung auseinander, so sieht immer einer jede ferne Sonde.',
+  dsnStations: { gdscc: 'Goldstone, Kalifornien', mdscc: 'Madrid, Spanien', cdscc: 'Canberra, Australien' },
+  dsnLocalTime: (c) => `Ortszeit ${c}`,
+  dsnSummary: (n, d) => (n === 0 ? 'Gerade steht kein Raumfahrzeug in Kontakt.'
+    : `Gerade ${n === 1 ? 'steht 1 Raumfahrzeug' : `stehen ${n} Raumfahrzeuge`} über ${plural(d, 'Antenne', 'Antennen')} in Kontakt.`),
+  dsnFarthest: (name, dist, light) => `Am weitesten entfernt: ${name}, ${dist}. Das Signal braucht ${light} bis zu uns.`,
+  dsnLight: (sec) => {
+    if (sec >= 59.95) return DE.light(sec / 60);
+    if (sec < 9.95) return `${num(sec, 1, 'de')} Sekunden`;
+    return plural(Math.round(sec), 'Sekunde', 'Sekunden');
+  },
+  dsnSignalTime: (x) => `Signal braucht ${x}`,
+  dsnSize: (m) => `${m} m`,
+  dsnElevation: (d) => `${d} über dem Horizont`,
+  dsnActivity: {
+    link: 'Verbindung zu Raumfahrzeugen',
+    maint: 'Wartung und Umbau',
+    vlbi: 'Radiomessung mit fernen Stationen (VLBI)',
+    radar: 'Radar für Planeten und Asteroiden',
+    astro: 'Radioastronomie',
+    calib: 'Kalibrierung',
+    test: 'Test',
+  },
+  dsnDown: 'Empfang von der Sonde',
+  dsnUp: 'Senden zur Sonde',
+  dsnNoSignal: () => 'Antenne ausgerichtet, gerade ohne Signal',
+  dsnMspa: 'mehrere Sonden über eine Antenne',
+  dsnRate: ['bit/s', 'kbit/s', 'Mbit/s'],
+  billionKm: 'Mrd. km',
+  dsnWhere: {
+    interstellar: 'im interstellaren Raum',
+    kuiper: 'im Kuipergürtel, jenseits von Neptun',
+    jupiter: 'umkreist Jupiter',
+    toJupiter: 'unterwegs zum Jupiter',
+    toTrojans: 'unterwegs zu den Jupiter-Trojanern',
+    toPsyche: 'unterwegs zum Asteroiden Psyche',
+    toApophis: 'unterwegs zum Asteroiden Apophis',
+    toAsteroid: 'unterwegs zu einem kleinen Asteroiden',
+    mars: 'umkreist den Mars',
+    marsSurface: 'auf dem Mars',
+    toMars: 'unterwegs zum Mars',
+    moon: 'umkreist den Mond',
+    l1: 'zwischen Erde und Sonne, 1,5 Mio. km von der Erde',
+    l2: 'hinter der Erde, auf der Nachtseite, 1,5 Mio. km entfernt',
+    sun: 'umkreist die Sonne',
+    earth: 'umkreist die Erde',
+  },
+  dsnNote: '↓ heißt: Die Antenne empfängt Daten von der Sonde (mit Datenrate), ↑: Sie sendet ihr Befehle. '
+    + 'Die großen Schüsseln haben 70 m Durchmesser, die anderen 34 m. Entfernung und Signallaufzeit kommen von der NASA. '
+    + 'Manchmal hört eine Antenne mehrere Sonden gleichzeitig, etwa die am Mars.',
+  dsnUpdated: (c, ago) => `NASA-Daten von ${c} Uhr (${ago}), jede Minute neu`,
+  dsnAgo: (sec) => (sec < 60 ? 'vor weniger als 1 Minute' : `vor ${deDuration(sec / 60, true)}`),
+  dsnOld: (ago) => `Hinweis: Die neuesten Daten der NASA kamen ${ago}. Vielleicht gibt es dort ein Problem.`,
+  dsnOff: 'Die Live-Verbindung zum Deep Space Network ist noch nicht eingerichtet. Bald gibt es sie hier.',
+  dsnNone: 'Gerade kommen keine Daten von der NASA. Wir versuchen es in einer Minute wieder.',
 };
 
 const EN: Strings = {
@@ -870,6 +1019,63 @@ const EN: Strings = {
   swMissing: (part) => `No data right now: ${part}.`,
   swStale: (part, d) => `Note: ${part} from ${d}; we could not fetch newer data.`,
   swNone: 'No space weather data here. On the published site it comes fresh every 3 hours.',
+  dsnTitle: 'Deep Space Network now',
+  dsnIntro: 'Which spacecraft are talking right now with NASA’s big antennas at three sites around the Earth. '
+    + 'The sites are about a third of a turn apart, so one of them always sees any distant spacecraft.',
+  dsnStations: { gdscc: 'Goldstone, California', mdscc: 'Madrid, Spain', cdscc: 'Canberra, Australia' },
+  dsnLocalTime: (c) => `local time ${c}`,
+  dsnSummary: (n, d) => (n === 0 ? 'Right now no spacecraft is in contact.'
+    : `Right now ${n} spacecraft ${n === 1 ? 'is' : 'are'} in contact, through ${plural(d, 'antenna', 'antennas')}.`),
+  dsnFarthest: (name, dist, light) => `Farthest: ${name}, ${dist} away; its signal takes ${light} to reach us.`,
+  dsnLight: (sec) => {
+    if (sec >= 59.95) return EN.light(sec / 60);
+    if (sec < 9.95) return `${num(sec, 1, 'en')} seconds`;
+    return plural(Math.round(sec), 'second', 'seconds');
+  },
+  dsnSignalTime: (x) => `signal takes ${x}`,
+  dsnSize: (m) => `${m} m`,
+  dsnElevation: (d) => `${d} above the horizon`,
+  dsnActivity: {
+    link: 'talking to spacecraft',
+    maint: 'maintenance and upgrades',
+    vlbi: 'radio measurements with distant sites (VLBI)',
+    radar: 'radar for planets and asteroids',
+    astro: 'radio astronomy',
+    calib: 'calibration',
+    test: 'test',
+  },
+  dsnDown: 'receiving from the spacecraft',
+  dsnUp: 'sending to the spacecraft',
+  dsnNoSignal: (n) => `antenna pointed at ${n === 1 ? 'it' : 'them'}, no signal right now`,
+  dsnMspa: 'several spacecraft through one antenna',
+  dsnRate: ['bit/s', 'kbit/s', 'Mbit/s'],
+  billionKm: 'billion km',
+  dsnWhere: {
+    interstellar: 'in interstellar space',
+    kuiper: 'in the Kuiper belt, beyond Neptune',
+    jupiter: 'orbiting Jupiter',
+    toJupiter: 'on its way to Jupiter',
+    toTrojans: 'on its way to Jupiter’s Trojan asteroids',
+    toPsyche: 'on its way to the asteroid Psyche',
+    toApophis: 'on its way to the asteroid Apophis',
+    toAsteroid: 'on its way to a small asteroid',
+    mars: 'orbiting Mars',
+    marsSurface: 'on Mars',
+    toMars: 'on its way to Mars',
+    moon: 'orbiting the Moon',
+    l1: 'between Earth and the Sun, 1.5 million km from Earth',
+    l2: 'beyond Earth on its night side, 1.5 million km out',
+    sun: 'orbiting the Sun',
+    earth: 'orbiting Earth',
+  },
+  dsnNote: '↓ means the antenna is receiving data from the spacecraft (with its data rate), ↑ that it is sending commands. '
+    + 'The big dishes are 70 m across, the others 34 m. Distance and signal time come from NASA. '
+    + 'Sometimes one antenna listens to several spacecraft at once, such as those at Mars.',
+  dsnUpdated: (c, ago) => `NASA’s data from ${c} (${ago}), new every minute`,
+  dsnAgo: (sec) => (sec < 60 ? 'under a minute ago' : `${enDuration(sec / 60)} ago`),
+  dsnOld: (ago) => `Note: NASA’s latest data came ${ago}. There may be a problem on their side.`,
+  dsnOff: 'The live link to the Deep Space Network is not set up yet. It will show here soon.',
+  dsnNone: 'No data from NASA right now. We will try again in a minute.',
 };
 
 export const STRINGS: Record<Lang, Strings> = { ar: AR, de: DE, en: EN };
