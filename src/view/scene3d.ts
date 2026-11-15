@@ -592,7 +592,7 @@ export class Scene3D {
     if (behind) { dx = -dx; dy = -dy; }
     const k = Math.min((this.w / 2 - M) / Math.abs(dx || 1e-9), (this.h / 2 - M) / Math.abs(dy || 1e-9));
     x = cx + dx * k; y = cy + dy * k;
-    const text = String(Math.round(far.dist));
+    const text = numGrouped(Math.round(far.dist));
     if (el.dataset.text !== text) { el.dataset.text = text; el.innerHTML = `<i>➤</i>${text}`; }
     el.style.color = far.color;
     (el.firstElementChild as HTMLElement).style.transform = `rotate(${Math.atan2(dy, dx).toFixed(3)}rad)`;

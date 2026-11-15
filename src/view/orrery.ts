@@ -286,7 +286,7 @@ export class Orrery {
         ctx.font = '11px system-ui, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(String(Math.round(Math.hypot(g.pos.x, g.pos.y, g.pos.z))), ex - 16 * Math.cos(a) - 12 * Math.sin(a), ey - 16 * Math.sin(a) + 12 * Math.cos(a));
+        ctx.fillText(numGrouped(Math.round(Math.hypot(g.pos.x, g.pos.y, g.pos.z))), ex - 16 * Math.cos(a) - 12 * Math.sin(a), ey - 16 * Math.sin(a) + 12 * Math.cos(a));
         continue;
       }
       if (ri >= 0 && Math.hypot(screen[ri][0] - x, screen[ri][1] - y) > 4) {

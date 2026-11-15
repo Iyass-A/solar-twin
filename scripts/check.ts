@@ -19,12 +19,13 @@ import * as sw from '../src/live/spaceWeather';
 import { SMALL_BODY_NAMES } from '../src/data/small-body-names';
 import { sampleOrbits, cloudOffsets, cholesky6 } from '../src/astro/uncertainty';
 import { loadSmallBodies, covarianceFrom, type CovEntry } from '../src/view/smallbodies';
-import { STRINGS, LANGS } from '../src/i18n';
+import { STRINGS, LANGS, num, numGrouped } from '../src/i18n';
 import * as dsn from '../src/live/dsn';
 import * as dsnView from '../src/view/dsn';
 import * as worker from '../workers/dsn/src/index';
 import { SPACECRAFT, WHERE_KEYS } from '../src/data/spacecraft';
-import { checkStartingState, checkIntegrator, checkEngine, checkLongRange, checkEdits } from './check-physics';
+import { checkStartingState, checkIntegrator, checkEngine, checkLongRange, checkEdits, checkScenarios } from './check-physics';
+import { SCENARIOS } from '../src/physics/scenarios';
 
 const MAX_ERROR_DEG = 1;
 const DAY_MS = 86_400_000;
@@ -693,6 +694,28 @@ failed = !checkIntegrator() || failed;
 failed = !(await checkEngine()) || failed;
 failed = !checkLongRange() || failed;
 failed = !(await checkEdits()) || failed;
+failed = !(await checkScenarios()) || failed;
+
+// The scenarios' texts: each result gives every fact's number, written as the language writes it,
+// and the buttons and explanations give the star's distance the same way
+{
+  let textOk = true;
+  const textFail = (msg: string) => { textOk = false; console.log(`  FAIL ${msg}`); };
+  for (const l of LANGS) {
+    const sc = STRINGS[l.id].branch.scenarios;
+    for (const x of SCENARIOS) {
+      const shown = x.facts.map((f) => [f.key, f.digits === 0 ? numGrouped(f.value, l.id) : num(f.value, f.digits, l.id)] as const);
+      const text = sc.list[x.id].result(Object.fromEntries(shown));
+      if (/undefined|NaN/.test(text)) textFail(`${l.id} ${x.id}: "${text}"`);
+      for (const [key, v] of shown) if (!text.includes(v)) textFail(`${l.id} ${x.id}: the result does not give ${key} (${v})`);
+      if (x.action === 'star' && !sc.list[x.id].how.includes(numGrouped(x.starAu, l.id))) textFail(`${l.id} ${x.id}: the explanation does not say ${numGrouped(x.starAu, l.id)}`);
+    }
+    const far = numGrouped(SCENARIOS.find((x) => x.id === 'star')!.starAu, l.id), near = numGrouped(SCENARIOS.find((x) => x.id === 'star50')!.starAu, l.id);
+    if (!sc.buttons.star.includes(far) || !sc.farther.includes(far) || !sc.nearer.includes(near)) textFail(`${l.id}: the star's buttons do not say ${far} and ${near}`);
+  }
+  failed ||= !textOk;
+  console.log(`Scenario texts in three languages: ${textOk ? 'OK' : 'FAIL'}`);
+}
 
 console.log(failed ? '\nRESULT: FAIL' : '\nRESULT: OK');
 if (failed) process.exitCode = 1;

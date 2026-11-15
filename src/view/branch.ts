@@ -9,30 +9,34 @@
 // without the change, so every difference in the table comes from the change alone.
 
 import { Physics } from '../physics/client';
-import { utcMsToTdbJd, type Edit } from '../physics/protocol';
-import { orbitOf } from '../physics/orbit';
-import { AU_KM, SUN_GM } from '../physics/bodies';
+import { utcMsToTdbJd } from '../physics/protocol';
+import { orbitOf, propagate } from '../physics/orbit';
+import { AU_KM } from '../physics/bodies';
+import {
+  makeEdit, scenario, scenarioFromHash, scenarioHash, STAR_YEARS, type Action, type ScenarioId,
+} from '../physics/scenarios';
 import { PLANETS, type PlanetId } from '../astro/elements';
 import type { Vec3 } from '../astro/kepler';
 import { COLORS } from './views';
 import { t, num, numGrouped, dayMonth, type Strings } from '../i18n';
 
-type Action = 'remove' | 'mass' | 'push' | 'star';
-
 /** What the views draw for the branch: each body's position (from the Sun) and its recent path. */
 export interface Ghost { id: string; pos: Vec3; color: string; trail: Vec3[] }
 
-// The passing star: closest after this long, at this speed, in the ecliptic plane
-const STAR_YEARS = 10; // so that the closest pass is still on the timeline (up to 2050)
-const STAR_KMS = 20;
 const STAR_COLOR = '#fff2c8';
 const TRAIL_POINTS = 1200;
 // The path behind each body is drawn only while time runs on smoothly: a bigger jump starts it afresh
 // (a straight line across a jump would look like a path the body never took)
 const TRAIL_GAP_DAYS = 30;
+// The engine's answer is a few frames old when it arrives (at a year per second, ten days or more): each
+// body is drawn at the time on screen from it, on its orbit round the Sun, with a few points to join its path
+const CATCH_UP_MAX_DAYS = 400;
+const CATCH_UP_POINTS = 8;
 const DAY_MS = 86_400_000;
 
 const DEFAULTS: Record<Action, number> = { remove: 0, mass: 2, push: 5, star: 1 };
+// The ready-made scenarios with a button of their own (the nearer star is a button in the star's text)
+const PRESETS: ScenarioId[] = ['jupiter', 'sun', 'star'];
 
 /** A sim's state as the table needs it: positions, velocities and masses, by id. */
 interface Snapshot { jd: number; ids: string[]; gm: number[]; r: Float64Array; v: Float64Array }
@@ -42,6 +46,8 @@ export class BranchCard {
   onChange: (() => void) | null = null;
   /** Called to move the time on screen (the button that goes back to where the branch began). */
   onJump: ((ms: number) => void) | null = null;
+  /** Called to run time at one of the page's speeds (a scenario starts it). */
+  onPlay: ((speed: number) => void) | null = null;
 
   private physics: Physics | null = null;
   private realAt: number | null = null; // where the engine's "real" sim is (JD)
@@ -49,8 +55,8 @@ export class BranchCard {
   private branchGm: number[] = [];
   private control: Snapshot | null = null; // the engine's reality at the same time as the branch
   private snap: Snapshot | null = null;    // the branch, as the table needs it
-  private active: { forkMs: number; ids: string[]; action: Action; target: string; value: number; star?: number } | null = null;
-  private state: { jd: number; r: Float64Array; ids: string[] } | null = null;
+  private active: { forkMs: number; ids: string[]; action: Action; target: string; value: number; star?: number; scenario?: ScenarioId } | null = null;
+  private state: { jd: number; r: Float64Array; v: Float64Array; ids: string[] } | null = null;
   private asked: number | null = null;   // the time last asked of the worker [JD]
   private inFlight = false;
   private busy = false;                  // forking
@@ -59,7 +65,10 @@ export class BranchCard {
   private lastTrailJd = -Infinity;
   private error: string | null = null;
 
+  private readonly root: HTMLElement;
   private readonly el: {
+    presets: HTMLElement; presetsTitle: HTMLElement; own: HTMLElement; scenario: HTMLElement; how: HTMLElement;
+    result: HTMLElement; other: HTMLButtonElement;
     intro: HTMLElement; action: HTMLSelectElement; target: HTMLSelectElement; value: HTMLInputElement;
     targetLabel: HTMLElement; valueLabel: HTMLElement; valueText: HTMLElement; extra: HTMLElement; extraText: HTMLElement;
     extraValue: HTMLInputElement; hint: HTMLElement; go: HTMLButtonElement; status: HTMLElement; what: HTMLElement;
@@ -69,12 +78,21 @@ export class BranchCard {
 
   private readonly clockMs: () => { ms: number; min: number; max: number };
   private gen = 0; // counts forks and stops, so a late answer for an old branch is ignored
+  // The branch's sim in the worker has a new name each time, so that progress still on its way from
+  // an old one (dropped while it ran) is not taken for the new one's
+  private branchSim = 'branch-0';
 
   constructor(root: HTMLElement, clockMs: () => { ms: number; min: number; max: number }) {
     this.clockMs = clockMs;
+    this.root = root;
     root.innerHTML = `
       <h2 class="card-title"><span class="br-title"></span> <span class="badge br-badge"></span></h2>
       <p class="sub br-intro"></p>
+      <h3 class="br-presets-title"></h3>
+      <div class="row br-presets">
+        ${PRESETS.map((id) => `<button type="button" class="br-preset" data-scenario="${id}" aria-pressed="false"></button>`).join('')}
+      </div>
+      <p class="sub br-own"></p>
       <div class="row br-form">
         <label><span class="br-action-label"></span> <select class="br-action">
           ${(['remove', 'mass', 'push', 'star'] as Action[]).map((a) => `<option value="${a}"></option>`).join('')}
@@ -87,6 +105,11 @@ export class BranchCard {
       <p class="sub br-hint"></p>
       <div class="br-status" hidden>
         <p class="br-what"></p>
+        <div class="br-scenario" hidden>
+          <p class="br-how"></p>
+          <p class="br-result"></p>
+          <button type="button" class="br-other"></button>
+        </div>
         <p class="sub br-progress"></p>
         <p class="sub br-legend"></p>
         <div class="br-compare" hidden>
@@ -98,6 +121,8 @@ export class BranchCard {
       </div>`;
     const q = <T extends HTMLElement>(c: string) => root.querySelector<T>(c)!;
     this.el = {
+      presets: q('.br-presets'), presetsTitle: q('.br-presets-title'), own: q('.br-own'), scenario: q('.br-scenario'),
+      how: q('.br-how'), result: q('.br-result'), other: q('.br-other'),
       intro: q('.br-intro'), action: q('.br-action'), target: q('.br-target'), value: q('.br-value'),
       targetLabel: q('.br-target-label'), valueLabel: q('.br-value-label'), valueText: q('.br-value-text'),
       extra: q('.br-extra'), extraText: q('.br-extra-text'), extraValue: q('.br-extra-value'), hint: q('.br-hint'),
@@ -109,6 +134,13 @@ export class BranchCard {
     this.el.value.value = String(DEFAULTS.remove);
     this.el.extraValue.value = '50';
     this.el.go.addEventListener('click', () => void this.fork());
+    this.el.presets.querySelectorAll<HTMLButtonElement>('.br-preset').forEach((btn) => {
+      btn.addEventListener('click', () => void this.runScenario(btn.dataset.scenario as ScenarioId));
+    });
+    this.el.other.addEventListener('click', () => {
+      const other = this.active?.scenario && scenario(this.active.scenario).other;
+      if (other) void this.runScenario(other);
+    });
     this.el.reset.addEventListener('click', () => this.stop());
     this.el.jump.addEventListener('click', () => { if (this.active) this.onJump?.(this.active.forkMs); });
     this.render();
@@ -126,6 +158,12 @@ export class BranchCard {
     root.querySelector('.br-action-label')!.textContent = b.action;
     root.querySelector('.br-body-label')!.textContent = b.body;
     this.el.intro.textContent = b.intro;
+    this.el.presetsTitle.textContent = b.scenarios.title;
+    this.el.own.textContent = b.scenarios.own;
+    this.el.presets.querySelectorAll<HTMLButtonElement>('.br-preset').forEach((btn) => {
+      btn.textContent = b.scenarios.buttons[btn.dataset.scenario as 'jupiter' | 'sun' | 'star'];
+      btn.disabled = this.busy;
+    });
     this.el.action.querySelectorAll('option').forEach((o) => { o.textContent = b.actions[o.value as Action]; });
     const a = this.action();
     // Who can be changed: the planets; for a mass also the Sun
@@ -151,25 +189,74 @@ export class BranchCard {
     this.renderStatus();
   }
 
+  /** A scenario's explanation and result, with the numbers that npm run check makes sure of. */
+  private renderScenario() {
+    const id = this.active?.scenario, b = t().branch.scenarios;
+    this.el.presets.querySelectorAll<HTMLButtonElement>('.br-preset').forEach((btn) => {
+      btn.setAttribute('aria-pressed', String(!!id && btn.dataset.scenario === (id === 'star50' ? 'star' : id)));
+    });
+    this.el.scenario.hidden = !id;
+    if (!id) return;
+    const sc = scenario(id);
+    const facts = Object.fromEntries(sc.facts.map((f) => [f.key, f.digits === 0 ? numGrouped(f.value) : num(f.value, f.digits)]));
+    this.el.how.textContent = b.list[id].how;
+    this.el.result.textContent = b.list[id].result(facts);
+    this.el.other.hidden = !sc.other;
+    if (sc.other) this.el.other.textContent = sc.other === 'star50' ? b.nearer : b.farther;
+  }
+
+  /**
+   * A ready-made scenario: fills in the form (so it can be changed from there), moves time to the
+   * scenario's start, branches, and runs time. The address gets the scenario's link (#branch-…).
+   */
+  async runScenario(id: ScenarioId) {
+    if (this.busy) return;
+    const sc = scenario(id);
+    this.el.action.value = sc.action;
+    this.render(); // the bodies this change can take
+    if (sc.action !== 'star') this.el.target.value = sc.target;
+    this.el.value.value = String(sc.value);
+    this.el.extraValue.value = String(sc.starAu);
+    this.onJump?.(sc.fromMs);
+    if (await this.fork(id)) this.onPlay?.(sc.speed);
+  }
+
+  /** Runs the scenario in the address (#branch-jupiter and so on), if there is one. */
+  openFromHash() {
+    const id = scenarioFromHash(location.hash);
+    if (!id || this.active?.scenario === id) return;
+    this.root.scrollIntoView({ block: 'start' });
+    void this.runScenario(id);
+  }
+
+  /** The address names the scenario on show, and no scenario when there is none (other links stay). */
+  private setHash(id: ScenarioId | undefined) {
+    const want = id ? scenarioHash(id) : '';
+    if (location.hash === want || (!id && !scenarioFromHash(location.hash))) return;
+    history.replaceState(null, '', `${location.pathname}${location.search}${want}`);
+  }
+
   private name(id: string, s: Strings = t()) {
     return id === 'sun' ? s.branch.sun : s.planets[id as PlanetId] ?? id;
   }
 
   private renderStatus() {
     const s = t(), b = s.branch, act = this.active;
-    this.el.status.hidden = !act && !this.error;
+    this.el.status.hidden = !act && !this.error && !this.busy;
     this.el.jump.hidden = !act;
-    if (this.error) {
-      this.el.what.textContent = b.error(this.error); this.el.progress.textContent = '';
+    this.renderScenario();
+    if (this.error || !act) {
+      // An error, or a branch on its way (going to its start can take a second or two)
+      this.el.what.textContent = this.error ? b.error(this.error) : this.busy ? b.scenarios.preparing : '';
+      this.el.progress.textContent = !this.error && this.busy && this.progressYear ? b.computing(this.progressYear) : '';
       this.el.legend.hidden = true; this.el.compare.hidden = true; return;
     }
-    if (!act) return;
     this.el.legend.hidden = false;
     const fmt = (v: number) => num(v, Number.isInteger(v) ? 0 : Math.abs(v) < 10 ? 1 : 0);
     const what = act.action === 'remove' ? b.what.remove(this.name(act.target))
       : act.action === 'mass' ? b.what.mass(this.name(act.target), fmt(act.value))
       : act.action === 'push' ? b.what.push(this.name(act.target), fmt(Math.abs(act.value)), act.value > 0)
-      : b.what.star(fmt(act.value), `${num(act.star!, 0)} ${s.au}`);
+      : b.what.star(fmt(act.value), `${act.star! >= 1000 ? numGrouped(act.star!) : fmt(act.star!)} ${s.au}`);
     const date = `${dayMonth(act.forkMs)} ${new Date(act.forkMs).getUTCFullYear()}`;
     this.el.what.textContent = `${what} · ${b.from(date)}`;
     const now = this.clockMs().ms;
@@ -200,7 +287,7 @@ export class BranchCard {
       const y = days / 365.25;
       return c.years(num(y, y < 100 ? 1 : 0));
     };
-    const dist = (au: number) => `${num(au, au < 10 ? 2 : au < 100 ? 1 : 0)} ${s.au}`;
+    const dist = (au: number) => `${au < 100 ? num(au, au < 10 ? 2 : 1) : numGrouped(au)} ${s.au}`;
     const apart = (au: number) => {
       const km = au * AU_KM;
       if (km < 1e6) return `${numGrouped(km)} ${s.km}`;
@@ -221,12 +308,16 @@ export class BranchCard {
     this.el.table.innerHTML = `<thead><tr><th scope="col">${c.body}</th><th scope="col">${c.year}</th><th scope="col">${c.distance}</th><th scope="col">${c.offset}</th></tr></thead><tbody>${rows.join('')}</tbody>`;
   }
 
-  /** Copies the engine's reality at the time on screen, applies the change, and starts showing it. */
-  private async fork() {
+  /**
+   * Copies the engine's reality at the time on screen, applies the change, and starts showing it.
+   * Returns whether the branch is there.
+   */
+  private async fork(scenarioId?: ScenarioId): Promise<boolean> {
+    if (this.busy) return false;
     const { ms, min, max } = this.clockMs();
-    if (ms < min || ms > max) { this.error = t().branch.tooFar; this.renderStatus(); return; }
+    if (ms < min || ms > max) { this.error = t().branch.tooFar; this.renderStatus(); return false; }
     if (this.action() === 'star' && ms + STAR_YEARS * 365.25 * 86400e3 > max) {
-      this.error = t().branch.starLate(new Date(max).getUTCFullYear() - STAR_YEARS); this.renderStatus(); return;
+      this.error = t().branch.starLate(new Date(max).getUTCFullYear() - STAR_YEARS); this.renderStatus(); return false;
     }
     const a = this.action(), target = this.el.target.value, value = Number(this.el.value.value), star = Number(this.el.extraValue.value);
     this.busy = true; this.error = null; this.render();
@@ -234,7 +325,8 @@ export class BranchCard {
       if (!this.physics) {
         this.physics = new Physics();
         this.physics.onProgress = (p) => {
-          if (p.sim !== 'branch') return;
+          // the branch on a long run, or reality on its way to where a branch starts
+          if (!(p.sim === this.branchSim && this.active && !this.busy) && !(p.sim === 'real' && this.busy)) return;
           this.progressYear = String(new Date((p.jd - 2440587.5) * DAY_MS).getUTCFullYear());
           this.renderStatus();
         };
@@ -244,35 +336,32 @@ export class BranchCard {
       }
       const jd = utcMsToTdbJd(ms);
       if (this.realAt !== jd) { await this.physics.goto('real', jd); this.realAt = jd; }
-      if (this.active) this.physics.drop('branch');
+      if (this.active) this.physics.drop(this.branchSim);
       this.active = null; this.state = null; this.snap = null; this.control = null; this.trails.clear(); this.gen++; this.inFlight = false;
-      await this.physics.branch('branch', 'real');
-      let edit: Edit;
-      if (a === 'remove') edit = { kind: 'remove', id: target };
-      else if (a === 'mass') edit = { kind: 'mass', id: target, factor: value };
-      else if (a === 'push') edit = { kind: 'push', id: target, dvKmS: value };
-      else {
-        // Closest at `star` au on the +x side (towards the vernal equinox) in STAR_YEARS, moving along +y
-        const along = STAR_KMS * STAR_YEARS * 365.25 * 86400 / AU_KM;
-        edit = { kind: 'add', id: 'star', gm: SUN_GM * value, r: [star, -along, 0], vKmS: [0, STAR_KMS, 0] };
-      }
-      const ready = await this.physics.edit('branch', edit);
+      this.branchSim = `branch-${this.gen}`;
+      await this.physics.branch(this.branchSim, 'real');
+      const ready = await this.physics.edit(this.branchSim, makeEdit(a, target, value, star));
       this.branchGm = ready.gm;
-      this.active = { forkMs: ms, ids: ready.ids, action: a, target, value, star: a === 'star' ? star : undefined };
+      this.active = { forkMs: ms, ids: ready.ids, action: a, target, value, star: a === 'star' ? star : undefined, scenario: scenarioId };
       this.asked = null; this.lastTrailJd = -Infinity;
+      this.setHash(scenarioId);
       this.onChange?.();
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
       this.active = null;
+      this.setHash(undefined);
     } finally {
       this.busy = false;
+      this.progressYear = null;
       this.render();
     }
+    return this.active !== null;
   }
 
   private stop() {
-    if (this.active) this.physics?.drop('branch');
+    if (this.active) this.physics?.drop(this.branchSim);
     this.active = null; this.state = null; this.snap = null; this.control = null; this.error = null; this.trails.clear(); this.gen++; this.inFlight = false;
+    this.setHash(undefined);
     this.render();
     this.onChange?.();
   }
@@ -283,28 +372,29 @@ export class BranchCard {
    */
   frame(ms: number): Ghost[] | null {
     const act = this.active;
-    if (!act || !this.physics) return null;
+    // (while a new branch is on its way, the old one is neither drawn nor run on)
+    if (!act || !this.physics || this.busy) return null;
     if (ms < act.forkMs) { this.renderStatusSoon(); return null; }
     const jd = utcMsToTdbJd(ms);
     if (!this.inFlight && this.asked !== jd) {
       this.inFlight = true; this.asked = jd;
       const gen = this.gen;
       // The branch and reality (without the change) to the same time, side by side
-      Promise.all([this.physics.goto('branch', jd), this.physics.goto('real', jd)]).then(([st, real]) => {
+      Promise.all([this.physics.goto(this.branchSim, jd), this.physics.goto('real', jd)]).then(([st, real]) => {
         if (gen !== this.gen) return; // an answer for a branch that is gone
         this.inFlight = false;
         this.realAt = real.jd;
         if (!this.active) return;
         const wasComputing = this.progressYear !== null;
         this.progressYear = null;
-        this.state = { jd: st.jd, r: st.r, ids: act.ids };
+        this.state = { jd: st.jd, r: st.r, v: st.v, ids: act.ids };
         this.snap = { jd: st.jd, ids: act.ids, gm: this.branchGm, r: st.r, v: st.v };
         this.control = this.realGm && { jd: real.jd, ids: this.realGm.ids, gm: this.realGm.gm, r: real.r, v: real.v };
         this.addTrail(st.jd, st.path);
         if (wasComputing) this.renderStatus(); else this.renderStatusSoon();
       }, () => { if (gen === this.gen) { this.inFlight = false; this.realAt = null; } });
     }
-    return this.ghosts();
+    return this.ghosts(jd);
   }
 
   private lastStatus = 0;
@@ -313,10 +403,11 @@ export class BranchCard {
     if (now - this.lastStatus > 250) { this.lastStatus = now; this.renderStatus(); }
   }
 
-  private helio(i: number): Vec3 {
-    const { r, ids } = this.state!, sun = ids.indexOf('sun');
-    const sx = sun >= 0 ? r[3 * sun] : 0, sy = sun >= 0 ? r[3 * sun + 1] : 0, sz = sun >= 0 ? r[3 * sun + 2] : 0;
-    return { x: r[3 * i] - sx, y: r[3 * i + 1] - sy, z: r[3 * i + 2] - sz };
+  /** Body i relative to the Sun: position [au] and velocity [au/day]. */
+  private helio(i: number): { r: number[]; v: number[] } {
+    const { r, v, ids } = this.state!, sun = ids.indexOf('sun');
+    const d = (a: Float64Array, k: number) => a[3 * i + k] - (sun >= 0 ? a[3 * sun + k] : 0);
+    return { r: [d(r, 0), d(r, 1), d(r, 2)], v: [d(v, 0), d(v, 1), d(v, 2)] };
   }
 
   /**
@@ -347,12 +438,22 @@ export class BranchCard {
     });
   }
 
-  private ghosts(): Ghost[] | null {
+  private ghosts(jd: number): Ghost[] | null {
     if (!this.state) return null;
-    return this.state.ids.flatMap((id, i) => {
+    const { ids } = this.state, sun = ids.indexOf('sun');
+    const dt = jd - this.state.jd;
+    const catchUp = dt !== 0 && Math.abs(dt) <= CATCH_UP_MAX_DAYS;
+    const vec = (r: number[]): Vec3 => ({ x: r[0], y: r[1], z: r[2] });
+    return ids.flatMap((id, i) => {
       if (id === 'sun' || id === 'pluto') return [];
       const color = id === 'star' ? STAR_COLOR : COLORS[id as PlanetId] ?? '#ffffff';
-      return [{ id, pos: this.helio(i), color, trail: this.trails.get(id) ?? [] }];
+      const trail = this.trails.get(id) ?? [];
+      const at = this.helio(i);
+      if (!catchUp) return [{ id, pos: vec(at.r), color, trail }];
+      // From the engine's answer to the time on screen, round the Sun alone (the others pull too little in a few days)
+      const mu = (sun >= 0 ? this.branchGm[sun] : 0) + this.branchGm[i];
+      const steps = Array.from({ length: CATCH_UP_POINTS }, (_, k) => vec(propagate(mu, at.r, at.v, dt * (k + 1) / CATCH_UP_POINTS).r));
+      return [{ id, pos: steps[steps.length - 1], color, trail: dt > 0 ? [...trail, ...steps] : trail }];
     });
   }
 }

@@ -5,7 +5,9 @@
 //   const state = await physics.goto('real', utcMsToTdbJd(Date.UTC(2030, 0, 1)));
 //
 // goto() settles with the state for the latest time asked of that sim: when the time bar moves on
-// before a run ends, the earlier promises settle with the newer state.
+// before a run ends, the earlier promises settle with the newer state. A state for an earlier time that
+// was already on its way when the newer goto went out is passed over (the worker sends the newer one):
+// otherwise a branch made right after a goto could start from where the sim was, not where it was sent.
 
 import type { Edit, FromWorker, Mode, ToWorker } from './protocol';
 
@@ -19,6 +21,7 @@ export class Physics {
   private worker: Worker | null = null;
   private ready = new Map<string, Waiting<Ready>>();
   private states = new Map<string, Waiting<State>[]>();
+  private wanted = new Map<string, number>(); // the latest time asked of each sim
   /** Called during long runs (at most every 50 ms). */
   onProgress: ((p: Progress) => void) | null = null;
 
@@ -33,7 +36,11 @@ export class Physics {
 
   private receive(msg: FromWorker) {
     if (msg.type === 'ready') { this.ready.get(msg.sim)?.resolve(msg); this.ready.delete(msg.sim); }
-    else if (msg.type === 'state') { for (const w of this.states.get(msg.sim) ?? []) w.resolve(msg); this.states.delete(msg.sim); }
+    else if (msg.type === 'state') {
+      if (this.wanted.get(msg.sim) !== msg.jd) return; // for an earlier goto: the newer state follows
+      for (const w of this.states.get(msg.sim) ?? []) w.resolve(msg);
+      this.states.delete(msg.sim);
+    }
     else if (msg.type === 'progress') this.onProgress?.(msg);
     else if (msg.type === 'error') {
       const err = new Error(msg.message);
@@ -66,6 +73,7 @@ export class Physics {
       const list = this.states.get(sim) ?? [];
       list.push({ resolve, reject });
       this.states.set(sim, list);
+      this.wanted.set(sim, jd);
       this.send({ type: 'goto', sim, jd });
     });
   }
@@ -75,7 +83,7 @@ export class Physics {
     return new Promise((resolve, reject) => { this.ready.set(sim, { resolve, reject }); this.send({ type: 'edit', sim, edit }); });
   }
 
-  drop(sim: string) { this.send({ type: 'drop', sim }); }
+  drop(sim: string) { this.wanted.delete(sim); this.send({ type: 'drop', sim }); }
 
   /** Stops the worker; the next call starts a fresh one. */
   close() {

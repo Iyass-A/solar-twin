@@ -9,11 +9,13 @@ import { existsSync, readFileSync } from 'node:fs';
 import { BODIES, SYSTEMS, AU_KM, SUN_GM, toAuDay } from '../src/physics/bodies';
 import { createNBody, advance, energy, momenta, defaultStep, removeBody, addBody, setGm, kick, type NBody, type Order } from '../src/physics/nbody';
 import { Engine } from '../src/physics/engine';
-import { orbitOf } from '../src/physics/orbit';
+import { Physics } from '../src/physics/client';
+import { orbitOf, propagate } from '../src/physics/orbit';
 import { utcMsToTdbJd, tdbJdToUtcMs, PATH_SAMPLES, type Edit, type FromWorker, type Mode } from '../src/physics/protocol';
 import { startBodies, startSystems, EPOCH_JD, type Vec } from '../src/physics/state';
 import stateFile from '../src/data/state-vectors.json' with { type: 'json' };
-import { PLANETS } from '../src/astro/elements';
+import { PLANETS, VALID_TO_MS } from '../src/astro/elements';
+import { SCENARIOS, makeEdit, factValue, scenario, scenarioHash, scenarioFromHash, STAR_KMS, STAR_YEARS, STAR_LONGITUDE_DEG, type Fact } from '../src/physics/scenarios';
 import { heliocentricPosition } from '../src/astro/kepler';
 import { centuriesSinceJ2000 } from '../src/astro/julian';
 
@@ -700,6 +702,148 @@ export async function checkEdits(): Promise<boolean> {
     fail(String(err));
   }
   console.log(`Physics engine changes: ${ok ? 'OK' : 'FAIL'}`);
+  return ok;
+}
+
+/**
+ * The ready-made scenarios (src/physics/scenarios.ts): each one through the engine as the page runs it
+ * (reality from the start state to the scenario's date, a branch of it, the change, then both to each
+ * fact's time), and every number its result text gives must hold. Also: the page's edits for them,
+ * and the links.
+ */
+export async function checkScenarios(): Promise<boolean> {
+  let ok = true;
+  const fail = (msg: string) => { ok = false; console.log(`  FAIL ${msg}`); };
+  console.log('\nPhysics engine: ready-made scenarios');
+  const inbox: FromWorker[] = [];
+  let wake: (() => void) | null = null;
+  const engine = new Engine((m) => { inbox.push(m); wake?.(); }, (fn) => setImmediate(fn));
+  const next = <T extends FromWorker['type']>(type: T, sim: string): Promise<Extract<FromWorker, { type: T }>> =>
+    new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { wake = null; reject(new Error(`no "${type}" within 30 s`)); }, 30_000);
+      const look = () => {
+        const e = inbox.findIndex((m) => m.type === 'error');
+        if (e >= 0) { clearTimeout(timer); wake = null; reject(new Error((inbox.splice(e, 1)[0] as { message: string }).message)); return; }
+        const i = inbox.findIndex((m) => m.type === type && 'sim' in m && m.sim === sim);
+        if (i >= 0) { clearTimeout(timer); wake = null; resolve(inbox.splice(i, 1)[0] as Extract<FromWorker, { type: T }>); }
+      };
+      wake = look; look();
+    });
+  const unit = (f: Fact) => ({ km: 'km', Mkm: 'million km', Gkm: 'billion km', days: 'days', years: 'years', au: 'au' })[f.unit];
+  try {
+    for (const sc of SCENARIOS) {
+      const t0 = performance.now();
+      const real = `real-${sc.id}`, br = `branch-${sc.id}`;
+      engine.handle({ type: 'start', sim: real, mode: 'systems' });
+      const r0 = await next('ready', real);
+      engine.handle({ type: 'goto', sim: real, jd: utcMsToTdbJd(sc.fromMs) });
+      await next('state', real);
+      engine.handle({ type: 'branch', sim: br, from: real });
+      await next('ready', br);
+      engine.handle({ type: 'edit', sim: br, edit: makeEdit(sc.action, sc.target, sc.value, sc.starAu) });
+      const b0 = await next('ready', br);
+      const said: string[] = [];
+      for (const atMs of [...new Set(sc.facts.map((f) => f.atMs))].sort((a, b) => a - b)) {
+        const jd = utcMsToTdbJd(atMs);
+        engine.handle({ type: 'goto', sim: br, jd }); engine.handle({ type: 'goto', sim: real, jd });
+        const sb = await next('state', br), sr = await next('state', real);
+        if (sb.energyError > 1e-8) fail(`${sc.id}: energy off by ${sb.energyError.toExponential(1)}`);
+        for (const f of sc.facts.filter((x) => x.atMs === atMs)) {
+          const v = factValue(f, { ids: b0.ids, gm: b0.gm, r: sb.r, v: sb.v }, { ids: r0.ids, gm: r0.gm, r: sr.r, v: sr.v });
+          const holds = v !== null && (f.below ? v < f.value : Math.abs(v / f.value - 1) <= f.tol!);
+          if (!holds) fail(`${sc.id}: ${f.body} ${f.kind} ${v === null ? 'gone' : v.toPrecision(4)} ${unit(f)}, the text says ${f.below ? 'less than ' : 'about '}${f.value}`);
+          said.push(`${f.body} ${f.kind} ${v!.toPrecision(3)} ${unit(f)} (${f.below ? '<' : '≈'} ${f.value})`);
+        }
+      }
+      engine.handle({ type: 'drop', sim: br }); engine.handle({ type: 'drop', sim: real });
+      console.log(`  ${sc.id.padEnd(7)} from ${new Date(sc.fromMs).toISOString().slice(0, 10)}: ${said.join(', ')} (${((performance.now() - t0) / 1000).toFixed(1)} s)`);
+    }
+    // The edits the page makes for them, and the links
+    // the star: closest (where the straight line comes nearest the Sun) at 1,000 au towards STAR_LONGITUDE_DEG,
+    // after STAR_YEARS at STAR_KMS
+    const star = makeEdit('star', 'jupiter', 1, 1000);
+    if (star.kind !== 'add') { fail('the star\'s edit adds no body'); } else {
+      const vAu = star.vKmS.map((x) => x * DAY_S / AU_KM) as Vec;
+      const tMin = -dot(star.r, vAu) / dot(vAu, vAu);
+      const near = star.r.map((x, k) => x + vAu[k] * tMin) as Vec;
+      const lon = Math.atan2(near[1], near[0]) * 180 / Math.PI;
+      if (star.gm !== SUN_GM || Math.abs(len(near) - 1000) > 1e-9 || Math.abs(tMin / 365.25 - STAR_YEARS) > 1e-9 || Math.abs(len(star.vKmS as Vec) - STAR_KMS) > 1e-12
+        || Math.abs(lon - STAR_LONGITUDE_DEG) > 1e-9 || star.r[2] !== 0 || cross(star.r, star.vKmS as Vec)[2] <= 0) {
+        fail(`the star's edit: closest ${len(near).toFixed(3)} au at ${lon.toFixed(2)}° after ${(tMin / 365.25).toFixed(3)} years`);
+      }
+    }
+    for (const sc of SCENARIOS) {
+      if (scenarioFromHash(scenarioHash(sc.id)) !== sc.id) fail(`link of ${sc.id}`);
+      if (sc.other && scenario(sc.other).other !== sc.id) fail(`${sc.id} and ${sc.other} do not lead to each other`);
+      if (sc.action === 'star' && sc.fromMs + STAR_YEARS * 365.25 * DAY_S * 1000 > VALID_TO_MS) fail(`${sc.id}: the star passes after 2050`);
+    }
+    if (scenarioFromHash('#branch-vulcan') !== null || scenarioFromHash('#now-dsn') !== null) fail('links that are no scenario');
+    console.log('  the star\'s edit as the form makes it; links #branch-<id> both ways, other links left alone');
+
+    // Drawing each body at the time on screen from the engine's last answer (propagate in orbit.ts):
+    // against small RK4 steps of the same two-body problem, for a closed orbit (Mercury-like, e = 0.2,
+    // forwards and backwards), the Sun twice as heavy and an open one (the star); and once round
+    const twoBody = (mu: number, r0: Vec, v0: Vec, dt: number) => {
+      const f = (y: number[]) => { const r3 = Math.hypot(y[0], y[1], y[2]) ** 3; return [y[3], y[4], y[5], -mu * y[0] / r3, -mu * y[1] / r3, -mu * y[2] / r3]; };
+      let y = [...r0, ...v0];
+      const n = 20000, h = dt / n;
+      for (let k = 0; k < n; k++) {
+        const k1 = f(y), k2 = f(y.map((x, i) => x + h / 2 * k1[i])), k3 = f(y.map((x, i) => x + h / 2 * k2[i])), k4 = f(y.map((x, i) => x + h * k3[i]));
+        y = y.map((x, i) => x + h / 6 * (k1[i] + 2 * k2[i] + 2 * k3[i] + k4[i]));
+      }
+      return y.slice(0, 3) as Vec;
+    };
+    const muSun = toAuDay(SUN_GM), KMS = DAY_S / AU_KM;
+    let worstKm = 0;
+    for (const [mu, r0, v0, dt] of [
+      [muSun, [0.3075, 0, 0.01], [0, 58.98 * KMS, 2 * KMS], 12],
+      [muSun, [0.3075, 0, 0.01], [0, 58.98 * KMS, 2 * KMS], -12],
+      [2 * muSun, [0.98, 0.2, 0], [-6 * KMS, 29.5 * KMS, 0.1 * KMS], 20],
+      [2 * muSun, [866, 500 - 210, 0], [-10 * KMS, 17.3 * KMS, 0], 300],
+    ] as [number, Vec, Vec, number][]) {
+      const a = propagate(mu, r0, v0, dt).r as Vec, b = twoBody(mu, r0, v0, dt);
+      worstKm = Math.max(worstKm, len(sub(a, b)) * AU_KM);
+    }
+    const r1: Vec = [1, 0, 0], v1: Vec = [0, 30 * KMS, 0], orb = orbitOf(muSun, r1, v1);
+    const round = propagate(muSun, r1, v1, orb.period!);
+    const roundKm = len(sub(round.r as Vec, r1)) * AU_KM;
+    if (worstKm > 1 || roundKm > 1) fail(`drawing at the time on screen: ${worstKm.toFixed(3)} km from small steps, ${roundKm.toFixed(3)} km after one orbit`);
+    console.log(`  bodies drawn at the time on screen (Kepler from the last answer): within ${worstKm < 0.001 ? 'a metre' : `${worstKm.toFixed(3)} km`} of small steps, open orbits too; back to the start after one orbit (${(roundKm * 1000).toFixed(1)} m)`);
+
+    // The page's side (client.ts) with a stand-in worker: a scenario clicked while time runs sends a new
+    // goto while the state for the frame's older one is already on its way. That older state must not
+    // settle the new goto, or the branch would start where reality was, not at the scenario's date.
+    const sent: { type: string; jd?: number }[] = [];
+    let toPage: ((e: { data: FromWorker }) => void) | null = null;
+    const saved = (globalThis as { Worker?: unknown }).Worker;
+    (globalThis as { Worker?: unknown }).Worker = class {
+      onmessage: ((e: { data: FromWorker }) => void) | null = null;
+      onerror: unknown = null;
+      constructor() { setImmediate(() => { toPage = (e) => this.onmessage?.(e); }); }
+      postMessage(m: { type: string; jd?: number }) { sent.push(m); }
+      terminate() {}
+    };
+    try {
+      const physics = new Physics();
+      const got: number[] = [];
+      physics.goto('real', 10).then((st) => got.push(st.jd));     // the frame's request
+      physics.goto('real', 20).then((st) => got.push(st.jd));     // the scenario's, sent before the first answer came
+      await new Promise((r) => setImmediate(r));
+      const state = (jd: number): FromWorker => ({ type: 'state', sim: 'real', jd, r: new Float64Array(3), v: new Float64Array(3), path: new Float64Array(3), energyError: 0, ms: 0 });
+      toPage!({ data: state(10) });
+      await new Promise((r) => setImmediate(r));
+      const early = got.length;
+      toPage!({ data: state(20) });
+      await new Promise((r) => setImmediate(r));
+      if (early !== 0 || got.join() !== '20,20' || sent.map((m) => m.jd).join() !== '10,20') fail(`client: a late state for an older time settled ${early} goto(s); then ${got.join()}`);
+      console.log('  the page\'s side: a late state for an earlier time leaves a newer goto waiting; both settle with the newer state');
+    } finally {
+      (globalThis as { Worker?: unknown }).Worker = saved;
+    }
+  } catch (err) {
+    fail(String(err));
+  }
+  console.log(`Ready-made scenarios: ${ok ? 'OK' : 'FAIL'}`);
   return ok;
 }
 

@@ -5,6 +5,7 @@ import type { PlanetId } from './astro/elements';
 import type { ViewMode } from './view/views';
 import type { SmallGroup } from './view/smallbodies';
 import type { Where } from './data/spacecraft';
+import type { ScenarioId } from './physics/scenarios';
 
 export type Lang = 'ar' | 'de' | 'en';
 
@@ -256,6 +257,13 @@ export interface Strings {
     jump: string;
     compare: { title: string; note: string; body: string; year: string; distance: string; offset: string; removed: string;
       escapes: string; star: string; real: (value: string) => string; days: (n: string) => string; years: (n: string) => string };
+    /** Ready-made scenarios (src/physics/scenarios.ts); each result gets its facts as formatted numbers, by key. */
+    scenarios: {
+      title: string; own: string; preparing: string;
+      buttons: { jupiter: string; sun: string; star: string };
+      nearer: string; farther: string;
+      list: Record<ScenarioId, { how: string; result: (f: Record<string, string>) => string }>;
+    };
   };
 }
 
@@ -667,6 +675,32 @@ const AR: Strings = {
       removed: 'انشال', escapes: 'هارب، ما عاد يلف', star: 'النجم',
       real: (v) => `بالواقع: ${v}`, days: (n) => `${n} يوم`, years: (n) => `${n} سنة`,
     },
+    scenarios: {
+      title: 'سيناريوهات جاهزة',
+      own: 'أو غيّر شي لحالك:',
+      preparing: 'عم يحضّر الفرع…',
+      buttons: { jupiter: 'شو لو اختفى المشتري؟', sun: 'شو لو صارت كتلة الشمس الضعف؟', star: 'نجم بيمرّ على بعد 1,000 AU' },
+      nearer: 'قرّب النجم لـ 50 AU',
+      farther: 'رجّع النجم لـ 1,000 AU',
+      list: {
+        jupiter: {
+          how: 'منشيل المشتري أول يوم بسنة 1900، ومنمشّي الوقت سنة بالثانية لحد 2050.',
+          result: (f) => `النتيجة: ولا كوكب بيطير ولا بيوقع عالشمس، لأنو الشمس هي اللي ماسكة الكواكب، مو المشتري. بس المدارات بتتزحزح شوي شوي: لحد سنة 2000 زحل بيبعد حوالي ${f.saturn} مليون كم عن مكانه بالواقع، والأرض حوالي ${f.earth} كم.`,
+        },
+        sun: {
+          how: 'منضاعف كتلة الشمس فجأة يوم 15 تشرين الثاني 2026، والكواكب بتضل بنفس سرعتها. الوقت بيمشي شهر بالثانية.',
+          result: (f) => `النتيجة: فوراً كل الكواكب بتلفّ أسرع، على مدارات أصغر وممطوطة: سنة الأرض بتصير ${f.earthYear} يوم بدل 365، وبتقرّب لحد ${f.earthClosest} AU من الشمس، وسنة المشتري ${f.jupiterYear} سنة بدل 11.9.`,
+        },
+        star: {
+          how: 'نجم بكتلة الشمس بيمرّ سنة 2036 على بعد 1,000 AU (أبعد من نبتون بـ 33 مرة)، بسرعة 20 كم/ث. الوقت بيمشي سنة بالثانية لحد 2050.',
+          result: (f) => `النتيجة: بالعين ما بيبيّن شي، والنجم بيضل سهم عالحافة. والجدول بيورجي ليش: بآخر 2050 نبتون بيكون بعيد بس حوالي ${f.neptune} كم عن مكانه، والأرض أقل من ${f.earth} كم. يعني حتى نجم متل الشمس، على هالبعد، بالكاد بيلمس الكواكب.`,
+        },
+        star50: {
+          how: 'نفس النجم، بس على بعد 50 AU، يعني مش بعيد كتير عن نبتون (30 AU).',
+          result: (f) => `النتيجة: هلأ الفرق كبير: بآخر 2050 سنة نبتون بتصير حوالي ${f.neptuneYear} سنة بدل 165، وسنة أورانوس حوالي ${f.uranusYear} بدل 84، ونبتون بيكون بعيد حوالي ${f.neptune} مليون كم عن مكانه، وهاد بيبيّن عالخريطة. الأرض بتتأثر شوي بس: حوالي ${f.earth} كم.`,
+        },
+      },
+    },
   },
 };
 
@@ -969,6 +1003,32 @@ const DE: Strings = {
       body: 'Körper', year: 'Jahr', distance: 'Abstand zur Sonne', offset: 'Abstand zur wirklichen Position',
       removed: 'entfernt', escapes: 'entkommt, kein Umlauf mehr', star: 'Stern',
       real: (v) => `wirklich: ${v}`, days: (n) => `${n} Tage`, years: (n) => `${n} Jahre`,
+    },
+    scenarios: {
+      title: 'Fertige Szenarien',
+      own: 'Oder selbst etwas ändern:',
+      preparing: 'Bereite den Zweig vor…',
+      buttons: { jupiter: 'Was, wenn Jupiter verschwindet?', sun: 'Was, wenn die Sonne doppelt so schwer wäre?', star: 'Ein Stern zieht in 1.000 AE vorbei' },
+      nearer: 'Stern auf 50 AE heranholen',
+      farther: 'Stern zurück auf 1.000 AE',
+      list: {
+        jupiter: {
+          how: 'Wir entfernen Jupiter am 1. Januar 1900 und lassen die Zeit mit einem Jahr pro Sekunde bis 2050 laufen.',
+          result: (f) => `Ergebnis: Kein Planet fliegt davon oder stürzt in die Sonne, denn die Sonne hält die Planeten, nicht Jupiter. Aber die Bahnen verschieben sich langsam: Bis zum Jahr 2000 ist Saturn etwa ${f.saturn} Mio. km von seiner wirklichen Position entfernt, die Erde etwa ${f.earth} km.`,
+        },
+        sun: {
+          how: 'Wir verdoppeln die Masse der Sonne plötzlich am 15. November 2026; die Planeten behalten ihre Geschwindigkeit. Die Zeit läuft mit einem Monat pro Sekunde.',
+          result: (f) => `Ergebnis: Sofort laufen alle Planeten schneller, auf kleineren, gestreckten Bahnen: Ein Erdjahr dauert ${f.earthYear} Tage statt 365, die Erde kommt der Sonne bis auf ${f.earthClosest} AE nahe, und ein Jupiterjahr dauert ${f.jupiterYear} Jahre statt 11,9.`,
+        },
+        star: {
+          how: 'Ein Stern mit der Masse der Sonne zieht 2036 in 1.000 AE Abstand vorbei (33-mal so weit wie Neptun), mit 20 km/s. Die Zeit läuft mit einem Jahr pro Sekunde bis 2050.',
+          result: (f) => `Ergebnis: Mit bloßem Auge sieht man nichts, der Stern bleibt ein Pfeil am Rand. Die Tabelle zeigt, warum: Ende 2050 ist Neptun nur etwa ${f.neptune} km von seiner wirklichen Position entfernt, die Erde weniger als ${f.earth} km. Selbst ein Stern wie die Sonne berührt die Planeten aus dieser Entfernung kaum.`,
+        },
+        star50: {
+          how: 'Derselbe Stern, aber in 50 AE Abstand, nicht weit hinter Neptun (30 AE).',
+          result: (f) => `Ergebnis: Jetzt ist der Unterschied groß: Ende 2050 dauert ein Neptunjahr etwa ${f.neptuneYear} Jahre statt 165, ein Uranusjahr etwa ${f.uranusYear} statt 84, und Neptun ist etwa ${f.neptune} Mio. km von seiner wirklichen Position entfernt; das sieht man auf der Karte. Die Erde merkt nur wenig davon: etwa ${f.earth} km.`,
+        },
+      },
     },
   },
 };
@@ -1276,6 +1336,32 @@ const EN: Strings = {
       body: 'Body', year: 'Year', distance: 'From the Sun', offset: 'From its real place',
       removed: 'removed', escapes: 'escaping, no longer in orbit', star: 'Star',
       real: (v) => `real: ${v}`, days: (n) => `${n} days`, years: (n) => `${n} years`,
+    },
+    scenarios: {
+      title: 'Ready-made scenarios',
+      own: 'Or change something yourself:',
+      preparing: 'Getting the branch ready…',
+      buttons: { jupiter: 'What if Jupiter vanished?', sun: 'What if the Sun were twice as heavy?', star: 'A star passes 1,000 AU away' },
+      nearer: 'Bring the star in to 50 AU',
+      farther: 'Move the star back to 1,000 AU',
+      list: {
+        jupiter: {
+          how: 'We remove Jupiter on 1 January 1900 and run time at a year per second until 2050.',
+          result: (f) => `Result: no planet flies off or falls into the Sun, because it is the Sun that holds the planets, not Jupiter. But the orbits slowly shift: by the year 2000 Saturn is about ${f.saturn} million km from its real place, and Earth about ${f.earth} km.`,
+        },
+        sun: {
+          how: 'We suddenly double the Sun\'s mass on 15 November 2026; the planets keep their speed. Time runs at a month per second.',
+          result: (f) => `Result: at once every planet moves faster, on smaller, stretched orbits: Earth's year becomes ${f.earthYear} days instead of 365, Earth comes within ${f.earthClosest} AU of the Sun, and Jupiter's year lasts ${f.jupiterYear} years instead of 11.9.`,
+        },
+        star: {
+          how: 'A star with the Sun\'s mass passes in 2036, 1,000 AU away (33 times as far as Neptune), at 20 km/s. Time runs at a year per second until 2050.',
+          result: (f) => `Result: by eye nothing shows, and the star stays an arrow at the edge. The table shows why: at the end of 2050 Neptune is only about ${f.neptune} km from its real place, and Earth less than ${f.earth} km. Even a star like the Sun barely touches the planets from that far.`,
+        },
+        star50: {
+          how: 'The same star, but 50 AU away, not far beyond Neptune (30 AU).',
+          result: (f) => `Result: now the difference is large: at the end of 2050 Neptune's year is about ${f.neptuneYear} years instead of 165, Uranus's about ${f.uranusYear} instead of 84, and Neptune is about ${f.neptune} million km from its real place, which shows on the map. Earth feels it only a little: about ${f.earth} km.`,
+        },
+      },
     },
   },
 };

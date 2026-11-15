@@ -314,6 +314,11 @@ function jumpTo(ms: number) {
 
 playBtn.addEventListener('click', () => setPlaying(!clock.playing));
 branch.onJump = (ms) => { setPlaying(false); jumpTo(ms); };
+branch.onPlay = (speed) => {
+  speedSel.value = String(speed);
+  clock.speed = SPEED_DAYS[speed];
+  setPlaying(true);
+};
 nowBtn.addEventListener('click', () => { setPlaying(false); clock.live = true; });
 speedSel.addEventListener('change', () => { clock.speed = SPEED_DAYS[Number(speedSel.value)]; });
 
@@ -554,6 +559,9 @@ function updatePanels(date: Date, bodies: BodyFrame[]) {
 applyLanguage(lang());
 setView('compressed');
 show('3d');
+// A ready-made scenario in the address (#branch-jupiter, #branch-sun, #branch-star, #branch-star50)
+branch.openFromHash();
+window.addEventListener('hashchange', () => branch.openFromHash());
 
 // ---------- Animation loop ----------
 
