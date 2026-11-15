@@ -376,6 +376,34 @@ refused('count does not match', (r) => { r.count = 4; });
 refused('two of three rows broken', (r) => { r.data[0][4] = '-1'; r.data[1][7] = 'fast'; });
 refused('one row too far', (r) => { r.data[2][4] = '0.2'; r.data[2][6] = '0.2'; }, false);
 if (fromCad({ signature: { source: 'NASA/JPL SBDB Close Approach Data API', version: '1.5' }, count: 0 }, info).file.approaches.length !== 0) liveFail('empty answer');
+// The card's texts: [value, Arabic, German, English]
+const REL_CASES: [number, string, string, string][] = [
+  [0.5, 'بعد أقل من ساعة', 'in weniger als 1 Stunde', 'in under an hour'],
+  [-0.5, 'من أقل من ساعة', 'vor weniger als 1 Stunde', 'under an hour ago'],
+  [1, 'بعد ساعة', 'in 1 Stunde', 'in 1 hour'],
+  [10, 'بعد 10 ساعات', 'in 10 Stunden', 'in 10 hours'],
+  [-27, 'من 27 ساعة', 'vor 27 Stunden', '27 hours ago'],
+  [48, 'بعد يومين', 'in 2 Tagen', 'in 2 days'],
+  [-7 * 24, 'من 7 أيام', 'vor 7 Tagen', '7 days ago'],
+  [19 * 24, 'بعد 19 يوم', 'in 19 Tagen', 'in 19 days'],
+];
+const DURATION_CASES: [number, string, string, string][] = [
+  [2, 'دقيقتين', '2 Minuten', '2 minutes'],
+  [45, '45 دقيقة', '45 Minuten', '45 minutes'],
+  [120, 'ساعتين', '2 Stunden', '2 hours'],
+  [7408, '5 أيام', '5 Tage', '5 days'],
+];
+const textCase = (label: string, got: string[], want: string[]) => want.forEach((w, i) => {
+  if (got[i] !== w) liveFail(`${label}: got "${got[i]}", want "${w}"`);
+});
+for (const [h, ...want] of REL_CASES) textCase(`${h} h`, [STRINGS.ar.relTime(h), STRINGS.de.relTime(h), STRINGS.en.relTime(h)], want);
+for (const [m, ...want] of DURATION_CASES) textCase(`${m} min`, [STRINGS.ar.duration(m), STRINGS.de.duration(m), STRINGS.en.duration(m)], want);
+textCase('33 ahead, none closer than the Moon', [STRINGS.ar.caAhead(33, 0, 'X'), STRINGS.de.caAhead(33, 0, 'X'), STRINGS.en.caAhead(33, 0, 'X')],
+  ['لحد X: 33 مرور، ولا واحد منهم أقرب من القمر.', 'Bis X: 33 Vorbeiflüge, keiner davon näher als der Mond.', 'Until X: 33 close approaches, none of them closer than the Moon.']);
+textCase('1 ahead, closer than the Moon', [STRINGS.ar.caAhead(1, 1, 'X'), STRINGS.de.caAhead(1, 1, 'X'), STRINGS.en.caAhead(1, 1, 'X')],
+  ['لحد X: مرور واحد، واحد منهم أقرب من القمر.', 'Bis X: 1 Vorbeiflug, 1 davon näher als der Mond.', 'Until X: 1 close approach, 1 of them closer than the Moon.']);
+textCase('none ahead', [STRINGS.ar.caAhead(0, 0, 'X'), STRINGS.de.caAhead(0, 0, 'X'), STRINGS.en.caAhead(0, 0, 'X')],
+  ['لحد X: ولا مرور.', 'Bis X: kein Vorbeiflug.', 'Until X: no close approaches.']);
 const livePath = 'public/data/live/close-approaches.json';
 let liveNote = 'no file here (it is fetched on GitHub before each deploy)';
 if (existsSync(livePath)) {

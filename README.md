@@ -16,6 +16,7 @@ Version 0.3, public beta.
 - **Map from above (2D)**, with all planets at compressed distances, all at true distances, or just the inner planets.
 - **Asteroids, dwarf planets and comets**: about 2,100 from JPL, as coloured dots: every near-Earth asteroid of about 1 km and larger, the 400 brightest numbered asteroids of the main belt and Jupiter trojans, the 300 brightest bodies beyond Neptune, all numbered periodic comets, and 36 well-known ones such as Ceres, Apophis, Bennu, Pluto, Halley and Hale-Bopp, with their names in three languages. Find any of them by name or number, see its orbit, follow it, and read its type and size.
 - **Uncertainty clouds.** Around a picked asteroid or comet (1,690 of them have one), 300 possible orbits that all fit JPL's observations show where it could really be: ±80 m for Ceres, ±110 km for 2024 YR4, nearly a million km for Arrokoth. Too small to see at this scale, the cloud is drawn enlarged and says by how much; its shape and its size in km are real.
+- **Close approaches to Earth, live.** Every asteroid and comet passing closer than 7.5 million km (19.5 times the Moon's distance), from a week ago to two months ahead, from NASA/JPL's CNEOS, refreshed every day: when, how close (in lunar distances and km, with the range where the orbit is still uncertain), how fast, and about how big. Those on the map can be picked from the list.
 - **Pick a planet** to see its distance from the Sun and from Earth, and how long its light takes to reach us.
 - **Three languages.** Arabic (right to left), German and English. Add `?lang=ar`, `?lang=de` or `?lang=en` to the address to share a link in one language.
 
@@ -45,12 +46,13 @@ That is plenty for seeing where things are, but it is not meant for pointing a t
 | Uncertainty clouds: possible orbits from JPL's covariance | `src/astro/uncertainty.ts` |
 | Fetching asteroid and comet data from JPL (runs on GitHub) | `scripts/fetch-small-bodies.ts`, `.github/workflows/fetch-small-bodies.yml` |
 | Asteroids and comets for the views; covariances loaded when one is picked | `src/view/smallbodies.ts`, `public/data/cov/` |
+| Live data: close approaches to Earth (fetched on GitHub before each deploy, checked, never committed) | `scripts/fetch-close-approaches.ts`, `src/live/closeApproaches.ts`, `src/view/approaches.ts` |
 | 2D map (canvas) | `src/view/orrery.ts` |
 | 3D scene (Three.js) and the stars | `src/view/scene3d.ts`, `src/view/stars.ts` |
 | Texts in three languages | `src/i18n.ts` |
 | All self-checks | `scripts/check.ts` |
 
-Everything runs in the browser. There is no server, no cookies, and nothing is loaded from other sites; only the chosen language is saved in your browser.
+Everything runs in the browser. There is no server, no cookies, and nothing is loaded from other sites; only the chosen language is saved in your browser. The live data is fetched from JPL on GitHub, once a day and before each deploy, and published as a file with the site. If JPL does not answer, the previous file stays, and the page says how old it is.
 
 ## Run it locally
 
@@ -69,7 +71,8 @@ Run all checks (accuracy, 3D mapping, Saturn's tilt, star data, texts in three l
 npm run check
 ```
 
-Every push to `main` runs the checks, builds the site and publishes it to GitHub Pages.
+Every push to `main`, and a run every day at 04:17 UTC, fetches the live data, runs the checks, builds the site and publishes it to GitHub Pages.
+Locally there is no live data, and the close-approaches card says so.
 
 ## Data and libraries
 
@@ -78,6 +81,7 @@ Every push to `main` runs the checks, builds the site and publishes it to GitHub
 - Saturn's pole: Archinal et al. 2018, [Report of the IAU Working Group on Cartographic Coordinates and Rotational Elements: 2015](https://doi.org/10.1007/s10569-017-9805-5)
 - Stars: Yale Bright Star Catalogue, 5th revised edition (Hoffleit & Warren 1991), in the [JSON conversion by Bretton Wade](https://github.com/brettonw/YaleBrightStarCatalog) (MIT). `scripts/make-stars.ts` turns it into `src/data/stars.json`.
 - Asteroids and comets: orbits and their covariance from the [JPL Small-Body Database](https://ssd-api.jpl.nasa.gov/doc/sbdb.html), checked against [JPL Horizons](https://ssd.jpl.nasa.gov/horizons/). The well-known bodies are listed in `data/small-bodies.txt`, the groups in `data/small-body-groups.json`; the "Fetch small-body data" workflow refreshes them into the branch `data-update` for review.
+- Close approaches: [CNEOS](https://cneos.jpl.nasa.gov/ca/), NASA/JPL, through the [SBDB Close-Approach Data API](https://ssd-api.jpl.nasa.gov/doc/cad.html). Sizes without a measured diameter are estimated from the brightness (albedo 0.05 to 0.25), as CNEOS does.
 - 3D: [Three.js](https://threejs.org/) (MIT)
 
 Their licence notices are collected in `public/THIRD-PARTY-LICENSES.txt`, which is published with the site.
@@ -103,7 +107,7 @@ See the GNU Affero General Public License for more details.
 
 ## What's next
 
-Asteroids and comets with their uncertainty clouds, live data (Deep Space Network, space weather), a physics sandbox to "branch reality", a trip planner, and a guide you can ask questions in three languages.
+More live data (Deep Space Network, space weather), a physics sandbox to "branch reality", a trip planner, and a guide you can ask questions in three languages.
 
 Found something wrong, or have an idea? [Open an issue](https://github.com/Iyass-A/solar-twin/issues/new).
 

@@ -13,6 +13,7 @@ import {
 import pkg from '../package.json';
 import { LANGS, detectLang, lang, langInfo, num, numGrouped, setLang, t, type Lang, type TextKey } from './i18n';
 import { cloudOffsets, cloudSpread } from './astro/uncertainty';
+import { ApproachesCard } from './view/approaches';
 
 const DAY_MS = 86_400_000;
 
@@ -106,6 +107,12 @@ app.innerHTML = `
     </div>
   </div>
 
+  <section class="card" id="approaches" aria-labelledby="caTitle">
+    <h2 class="card-title"><span id="caTitle" data-t="caTitle"></span> <span class="badge live-data" data-t="caBadge"></span></h2>
+    <p class="sub ca-intro"></p>
+    <div class="ca-body"></div>
+  </section>
+
   <div class="grid">
     <div class="card">
       <div class="label"><span data-t="simTime"></span> <span id="live" class="badge" data-t="live"></span></div>
@@ -169,6 +176,7 @@ app.innerHTML = `
       <a href="https://doi.org/10.1007/s10569-017-9805-5" target="_blank" rel="noopener">IAU WGCCRE 2015 (Saturn's pole)</a> ·
       <a href="https://ssd-api.jpl.nasa.gov/doc/sbdb.html" target="_blank" rel="noopener">JPL Small-Body Database</a> ·
       <a href="https://ssd.jpl.nasa.gov/horizons/" target="_blank" rel="noopener">JPL Horizons</a> ·
+      <a href="https://ssd-api.jpl.nasa.gov/doc/cad.html" target="_blank" rel="noopener">CNEOS / JPL Close-Approach Data</a> ·
       <a href="https://github.com/brettonw/YaleBrightStarCatalog" target="_blank" rel="noopener">Yale Bright Star Catalogue, 5th ed. (Hoffleit &amp; Warren 1991), JSON by Bretton Wade (MIT)</a> ·
       <a href="https://threejs.org/" target="_blank" rel="noopener">Three.js</a>
     </span></p>
@@ -184,6 +192,10 @@ const slider = $<HTMLInputElement>('slider');
 const dateInput = $<HTMLInputElement>('date');
 
 const orrery = new Orrery($<HTMLCanvasElement>('sky'));
+
+// Live data: close approaches to Earth, from our own site (fetched from JPL before each deploy)
+const approaches = new ApproachesCard($('approaches'));
+approaches.load(`${import.meta.env.BASE_URL}data/live/close-approaches.json`);
 let scene3d: Scene3D | null = null; // loaded on first use (Three.js is a separate file)
 
 // Asteroids, dwarf planets and comets: their own file, loaded after the page
@@ -206,6 +218,11 @@ import('./data/small-bodies.json')
     });
     $('smallCard').hidden = false;
     $('searchRow').hidden = false;
+    const byDes = new Map(smallBodies.map((b) => [b.pdes, b]));
+    approaches.catalog = (des) => {
+      const b = showSmall ? byDes.get(des) : undefined;
+      return b && { id: b.id, name: smallFullName(b, lang()) };
+    };
     applyLanguage(lang());
   })
   .catch((err) => console.error('Asteroids and comets not loaded', err));
@@ -215,6 +232,7 @@ smallToggle.addEventListener('change', () => {
   $('legend').hidden = !showSmall;
   $('searchRow').hidden = !showSmall;
   if (!showSmall && orrery.selected?.startsWith('sb-')) select(null);
+  approaches.render();
 });
 
 // Search: pick a name from the list, or type part of one and press Enter
@@ -335,6 +353,12 @@ function select(id: string | null, fromSearch = false) {
   lastPanels = -Infinity; // refresh the panels right away
 }
 
+// A close approach of a body that is on the map: pick it and bring the view into sight
+approaches.onPick = (id) => {
+  select(id);
+  document.querySelector('.card.sky')!.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
 $<HTMLCanvasElement>('sky').addEventListener('click', (ev) => {
   const box = (ev.target as HTMLCanvasElement).getBoundingClientRect();
   select(orrery.hitTest(ev.clientX - box.left, ev.clientY - box.top));
@@ -441,6 +465,7 @@ function applyLanguage(l: Lang) {
   $('caption').textContent = s.views[orrery.mode].caption;
   $('howto').textContent = kind === '3d' ? s.howto3d : s.howto2d;
   scene3d?.refreshTexts();
+  approaches.render();
   lastPanels = -Infinity;
 }
 

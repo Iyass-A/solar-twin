@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Live data, part 1: **close approaches to Earth.** A new card lists every asteroid and comet passing closer than 0.05 au (7.5 million km, 19.5 lunar distances) from a week ago to two months ahead, from NASA/JPL's CNEOS (SBDB Close-Approach Data API): date and time in the visitor's time zone, how long until or since, distance in lunar distances and km (with the 3σ range when it is wide, and the 3σ time uncertainty when it is half an hour or more), speed, and the measured size or one estimated from the brightness. A summary gives the count, how many come closer than the Moon, and the closest; the last week can be shown too, with a line for now. Bodies that are on the map can be picked from the list. In all three languages.
+- The data is fetched on GitHub before each deploy and once a day (04:17 UTC), checked (`src/live/closeApproaches.ts`) and published with the site; nothing is committed and the workflow needs no new permissions. If JPL does not answer, the copy on the site stays, and the card says when data is more than 36 hours old. `npm run check` tests the parser, refusals of a changed format, sizes, times and the new texts, and checks the live file where it exists.
+
 ## v0.3.0 (15 November 2026), public beta
 
 - Licensed under the GNU AGPL v3.0 or later (`LICENSE`). Copyright (C) 2026 Iyass-A.

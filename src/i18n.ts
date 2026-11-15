@@ -12,12 +12,14 @@ export interface LangInfo {
   name: string;          // the language's name in itself, for the switch
   dir: 'rtl' | 'ltr';
   numberLocale: string;  // how numbers are written
+  dateLocale: string;    // how dates and times are written (with Western digits)
 }
 
 export const LANGS: LangInfo[] = [
-  { id: 'ar', name: 'عربي', dir: 'rtl', numberLocale: 'en-US' }, // Western digits, as before
-  { id: 'de', name: 'Deutsch', dir: 'ltr', numberLocale: 'de-DE' }, // decimal comma
-  { id: 'en', name: 'English', dir: 'ltr', numberLocale: 'en-US' },
+  // Western digits, as before; Syrian month names (تشرين الثاني)
+  { id: 'ar', name: 'عربي', dir: 'rtl', numberLocale: 'en-US', dateLocale: 'ar-SY-u-nu-latn' },
+  { id: 'de', name: 'Deutsch', dir: 'ltr', numberLocale: 'de-DE', dateLocale: 'de-DE' }, // decimal comma
+  { id: 'en', name: 'English', dir: 'ltr', numberLocale: 'en-US', dateLocale: 'en-GB' },
 ];
 
 export interface Strings {
@@ -94,6 +96,40 @@ export interface Strings {
   trueSize: string;
   /** Light travel time, given in minutes. */
   light: (minutes: number) => string;
+  // Close approaches to Earth (live data from CNEOS)
+  caTitle: string;
+  caBadge: string;
+  caIntro: (millionKm: string, lunarDistances: string) => string;
+  /** Count of approaches until a date, and how many of them come closer than the Moon. */
+  caAhead: (count: number, closerThanMoon: number, until: string) => string;
+  caPast: (count: number, closerThanMoon: number) => string;
+  caClosest: (name: string, distance: string) => string;
+  caColObject: string;
+  caColWhen: string;
+  caColDistance: string;
+  caColSpeed: string;
+  /** A distance in lunar distances (the number comes formatted). */
+  lunar: (x: string) => string;
+  caCloserThanMoon: string;
+  caUncertain: (from: string, to: string) => string;
+  caEstimate: string;
+  kmPerS: string;
+  caShowPast: (count: number) => string;
+  caHidePast: string;
+  caShowAll: (count: number) => string;
+  caShowFewer: string;
+  caNote: string;
+  caOnMap: string;
+  caUpdated: (date: string) => string;
+  caStale: (date: string) => string;
+  caNone: string;
+  caLoading: string;
+  /** Between two parts of a sentence: "، " in Arabic. */
+  comma: string;
+  /** "in 5 hours" for hours > 0, "5 hours ago" for hours < 0. */
+  relTime: (hours: number) => string;
+  /** A length of time, rounded to minutes, hours or days. */
+  duration: (minutes: number) => string;
 }
 
 /** Keys whose value is plain text, for data-t / data-html / data-aria in the page. */
@@ -120,6 +156,31 @@ export function numGrouped(n: number, l: Lang = current): string {
   return new Intl.NumberFormat(LANGS.find((x) => x.id === l)!.numberLocale, { maximumFractionDigits: 0 }).format(n);
 }
 
+const dateFormats = new Map<string, Intl.DateTimeFormat>();
+type DateKind = 'dateTime' | 'dayMonth' | 'dayMonthTime';
+const DATE_KINDS: Record<DateKind, Intl.DateTimeFormatOptions> = {
+  dateTime: { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' },
+  dayMonth: { day: 'numeric', month: 'long' },
+  dayMonthTime: { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' },
+};
+function dateFormat(l: Lang, kind: DateKind, timeZone?: string): Intl.DateTimeFormat {
+  const key = `${l}/${kind}/${timeZone ?? ''}`;
+  let f = dateFormats.get(key);
+  if (!f) {
+    const locale = LANGS.find((x) => x.id === l)!.dateLocale;
+    f = new Intl.DateTimeFormat(locale, { ...DATE_KINDS[kind], timeZone });
+    dateFormats.set(key, f);
+  }
+  return f;
+}
+
+/** Weekday, date and time in the visitor's time zone, e.g. "Fr., 20. Nov., 14:32". */
+export const dateTime = (ms: number, l: Lang = current, timeZone?: string) => dateFormat(l, 'dateTime', timeZone).format(ms);
+/** Day and month, e.g. "20 تشرين الثاني", "20. November". */
+export const dayMonth = (ms: number, l: Lang = current, timeZone?: string) => dateFormat(l, 'dayMonth', timeZone).format(ms);
+/** Day, month and time, e.g. "20 تشرين الثاني في 14:32", "20. November um 14:32". */
+export const dayMonthTime = (ms: number, l: Lang = current, timeZone?: string) => dateFormat(l, 'dayMonthTime', timeZone).format(ms);
+
 /** Hours and whole minutes, or null below one hour (then shown as minutes with one decimal). */
 function hoursMinutes(minutes: number): { h: number; m: number } | null {
   if (minutes < 59.95) return null;
@@ -135,6 +196,40 @@ export function arabicCount(n: number, one: string, two: string, few: string): s
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** Rounds a length of time to the unit we say it in: minutes below an hour, hours below 1.5 days. */
+export function timeUnit(minutes: number): { n: number; unit: 'min' | 'h' | 'd' } {
+  const m = Math.abs(minutes);
+  if (m < 59.5) return { n: Math.max(1, Math.round(m)), unit: 'min' };
+  if (m < 36 * 60) return { n: Math.round(m / 60), unit: 'h' };
+  return { n: Math.round(m / 1440), unit: 'd' };
+}
+
+// Arabic counts for the close approaches: "مرور واحد", "مرورين", "5 مرورات", "33 مرور"
+const flybysAr = (n: number) => (n === 0 ? 'ولا مرور' : n === 1 ? 'مرور واحد' : arabicCount(n, 'مرور', 'مرورين', 'مرورات'));
+const moonAr = (m: number) => `${m === 0 ? 'ولا واحد' : m === 1 ? 'واحد' : m === 2 ? 'تنين' : m} منهم أقرب من القمر`;
+
+function arDuration(minutes: number): string {
+  const { n, unit } = timeUnit(minutes);
+  if (unit === 'min') return arabicCount(n, 'دقيقة', 'دقيقتين', 'دقائق');
+  if (unit === 'h') return arabicCount(n, 'ساعة', 'ساعتين', 'ساعات');
+  return arabicCount(n, 'يوم', 'يومين', 'أيام');
+}
+
+/** German: "3 Tage" (nominative), or "3 Tagen" after "in" and "vor" (dative). */
+function deDuration(minutes: number, dative: boolean): string {
+  const { n, unit } = timeUnit(minutes);
+  if (unit === 'min') return plural(n, 'Minute', 'Minuten');
+  if (unit === 'h') return plural(n, 'Stunde', 'Stunden');
+  return plural(n, 'Tag', dative ? 'Tagen' : 'Tage');
+}
+
+function enDuration(minutes: number): string {
+  const { n, unit } = timeUnit(minutes);
+  if (unit === 'min') return plural(n, 'minute', 'minutes');
+  if (unit === 'h') return plural(n, 'hour', 'hours');
+  return plural(n, 'day', 'days');
+}
 
 // ---------- Texts ----------
 
@@ -243,6 +338,43 @@ const AR: Strings = {
     const hours = arabicCount(hm.h, 'ساعة', 'ساعتين', 'ساعات');
     return hm.m === 0 ? hours : `${hours} و${arabicCount(hm.m, 'دقيقة', 'دقيقتين', 'دقائق')}`;
   },
+  caTitle: 'مرورات قريبة من الأرض',
+  caBadge: 'بيانات حيّة',
+  caIntro: (mkm, ld) => `الكويكبات والمذنبات اللي بتمرق أقرب من ${mkm} مليون كم من الأرض (${ld} مسافة قمرية)، من أسبوع لورا لشهرين لقدام. `
+    + 'القائمة بالوقت الحقيقي، مو بوقت المحاكاة.',
+  caAhead: (n, m, until) => `لحد ${until}: ${flybysAr(n)}${n ? `، ${moonAr(m)}` : ''}.`,
+  caPast: (n, m) => `بالأسبوع الماضي: ${flybysAr(n)}${n ? `، ${moonAr(m)}` : ''}.`,
+  caClosest: (name, dist) => `الأقرب: ${name}، على ${dist}.`,
+  caColObject: 'الجسم',
+  caColWhen: 'الموعد',
+  caColDistance: 'البعد عن الأرض',
+  caColSpeed: 'السرعة',
+  lunar: (x) => `${x} مسافة قمرية`,
+  caCloserThanMoon: 'أقرب من القمر',
+  caUncertain: (a, b) => `مو أكيد: بين ${a} و${b}`,
+  caEstimate: 'تقدير من سطوع الجسم',
+  kmPerS: 'كم/ث',
+  caShowPast: (n) => `ورجيني اللي مرقوا بالأسبوع الماضي (${n})`,
+  caHidePast: 'خبّي اللي مرقوا',
+  caShowAll: (n) => `ورجيني الكل (${n})`,
+  caShowFewer: 'ورجيني أقل',
+  caNote: 'البعد من مركز الأرض. المسافة القمرية هي بعد القمر عن الأرض، 384,400 كم. '
+    + 'الأحجام اللي معها ≈ تقدير من سطوع الجسم، لأنو أغلب هالكويكبات صغار وما حدا قاس حجمها. '
+    + '± هو قديش الموعد مو أكيد (3σ). المواعيد بتوقيتك المحلي. '
+    + 'كتير من الكويكبات الصغار ما بينكشفوا إلا قبل مرورهم بأيام قليلة أو بعده، فالقائمة بتكبر كل يوم، '
+    + 'وغالباً اللي مرقوا بالأسبوع الماضي أكتر من اللي منعرفهم للشهرين الجايين.',
+  caOnMap: 'موجود عالخريطة: اكبس لتشوفه',
+  caUpdated: (d) => `آخر تحديث: ${d}`,
+  caStale: (d) => `انتبه: هالبيانات من ${d}، وما قدرنا نجيب أجدد منها.`,
+  caNone: 'ما في بيانات حيّة هون. عالموقع المنشور بتتحدّث كل يوم من JPL.',
+  caLoading: 'عم يحمّل…',
+  comma: '، ',
+  relTime: (h) => {
+    const minutes = h * 60;
+    const x = Math.abs(minutes) < 60 ? 'أقل من ساعة' : arDuration(minutes);
+    return h >= 0 ? `بعد ${x}` : `من ${x}`;
+  },
+  duration: (minutes) => arDuration(minutes),
 };
 
 const DE: Strings = {
@@ -350,6 +482,45 @@ const DE: Strings = {
     const hours = plural(hm.h, 'Stunde', 'Stunden');
     return hm.m === 0 ? hours : `${hours} und ${plural(hm.m, 'Minute', 'Minuten')}`;
   },
+  caTitle: 'Nahe Vorbeiflüge an der Erde',
+  caBadge: 'Live-Daten',
+  caIntro: (mkm, ld) => `Asteroiden und Kometen, die näher als ${mkm} Mio. km an der Erde vorbeifliegen (${ld} Monddistanzen), `
+    + 'von einer Woche zurück bis zwei Monate voraus. Die Liste läuft in Echtzeit, nicht in der Zeit der Simulation.',
+  caAhead: (n, m, until) => `Bis ${until}: ${n === 0 ? 'kein Vorbeiflug' : plural(n, 'Vorbeiflug', 'Vorbeiflüge')}`
+    + `${n ? `, ${m === 0 ? 'keiner' : m} davon näher als der Mond` : ''}.`,
+  caPast: (n, m) => `In der letzten Woche: ${n === 0 ? 'kein Vorbeiflug' : plural(n, 'Vorbeiflug', 'Vorbeiflüge')}`
+    + `${n ? `, ${m === 0 ? 'keiner' : m} davon näher als der Mond` : ''}.`,
+  caClosest: (name, dist) => `Am nächsten: ${name}, ${dist}.`,
+  caColObject: 'Objekt',
+  caColWhen: 'Zeitpunkt',
+  caColDistance: 'Abstand zur Erde',
+  caColSpeed: 'Geschwindigkeit',
+  lunar: (x) => `${x} Monddistanzen`,
+  caCloserThanMoon: 'näher als der Mond',
+  caUncertain: (a, b) => `unsicher: zwischen ${a} und ${b}`,
+  caEstimate: 'geschätzt aus der Helligkeit',
+  kmPerS: 'km/s',
+  caShowPast: (n) => `Letzte Woche zeigen (${n})`,
+  caHidePast: 'Letzte Woche ausblenden',
+  caShowAll: (n) => `Alle zeigen (${n})`,
+  caShowFewer: 'Weniger zeigen',
+  caNote: 'Abstand vom Erdmittelpunkt. Eine Monddistanz ist der Abstand des Mondes, 384.400 km. '
+    + 'Größen mit ≈ sind aus der Helligkeit geschätzt: Die meisten dieser Asteroiden sind klein, und niemand hat sie vermessen. '
+    + '± ist die Unsicherheit des Zeitpunkts (3σ). Zeiten in deiner Ortszeit. '
+    + 'Viele kleine Asteroiden werden erst wenige Tage vor oder nach ihrem Vorbeiflug entdeckt. Deshalb wächst die Liste jeden Tag, '
+    + 'und oft sind in der letzten Woche mehr vorbeigeflogen, als für die nächsten zwei Monate bekannt sind.',
+  caOnMap: 'Auf der Karte: anklicken zum Anzeigen',
+  caUpdated: (d) => `Zuletzt aktualisiert: ${d}`,
+  caStale: (d) => `Achtung: Diese Daten sind vom ${d}, neuere konnten wir nicht holen.`,
+  caNone: 'Hier gibt es keine Live-Daten. Auf der veröffentlichten Seite kommen sie jeden Tag neu vom JPL.',
+  caLoading: 'Wird geladen …',
+  comma: ', ',
+  relTime: (h) => {
+    const minutes = h * 60;
+    const x = Math.abs(minutes) < 60 ? 'weniger als 1 Stunde' : deDuration(minutes, true);
+    return h >= 0 ? `in ${x}` : `vor ${x}`;
+  },
+  duration: (minutes) => deDuration(minutes, false),
 };
 
 const EN: Strings = {
@@ -457,6 +628,45 @@ const EN: Strings = {
     const hours = plural(hm.h, 'hour', 'hours');
     return hm.m === 0 ? hours : `${hours} ${plural(hm.m, 'minute', 'minutes')}`;
   },
+  caTitle: 'Close approaches to Earth',
+  caBadge: 'live data',
+  caIntro: (mkm, ld) => `Asteroids and comets passing closer than ${mkm} million km to Earth (${ld} lunar distances), `
+    + 'from a week ago to two months ahead. The list runs in real time, not in the simulation’s time.',
+  caAhead: (n, m, until) => `Until ${until}: ${n === 0 ? 'no close approaches' : plural(n, 'close approach', 'close approaches')}`
+    + `${n ? `, ${m === 0 ? 'none' : m} of them closer than the Moon` : ''}.`,
+  caPast: (n, m) => `In the last week: ${n === 0 ? 'no close approaches' : plural(n, 'close approach', 'close approaches')}`
+    + `${n ? `, ${m === 0 ? 'none' : m} of them closer than the Moon` : ''}.`,
+  caClosest: (name, dist) => `Closest: ${name}, at ${dist}.`,
+  caColObject: 'Object',
+  caColWhen: 'When',
+  caColDistance: 'Distance from Earth',
+  caColSpeed: 'Speed',
+  lunar: (x) => `${x} lunar distances`,
+  caCloserThanMoon: 'closer than the Moon',
+  caUncertain: (a, b) => `uncertain: between ${a} and ${b}`,
+  caEstimate: 'estimated from its brightness',
+  kmPerS: 'km/s',
+  caShowPast: (n) => `Show the last week (${n})`,
+  caHidePast: 'Hide the last week',
+  caShowAll: (n) => `Show all (${n})`,
+  caShowFewer: 'Show fewer',
+  caNote: 'Distance from Earth’s centre. A lunar distance is the Moon’s distance, 384,400 km. '
+    + 'Sizes with ≈ are estimated from the brightness: most of these asteroids are small, and nobody has measured them. '
+    + '± is the uncertainty of the time (3σ). Times are in your local time. '
+    + 'Many small asteroids are found only a few days before or after they pass, so the list grows every day, '
+    + 'and often more passed in the last week than are known for the next two months.',
+  caOnMap: 'On the map: click to show it',
+  caUpdated: (d) => `Last updated: ${d}`,
+  caStale: (d) => `Note: this data is from ${d}; we could not fetch newer data.`,
+  caNone: 'No live data here. On the published site it comes fresh from JPL every day.',
+  caLoading: 'Loading…',
+  comma: ', ',
+  relTime: (h) => {
+    const minutes = h * 60;
+    if (Math.abs(minutes) < 60) return h >= 0 ? 'in under an hour' : 'under an hour ago';
+    return h >= 0 ? `in ${enDuration(minutes)}` : `${enDuration(minutes)} ago`;
+  },
+  duration: (minutes) => enDuration(minutes),
 };
 
 export const STRINGS: Record<Lang, Strings> = { ar: AR, de: DE, en: EN };
