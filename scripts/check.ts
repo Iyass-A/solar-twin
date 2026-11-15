@@ -657,6 +657,14 @@ dsnText('no signal', [STRINGS.ar.dsnNoSignal(4), STRINGS.de.dsnNoSignal(1), STRI
   ['الهوائي موجّه عليهم، بس ما في إشارة هلأ', 'Antenne ausgerichtet, gerade ohne Signal', 'antenna pointed at it, no signal right now']);
 dsnText('rate 22.0', [plain(dsnView.rateText(22_000, 'ar')), plain(dsnView.rateText(1_049_000, 'de')), plain(dsnView.distanceText(1_250_000, 'en'))],
   ['22 كيلوبت/ث', '1,05 Mbit/s', '1.25 million km']);
+// The "Now in space" tiles
+dsnText('now: 11 in contact', all3((s) => s.nowDsn, 11), ['11 مركبة على اتصال', '11 Raumfahrzeuge in Kontakt', '11 spacecraft in contact']);
+dsnText('now: 1 in contact', all3((s) => s.nowDsn, 1), ['مركبة وحدة على اتصال', '1 Raumfahrzeug in Kontakt', '1 spacecraft in contact']);
+dsnText('now: none in contact', all3((s) => s.nowDsn, 0), ['ولا مركبة على اتصال', 'Kein Raumfahrzeug in Kontakt', 'No spacecraft in contact']);
+dsnText('now: 33 approaches', all3((s) => s.nowApproaches, 33, 'X'), ['33 مرور لحد X', '33 Vorbeiflüge bis X', '33 close approaches until X']);
+dsnText('now: 1 approach', all3((s) => s.nowApproaches, 1, 'X'), ['مرور واحد لحد X', '1 Vorbeiflug bis X', '1 close approach until X']);
+dsnText('now: no approaches', all3((s) => s.nowApproaches, 0, 'X'), ['ولا مرور لحد X', 'Kein Vorbeiflug bis X', 'No close approaches until X']);
+dsnText('now: updated', all3((s) => s.nowUpdated, 'Y'), ['آخر تحديث Y', 'Aktualisiert Y', 'Updated Y']);
 dsnText('ago', all3((s) => s.dsnAgo, 20), ['من أقل من دقيقة', 'vor weniger als 1 Minute', 'under a minute ago']);
 dsnText('ago 15 min', all3((s) => s.dsnAgo, 900), ['من 15 دقيقة', 'vor 15 Minuten', '15 minutes ago']);
 // Distances and data rates (numbers come wrapped left-to-right)

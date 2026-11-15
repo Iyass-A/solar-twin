@@ -211,6 +211,21 @@ export interface Strings {
   /** On a page that is not our published site (the server only answers that one) */
   dsnLocal: string;
   dsnNone: string;
+  // The "Now in space" screen: one tile per live source, each opening its card
+  nowTitle: string;
+  nowIntro: string;
+  nowTabs: { dsn: string; weather: string; approaches: string };
+  /** "Updated 2 hours ago": the time comes from relTime or dsnAgo */
+  nowUpdated: (ago: string) => string;
+  nowNoData: string;
+  nowDsn: (craft: number) => string;
+  nowFarthest: (name: string) => string;
+  nowWeatherCalm: string;
+  /** The highest storm level NOAA expects in the next days, and the day */
+  nowWeatherAhead: (level: string, day: string) => string;
+  nowWeatherAheadCalm: string;
+  nowCme: (when: string) => string;
+  nowApproaches: (count: number, until: string) => string;
 }
 
 /** Keys whose value is plain text, for data-t / data-html / data-aria in the page. */
@@ -571,6 +586,19 @@ const AR: Strings = {
   dsnOff: 'الربط المباشر مع شبكة الفضاء العميق لسا ما انعمل. قريباً بيشتغل هون.',
   dsnNone: 'ما قدرنا نجيب بيانات من ناسا هلأ. منرجع منجرّب بعد دقيقة.',
   dsnLocal: 'ما في بيانات حيّة هون. عالموقع المنشور بتتحدّث كل دقيقة من ناسا.',
+  nowTitle: 'هلأ بالفضاء',
+  nowIntro: 'شو عم يصير بالفضاء بهاللحظة، من ناسا وNOAA. اكبس على وحدة لتشوف التفاصيل.',
+  nowTabs: { dsn: 'شبكة الفضاء العميق', weather: 'طقس الفضاء', approaches: 'مرورات قريبة من الأرض' },
+  nowUpdated: (ago) => `آخر تحديث ${ago}`,
+  nowNoData: 'ما في بيانات هلأ',
+  nowDsn: (n) => (n === 0 ? 'ولا مركبة على اتصال'
+    : `${n === 1 ? 'مركبة وحدة' : arabicCount(n, 'مركبة', 'مركبتين', 'مركبات')} على اتصال`),
+  nowFarthest: (name) => `الأبعد: ${name}`,
+  nowWeatherCalm: 'هادي هلأ',
+  nowWeatherAhead: (level, day) => `الأيام الجاية: لحد ${level}، ${day}`,
+  nowWeatherAheadCalm: 'والأيام الجاية هادية كمان',
+  nowCme: (when) => `موجة من الشمس متوقعة ${when}`,
+  nowApproaches: (n, until) => `${flybysAr(n)} لحد ${until}`,
 };
 
 const DE: Strings = {
@@ -824,6 +852,18 @@ const DE: Strings = {
   dsnOff: 'Die Live-Verbindung zum Deep Space Network ist noch nicht eingerichtet. Bald gibt es sie hier.',
   dsnNone: 'Gerade kommen keine Daten von der NASA. Wir versuchen es in einer Minute wieder.',
   dsnLocal: 'Hier gibt es keine Live-Daten. Auf der veröffentlichten Seite kommen sie jede Minute neu von der NASA.',
+  nowTitle: 'Jetzt im All',
+  nowIntro: 'Was gerade im All passiert, von NASA und NOAA. Wähle eine Kachel für die Details.',
+  nowTabs: { dsn: 'Deep Space Network', weather: 'Weltraumwetter', approaches: 'Nahe Vorbeiflüge' },
+  nowUpdated: (ago) => `Aktualisiert ${ago}`,
+  nowNoData: 'Gerade keine Daten',
+  nowDsn: (n) => (n === 0 ? 'Kein Raumfahrzeug in Kontakt' : `${plural(n, 'Raumfahrzeug', 'Raumfahrzeuge')} in Kontakt`),
+  nowFarthest: (name) => `Am weitesten: ${name}`,
+  nowWeatherCalm: 'Gerade ruhig',
+  nowWeatherAhead: (level, day) => `Nächste Tage: bis ${level}, ${day}`,
+  nowWeatherAheadCalm: 'Auch die nächsten Tage ruhig',
+  nowCme: (when) => `Wolke von der Sonne erwartet: ${when}`,
+  nowApproaches: (n, until) => (n === 0 ? `Kein Vorbeiflug bis ${until}` : `${plural(n, 'Vorbeiflug', 'Vorbeiflüge')} bis ${until}`),
 };
 
 const EN: Strings = {
@@ -1081,6 +1121,18 @@ const EN: Strings = {
   dsnOff: 'The live link to the Deep Space Network is not set up yet. It will show here soon.',
   dsnNone: 'No data from NASA right now. We will try again in a minute.',
   dsnLocal: 'No live data here. On the published site it comes fresh from NASA every minute.',
+  nowTitle: 'Now in space',
+  nowIntro: 'What is happening in space right now, from NASA and NOAA. Pick one for the details.',
+  nowTabs: { dsn: 'Deep Space Network', weather: 'Space weather', approaches: 'Close approaches' },
+  nowUpdated: (ago) => `Updated ${ago}`,
+  nowNoData: 'No data right now',
+  nowDsn: (n) => (n === 0 ? 'No spacecraft in contact' : `${n} spacecraft in contact`),
+  nowFarthest: (name) => `Farthest: ${name}`,
+  nowWeatherCalm: 'Quiet right now',
+  nowWeatherAhead: (level, day) => `Next days: up to ${level}, ${day}`,
+  nowWeatherAheadCalm: 'The next days look quiet too',
+  nowCme: (when) => `Cloud from the Sun expected ${when}`,
+  nowApproaches: (n, until) => (n === 0 ? `No close approaches until ${until}` : `${plural(n, 'close approach', 'close approaches')} until ${until}`),
 };
 
 export const STRINGS: Record<Lang, Strings> = { ar: AR, de: DE, en: EN };

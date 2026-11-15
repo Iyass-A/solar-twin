@@ -16,6 +16,7 @@ Version 0.3, public beta.
 - **Map from above (2D)**, with all planets at compressed distances, all at true distances, or just the inner planets.
 - **Asteroids, dwarf planets and comets**: about 2,100 from JPL, as coloured dots: every near-Earth asteroid of about 1 km and larger, the 400 brightest numbered asteroids of the main belt and Jupiter trojans, the 300 brightest bodies beyond Neptune, all numbered periodic comets, and 36 well-known ones such as Ceres, Apophis, Bennu, Pluto, Halley and Hale-Bopp, with their names in three languages. Find any of them by name or number, see its orbit, follow it, and read its type and size.
 - **Uncertainty clouds.** Around a picked asteroid or comet (1,690 of them have one), 300 possible orbits that all fit JPL's observations show where it could really be: ±80 m for Ceres, ±110 km for 2024 YR4, nearly a million km for Arrokoth. Too small to see at this scale, the cloud is drawn enlarged and says by how much; its shape and its size in km are real.
+- **Now in space.** One screen for the live data: a tile each for the Deep Space Network, space weather and close approaches, with the headline and when it was last updated. Pick a tile to open its card. Links can open it directly: add `#now-dsn`, `#now-weather` or `#now-approaches` to the address.
 - **Close approaches to Earth, live.** Every asteroid and comet passing closer than 7.5 million km (19.5 times the Moon's distance), from a week ago to two months ahead, from NASA/JPL's CNEOS, refreshed every 3 hours: when, how close (in lunar distances and km, with the range where the orbit is still uncertain), how fast, and about how big. Those on the map can be picked from the list.
 - **Space weather, live.** NOAA's storm levels now, over the last 24 hours and for the next days (radio blackouts, solar radiation storms, geomagnetic storms), the 3-hour Kp index of the last 3 days with its forecast as a chart, the solar flares of the last week, and the clouds from the Sun (CMEs) that NASA's WSA-Enlil model expects to reach Earth.
 - **Deep Space Network, live.** Which spacecraft NASA's antennas at Goldstone, Madrid and Canberra are talking to right now (NASA's DSN Now), refreshed every minute: how many are in contact and the farthest, and for each antenna the spacecraft, its data rate, its distance, how long its signal takes, and roughly where it is.
@@ -50,6 +51,7 @@ That is plenty for seeing where things are, but it is not meant for pointing a t
 | Asteroids and comets for the views; covariances loaded when one is picked | `src/view/smallbodies.ts`, `public/data/cov/` |
 | Live data: close approaches to Earth (fetched on GitHub before each deploy, checked, never committed) | `scripts/fetch-close-approaches.ts`, `src/live/closeApproaches.ts`, `src/view/approaches.ts` |
 | Live data: space weather, and the Kp chart | `scripts/fetch-space-weather.ts`, `src/live/spaceWeather.ts`, `src/view/spaceWeather.ts`, `src/view/kpChart.ts` |
+| The "Now in space" screen: a tile for each live source, one card at a time | `src/view/now.ts` |
 | Live data: Deep Space Network, through a small server on Cloudflare Workers (see below) | `workers/dsn/`, `src/live/dsn.ts`, `src/view/dsn.ts`, `src/data/spacecraft.ts`, `.github/workflows/deploy-worker.yml` |
 | 2D map (canvas) | `src/view/orrery.ts` |
 | 3D scene (Three.js) and the stars | `src/view/scene3d.ts`, `src/view/stars.ts` |
@@ -113,7 +115,7 @@ See the GNU Affero General Public License for more details.
 
 ## What's next
 
-A "now" screen that brings the live data together, a physics sandbox to "branch reality", a trip planner, and a guide you can ask questions in three languages.
+A physics sandbox to "branch reality", a trip planner, and a guide you can ask questions in three languages.
 
 Found something wrong, or have an idea? [Open an issue](https://github.com/Iyass-A/solar-twin/issues/new).
 

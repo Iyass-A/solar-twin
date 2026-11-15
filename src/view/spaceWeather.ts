@@ -7,6 +7,7 @@
 import { fileProblems, flareFlux, gFromKp, type KpPoint, type Level, type PartName, type SpaceWeatherFile } from '../live/spaceWeather';
 import { dateTime, dayMonthTime, lang, num, t, weekdayDay } from '../i18n';
 import { KP_COLORS, KpChart } from './kpChart';
+import type { Tile } from './now';
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
@@ -26,6 +27,8 @@ export class SpaceWeatherCard {
   // One chart box for the card's whole life: put back into place after each render
   private readonly chartBox: HTMLElement;
   private readonly chart: KpChart;
+  /** Called when the data has come (or not); set by the page. */
+  onData: () => void = () => {};
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -50,6 +53,25 @@ export class SpaceWeatherCard {
       this.state = 'none';
     }
     this.render();
+    this.onData();
+  }
+
+  /** For the "Now in space" screen: what is active now, the highest level NOAA expects, a CME on its way. */
+  tile(): Tile {
+    const s = t();
+    const f = this.file;
+    const sc = f?.scales?.data;
+    if (this.state !== 'ok' || !f || !sc) return { ok: false, main: this.state === 'loading' ? s.caLoading : s.nowNoData, sub: '', updatedMs: f ? Date.parse(f.fetchedAt) : null };
+    const now = Date.now();
+    const active = (['g', 'r', 's'] as const).filter((k) => sc.now[k] > 0).map((k) => s.swActiveItem(k, sc.now[k]));
+    const main = active.length ? active.join(lang() === 'ar' ? ' و' : ', ') : s.nowWeatherCalm;
+    const top = sc.days.reduce<{ g: Level; date: string } | null>((a, d) => (d.g !== null && (!a || d.g > a.g) ? { g: d.g, date: d.date } : a), null);
+    const bits = [top && top.g > 0
+      ? s.nowWeatherAhead(`G${top.g} · ${s.swLevels[top.g]}`, weekdayDay(Date.parse(`${top.date}T12:00:00Z`), lang(), 'UTC'))
+      : s.nowWeatherAheadCalm];
+    const cme = f.cmes?.data.filter((c) => Date.parse(c.arrival) > now).sort((a, b) => a.arrival.localeCompare(b.arrival))[0];
+    if (cme) bits.push(s.nowCme(dateTime(Date.parse(cme.arrival))));
+    return { ok: true, main: esc(main), sub: esc(bits.join(' · ')), updatedMs: Date.parse(f.fetchedAt) };
   }
 
   render() {

@@ -5,6 +5,7 @@
 
 import { AU_KM, DIST_MAX_AU, LD_AU, fileProblems, sizeRange, tdbToUtcMs, type CloseApproach, type CloseApproachFile } from '../live/closeApproaches';
 import { dateTime, dayMonth, dayMonthTime, lang, num, numGrouped, t } from '../i18n';
+import type { Tile } from './now';
 
 const HOUR_MS = 3_600_000;
 const UPCOMING_SHOWN = 10;
@@ -53,6 +54,8 @@ const closest = (list: CloseApproach[]) => list.reduce<CloseApproach | null>((c,
 export class ApproachesCard {
   /** Picks a body on the map; set by the page. */
   onPick: (id: string) => void = () => {};
+  /** Called when the data has come (or not); set by the page. */
+  onData: () => void = () => {};
   /** Our id and name (in the current language) for a JPL designation, if the body is one of the dots on the map. */
   catalog: (des: string) => { id: string; name: string } | undefined = () => undefined;
 
@@ -90,6 +93,20 @@ export class ApproachesCard {
       this.state = 'none';
     }
     this.render();
+    this.onData();
+  }
+
+  /** For the "Now in space" screen: how many are coming, and the closest of them. */
+  tile(): Tile {
+    const s = t();
+    const f = this.file;
+    if (this.state !== 'ok' || !f) return { ok: false, main: this.state === 'loading' ? s.caLoading : s.nowNoData, sub: '', updatedMs: null };
+    const now = Date.now();
+    const ahead = f.approaches.filter((a) => when(a) >= now);
+    const until = dayMonth(Date.parse(`${f.dateMax}T00:00:00Z`), lang(), 'UTC');
+    const c = closest(ahead);
+    const sub = c ? s.caClosest(nameHtml(c, this.catalog(c.des)?.name), `${lunarHtml(c.dist)}${s.comma}${s.relTime((when(c) - now) / HOUR_MS)}`) : '';
+    return { ok: true, main: esc(s.nowApproaches(ahead.length, until)), sub, updatedMs: Date.parse(f.fetchedAt) };
   }
 
   render() {

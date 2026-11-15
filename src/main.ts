@@ -17,6 +17,7 @@ import { ApproachesCard } from './view/approaches';
 import { SpaceWeatherCard } from './view/spaceWeather';
 import { DsnCard } from './view/dsn';
 import { DSN_WORKER_URL } from './live/dsn';
+import { NowScreen } from './view/now';
 
 const DAY_MS = 86_400_000;
 
@@ -84,7 +85,7 @@ app.innerHTML = `
   <div class="card controls">
     <div class="row">
       <button id="play" type="button"></button>
-      <button id="now" type="button" data-t="now"></button>
+      <button id="nowBtn" type="button" data-t="now"></button>
       <label><span data-t="speed"></span> <select id="speed">
         ${SPEED_DAYS.map((_, i) => `<option value="${i}"></option>`).join('')}
       </select></label>
@@ -109,6 +110,12 @@ app.innerHTML = `
       <label><span data-t="goToDate"></span> <input id="date" type="date" dir="ltr" min="1800-01-01" max="2050-12-31"></label>
     </div>
   </div>
+
+  <section class="now" id="now" aria-labelledby="nowTitle">
+    <h2 class="now-head"><span class="now-title" id="nowTitle"></span> <span class="badge live-data" data-t="caBadge"></span></h2>
+    <p class="sub now-intro"></p>
+    <div class="now-tiles" role="tablist" aria-labelledby="nowTitle"></div>
+  </section>
 
   <section class="card" id="approaches" aria-labelledby="caTitle">
     <h2 class="card-title"><span id="caTitle" data-t="caTitle"></span> <span class="badge live-data" data-t="caBadge"></span></h2>
@@ -202,7 +209,7 @@ app.innerHTML = `
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const playBtn = $<HTMLButtonElement>('play');
-const nowBtn = $<HTMLButtonElement>('now');
+const nowBtn = $<HTMLButtonElement>('nowBtn');
 const speedSel = $<HTMLSelectElement>('speed');
 const viewSel = $<HTMLSelectElement>('view');
 const slider = $<HTMLInputElement>('slider');
@@ -217,6 +224,11 @@ const spaceWeather = new SpaceWeatherCard($('spaceWeather'));
 spaceWeather.load(`${import.meta.env.BASE_URL}data/live/space-weather.json`);
 // Deep Space Network: live from our server on Cloudflare (workers/dsn/), once a minute while the tab is visible
 const dsn = new DsnCard($('dsn'));
+// "Now in space": a tile for each live source; one card shows at a time
+const nowScreen = new NowScreen($('now'), { dsn: $('dsn'), weather: $('spaceWeather'), approaches: $('approaches') },
+  { dsn, weather: spaceWeather, approaches });
+for (const card of [approaches, spaceWeather, dsn]) card.onData = () => nowScreen.render();
+nowScreen.render();
 dsn.load(DSN_WORKER_URL);
 let scene3d: Scene3D | null = null; // loaded on first use (Three.js is a separate file)
 
@@ -490,6 +502,7 @@ function applyLanguage(l: Lang) {
   approaches.render();
   spaceWeather.render();
   dsn.render();
+  nowScreen.render();
   lastPanels = -Infinity;
 }
 

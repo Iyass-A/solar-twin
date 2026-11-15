@@ -7,6 +7,7 @@
 import { ALLOWED_ORIGIN, contacts, dsnProblems, inContact, type DsnDish, type DsnFile, type DsnLink } from '../live/dsn';
 import { SPACECRAFT, spacecraftName } from '../data/spacecraft';
 import { STRINGS, clock, lang, num, numGrouped, t, type Lang, type Strings } from '../i18n';
+import type { Tile } from './now';
 
 const POLL_MS = 60_000;
 const OLD_MS = 10 * 60_000;   // NASA's own time this far back: something is stuck there
@@ -58,6 +59,8 @@ export class DsnCard {
   private timer: number | undefined;
   private readonly root: HTMLElement;
   private readonly body: HTMLElement;
+  /** Called after each answer from the server (or none); set by the page. */
+  onData: () => void = () => {};
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -75,7 +78,7 @@ export class DsnCard {
    * (npm run dev, copies elsewhere) are refused by the server, so they do not ask; both say so.
    */
   load(url: string) {
-    if (!url || location.origin !== ALLOWED_ORIGIN) { this.state = url ? 'local' : 'off'; this.render(); return; }
+    if (!url || location.origin !== ALLOWED_ORIGIN) { this.state = url ? 'local' : 'off'; this.render(); this.onData(); return; }
     this.url = url;
     void this.fetchNow();
   }
@@ -103,7 +106,19 @@ export class DsnCard {
       if (!this.file) this.state = 'none';
     }
     this.render();
+    this.onData();
     this.schedule(POLL_MS);
+  }
+
+  /** For the "Now in space" screen: how many spacecraft are in contact, and the farthest. */
+  tile(): Tile {
+    const s = t();
+    const f = this.file;
+    if (this.state !== 'ok' || !f) return { ok: false, main: this.state === 'loading' ? s.caLoading : s.nowNoData, sub: '', updatedMs: null };
+    const c = contacts(f);
+    const far = c.links.filter((x) => x.link.km).sort((a, b) => b.link.km! - a.link.km!)[0]?.link;
+    const sub = far ? `${s.nowFarthest(`<bdi>${esc(spacecraftName(far.sc, far.name, lang()))}</bdi>`)}${far.rtlt ? ` · ${s.dsnSignalTime(esc(s.dsnLight(far.rtlt / 2)))}` : ''}` : '';
+    return { ok: true, main: esc(s.nowDsn(c.links.length)), sub, updatedMs: Date.parse(f.at) };
   }
 
   render() {
