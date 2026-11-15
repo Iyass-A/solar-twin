@@ -1,0 +1,39 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Physics worker test</title>
+<!-- Tries the physics worker in a real browser. With npm run dev, open
+     http://localhost:5173/scripts/browser/physics-worker.html (not part of the built site).
+     Shows how long the runs take and the longest pause of the page meanwhile. --></head>
+<body><pre id="out">running…</pre>
+<script type="module">
+import { Physics } from '../../src/physics/client.ts';
+import { EPOCH_JD } from '../../src/physics/state.ts';
+const out = {};
+const physics = new Physics();
+// main-thread responsiveness: largest gap between 10 ms ticks while the worker runs
+let last = performance.now(), maxGap = 0;
+const tick = setInterval(() => { const t = performance.now(); maxGap = Math.max(maxGap, t - last); last = t; }, 10);
+let progress = 0;
+physics.onProgress = () => { progress++; };
+const ready = await physics.start('real', 'systems');
+out.ids = ready.ids; out.step = ready.step;
+let s = await physics.goto('real', EPOCH_JD + 365);
+out.year = { ms: s.ms, r: Array.from(s.r), energyError: s.energyError };
+await physics.start('moons', 'bodies');
+s = await physics.goto('moons', EPOCH_JD + 30);
+out.month = { ms: s.ms, r: Array.from(s.r) };
+// long run with the page measured: 200 years as systems
+maxGap = 0; last = performance.now();
+s = await physics.goto('real', EPOCH_JD + 200 * 365.25);
+out.long = { ms: s.ms, maxGapMs: maxGap, progress, energyError: s.energyError };
+// a newer time replaces an older one
+const p1 = physics.goto('real', EPOCH_JD + 1000 * 365.25);
+await new Promise((r) => setTimeout(r, 100));
+const p2 = physics.goto('real', EPOCH_JD + 730);
+const [a, b] = await Promise.all([p1, p2]);
+out.replaced = { jdA: a.jd - EPOCH_JD, jdB: b.jd - EPOCH_JD, same: a === b };
+// errors reach the page
+try { await physics.goto('nobody', EPOCH_JD); out.error = 'none'; } catch (e) { out.error = e.message; }
+clearInterval(tick);
+window.__result = out;
+document.getElementById('out').textContent = JSON.stringify({ ...out, year: { ...out.year, r: '…' }, month: { ...out.month, r: '…' } }, null, 1);
+</script></body></html>

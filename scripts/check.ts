@@ -24,7 +24,7 @@ import * as dsn from '../src/live/dsn';
 import * as dsnView from '../src/view/dsn';
 import * as worker from '../workers/dsn/src/index';
 import { SPACECRAFT, WHERE_KEYS } from '../src/data/spacecraft';
-import { checkStartingState, checkIntegrator } from './check-physics';
+import { checkStartingState, checkIntegrator, checkEngine } from './check-physics';
 
 const MAX_ERROR_DEG = 1;
 const DAY_MS = 86_400_000;
@@ -690,6 +690,7 @@ console.log(`\nDeep Space Network: ${dsnOk ? 'OK' : 'FAIL'}; ${dsnSummaryNote}; 
 // Physics engine (phase 5): its starting state from JPL Horizons, see scripts/check-physics.ts
 failed = !checkStartingState() || failed;
 failed = !checkIntegrator() || failed;
+failed = !(await checkEngine()) || failed;
 
 console.log(failed ? '\nRESULT: FAIL' : '\nRESULT: OK');
 if (failed) process.exitCode = 1;

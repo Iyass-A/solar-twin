@@ -55,6 +55,7 @@ That is plenty for seeing where things are, but it is not meant for pointing a t
 | Live data: Deep Space Network, through a small server on Cloudflare Workers (see below) | `workers/dsn/`, `src/live/dsn.ts`, `src/view/dsn.ts`, `src/data/spacecraft.ts`, `.github/workflows/deploy-worker.yml` |
 | Physics engine (in progress): bodies and masses, and their starting state from JPL Horizons (runs on GitHub) | `src/physics/bodies.ts`, `src/physics/state.ts`, `src/data/state-vectors.json`, `scripts/fetch-state-vectors.ts`, `.github/workflows/fetch-state-vectors.yml` |
 | Physics engine (in progress): the N-body integrator (leapfrog and Yoshida 4th order, with the giant planets' equatorial bulges) | `src/physics/nbody.ts` |
+| Physics engine (in progress): runs in a Web Worker, towards the latest time asked, in slices of a few ms; the page's side, the messages, and a browser test page | `src/physics/worker.ts`, `src/physics/engine.ts`, `src/physics/client.ts`, `src/physics/protocol.ts`, `scripts/browser/physics-worker.html` |
 | 2D map (canvas) | `src/view/orrery.ts` |
 | 3D scene (Three.js) and the stars | `src/view/scene3d.ts`, `src/view/stars.ts` |
 | Texts in three languages | `src/i18n.ts` |

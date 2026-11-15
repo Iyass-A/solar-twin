@@ -8,6 +8,8 @@ import * as Astronomy from 'astronomy-engine';
 import { existsSync, readFileSync } from 'node:fs';
 import { BODIES, SYSTEMS, AU_KM, SUN_GM, toAuDay } from '../src/physics/bodies';
 import { createNBody, advance, energy, momenta, defaultStep, type NBody, type Order } from '../src/physics/nbody';
+import { Engine } from '../src/physics/engine';
+import { utcMsToTdbJd, tdbJdToUtcMs, type FromWorker, type Mode } from '../src/physics/protocol';
 import { startBodies, startSystems, EPOCH_JD, type Vec } from '../src/physics/state';
 import stateFile from '../src/data/state-vectors.json' with { type: 'json' };
 import { PLANETS } from '../src/astro/elements';
@@ -325,5 +327,94 @@ export function checkIntegrator(): boolean {
   }
 
   console.log(`Physics engine integrator: ${ok ? 'OK' : 'FAIL'}`);
+  return ok;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The worker's engine (src/physics/engine.ts), run here as the worker runs it: the same numbers as
+// stepping directly, a newer time replacing an older one mid-run, branches, and refusals.
+export async function checkEngine(): Promise<boolean> {
+  let ok = true;
+  const fail = (msg: string) => { ok = false; console.log(`  FAIL ${msg}`); };
+  console.log('\nPhysics engine: worker');
+  const inbox: FromWorker[] = [];
+  let wake: (() => void) | null = null;
+  const engine = new Engine((m) => { inbox.push(m); wake?.(); }, (fn) => setImmediate(fn));
+  /** Waits for the next message that matches, up to 20 s. */
+  const next = <T extends FromWorker['type']>(type: T, sim?: string): Promise<Extract<FromWorker, { type: T }>> =>
+    new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { wake = null; reject(new Error(`no "${type}" within 20 s`)); }, 20_000);
+      const look = () => {
+        const i = inbox.findIndex((m) => m.type === type && (sim === undefined || ('sim' in m && m.sim === sim)));
+        if (i >= 0) { clearTimeout(timer); wake = null; resolve(inbox.splice(i, 1)[0] as Extract<FromWorker, { type: T }>); }
+      };
+      wake = look; look();
+    });
+  const direct = (mode: Mode, jd: number) => {
+    const list = mode === 'systems' ? [startBodies()[0], ...startSystems()] : startBodies();
+    const s = createNBody(list, EPOCH_JD);
+    advance(s, jd, defaultStep(s), 4);
+    return s.r;
+  };
+  const maxDiffKm = (a: Float64Array, b: Float64Array) => { let m = 0; for (let k = 0; k < a.length; k++) m = Math.max(m, Math.abs(a[k] - b[k])); return m * AU_KM; };
+
+  try {
+    // 1. A year as systems, and 30 days with moons: the same as stepping directly
+    engine.handle({ type: 'start', sim: 'real', mode: 'systems' });
+    const ready = await next('ready', 'real');
+    if (ready.ids.length !== 10 || ready.ids[0] !== 'sun' || ready.jd !== EPOCH_JD) fail(`ready: ${ready.ids.join(',')} at ${ready.jd}`);
+    engine.handle({ type: 'goto', sim: 'real', jd: EPOCH_JD + 365 });
+    const year = await next('state', 'real');
+    const dYear = maxDiffKm(year.r, direct('systems', EPOCH_JD + 365));
+    if (year.jd !== EPOCH_JD + 365 || dYear !== 0 || Math.abs(year.energyError) > 1e-9) fail(`a year: ${dYear} km from stepping directly, energy ${year.energyError}`);
+    engine.handle({ type: 'start', sim: 'moons', mode: 'bodies' });
+    const readyM = await next('ready', 'moons');
+    engine.handle({ type: 'goto', sim: 'moons', jd: EPOCH_JD + 30 });
+    const month = await next('state', 'moons');
+    const dMonth = maxDiffKm(month.r, direct('bodies', EPOCH_JD + 30));
+    if (readyM.ids.length !== 16 || dMonth !== 0) fail(`with moons: ${readyM.ids.length} bodies, ${dMonth} km from stepping directly`);
+    console.log(`  a year as systems in ${year.ms.toFixed(0)} ms and 30 days with moons in ${month.ms.toFixed(0)} ms, exactly as stepping directly`);
+
+    // 2. A newer time replaces an older one: 300 years asked, then 2 years once it is running.
+    //    Only the 2 years are reported. It ran forwards and then back in other steps, so it differs a
+    //    little from stepping directly: far less than the steps' own error (Mercury: some 1,000 km a year).
+    engine.handle({ type: 'goto', sim: 'real', jd: EPOCH_JD + 300 * 365.25 });
+    const prog = await next('progress', 'real');
+    engine.handle({ type: 'goto', sim: 'real', jd: EPOCH_JD + 730 });
+    const two = await next('state', 'real');
+    const dTwo = maxDiffKm(two.r, direct('systems', EPOCH_JD + 730));
+    if (two.jd !== EPOCH_JD + 730 || dTwo > 100) fail(`replaced run: at JD ${two.jd}, ${dTwo} km from stepping directly`);
+    if (inbox.some((m) => m.type === 'state')) fail('the replaced run reported a state');
+    console.log(`  300 years asked, replaced by 2 years after ${((prog.jd - EPOCH_JD) / 365.25).toFixed(1)} years: reports only the 2 years, ${(dTwo * 1000).toFixed(1)} m from stepping directly`);
+
+    // 3. A branch is a copy at the same time, then runs on its own: moving it leaves its sim as it was
+    engine.handle({ type: 'branch', sim: 'what-if', from: 'real' });
+    const readyB = await next('ready', 'what-if');
+    engine.handle({ type: 'goto', sim: 'what-if', jd: EPOCH_JD + 1000 });
+    const b = await next('state', 'what-if');
+    engine.handle({ type: 'goto', sim: 'real', jd: EPOCH_JD + 730 });
+    const still = await next('state', 'real');
+    engine.handle({ type: 'goto', sim: 'real', jd: EPOCH_JD + 1000 });
+    const r = await next('state', 'real');
+    if (readyB.jd !== EPOCH_JD + 730 || maxDiffKm(still.r, two.r) !== 0 || maxDiffKm(b.r, r.r) !== 0) fail('a branch is not a separate copy');
+    console.log('  a branch starts as a copy and runs on its own: OK');
+
+    // 4. Refusals: unknown sim, a name twice, not a time, a dropped sim
+    engine.handle({ type: 'goto', sim: 'nobody', jd: EPOCH_JD });
+    engine.handle({ type: 'start', sim: 'real', mode: 'systems' });
+    engine.handle({ type: 'goto', sim: 'real', jd: Number.NaN });
+    engine.handle({ type: 'drop', sim: 'what-if' });
+    engine.handle({ type: 'goto', sim: 'what-if', jd: EPOCH_JD });
+    const errors = [];
+    for (let k = 0; k < 4; k++) errors.push((await next('error')).message);
+    if (!/no sim "nobody"/.test(errors[0]) || !/exists already/.test(errors[1]) || !/not a time/.test(errors[2]) || !/no sim "what-if"/.test(errors[3])) fail(`refusals: ${errors.join(' | ')}`);
+    console.log('  refuses an unknown sim, a name twice, a time that is not a number, and a dropped sim');
+  } catch (err) {
+    fail(String(err));
+  }
+  // Conversions between the site's UTC time and the engine's TDB
+  const ms = Date.UTC(2026, 10, 15);
+  if (Math.abs(tdbJdToUtcMs(utcMsToTdbJd(ms)) - ms) > 0.1 || Math.abs((utcMsToTdbJd(ms) - 2461359.5) * 86400 - 69.184) > 1e-3) fail('UTC/TDB conversion');
+  console.log(`Physics engine worker: ${ok ? 'OK' : 'FAIL'}`);
   return ok;
 }
