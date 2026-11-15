@@ -469,3 +469,76 @@ details.card[hidden] { display: none; }
   .ca-table tr.moon { box-shadow: inset 3px 0 0 #7a4fd0; }
   [dir="rtl"] .ca-table tr.moon { box-shadow: inset -3px 0 0 #7a4fd0; }
 }
+
+/* ---------- Space weather ---------- */
+
+#spaceWeather p { margin: 8px 0; line-height: 1.6; }
+.sw-headline { font-size: 1rem; }
+.sw-small { color: #9aa0b4; font-size: 0.8rem; line-height: 1.5; }
+.sw-h { font-size: 0.95rem; font-weight: 600; margin: 18px 0 2px; }
+
+.sw-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 8px;
+  margin: 10px 0;
+}
+.sw-tile { border: 1px solid #262c45; border-radius: 8px; padding: 10px 12px; }
+.sw-tile .label { margin: 0 0 2px; }
+.sw-level { font-size: 1.05rem; }
+.sw-what { margin-top: 6px; }
+.sw-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-inline-end: 6px;
+  vertical-align: middle;
+}
+
+.sw-forecast { overflow-x: auto; margin-top: 6px; }
+.sw-forecast table, .sw-table table { font-size: 0.85rem; }
+.sw-forecast th.num, .sw-forecast td.num { text-align: end; white-space: nowrap; }
+.sw-forecast td:first-child { color: #9aa0b4; }
+.sw-forecast th:first-child, .sw-forecast td:first-child { width: 42%; hyphens: auto; overflow-wrap: anywhere; }
+@media (max-width: 560px) {
+  .sw-forecast table { font-size: 0.8rem; }
+  .sw-forecast th, .sw-forecast td { padding: 6px 4px; }
+}
+
+.sw-kp-facts { font-size: 0.9rem; }
+.kp-chart { position: relative; margin: 6px 0 2px; }
+.kp-svg { display: block; overflow: visible; }
+.kp-svg:focus { outline: none; }
+.kp-svg:focus-visible { outline: 2px solid #4f9dff; outline-offset: 2px; border-radius: 4px; }
+.kp-grid { stroke: #262c45; stroke-width: 1; }
+.kp-base { stroke: #3a4166; stroke-width: 1; }
+.kp-threshold { stroke: #fab219; stroke-width: 1; opacity: 0.55; }
+.kp-axis { fill: #8a90a6; font-size: 10px; font-variant-numeric: tabular-nums; }
+.kp-label { fill: #e8e8f0; font-size: 11px; }
+.kp-muted { fill: #9aa0b4; }
+.kp-now { stroke: #e8e8f0; stroke-width: 1; }
+.kp-bar.kp-future { opacity: 0.45; }
+.kp-bar.kp-active { opacity: 1; filter: brightness(1.25); }
+.kp-tip {
+  position: absolute;
+  pointer-events: none;
+  background: #0b0d17;
+  border: 1px solid #3a4166;
+  border-radius: 6px;
+  padding: 6px 9px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  white-space: nowrap;
+  transform: translateY(-100%);
+  z-index: 2;
+}
+.kp-tip[hidden] { display: none; }
+.kp-tip strong { font-size: 0.95rem; }
+.kp-tip-sub { color: #9aa0b4; }
+.sw-legend { margin: 4px 0; }
+.sw-legend .key i { border-radius: 2px; }
+.sw-table summary { cursor: pointer; color: #9aa0b4; font-size: 0.85rem; }
+.sw-table table { margin-top: 6px; }
+.sw-cmes { margin: 6px 0; padding-inline-start: 20px; line-height: 1.6; }
+#spaceWeather a { color: #8f9bd0; }

@@ -14,6 +14,7 @@ import pkg from '../package.json';
 import { LANGS, detectLang, lang, langInfo, num, numGrouped, setLang, t, type Lang, type TextKey } from './i18n';
 import { cloudOffsets, cloudSpread } from './astro/uncertainty';
 import { ApproachesCard } from './view/approaches';
+import { SpaceWeatherCard } from './view/spaceWeather';
 
 const DAY_MS = 86_400_000;
 
@@ -113,6 +114,12 @@ app.innerHTML = `
     <div class="ca-body"></div>
   </section>
 
+  <section class="card" id="spaceWeather" aria-labelledby="swTitle">
+    <h2 class="card-title"><span id="swTitle" data-t="swTitle"></span> <span class="badge live-data" data-t="caBadge"></span></h2>
+    <p class="sub sw-intro"></p>
+    <div class="sw-body"></div>
+  </section>
+
   <div class="grid">
     <div class="card">
       <div class="label"><span data-t="simTime"></span> <span id="live" class="badge" data-t="live"></span></div>
@@ -177,6 +184,8 @@ app.innerHTML = `
       <a href="https://ssd-api.jpl.nasa.gov/doc/sbdb.html" target="_blank" rel="noopener">JPL Small-Body Database</a> ·
       <a href="https://ssd.jpl.nasa.gov/horizons/" target="_blank" rel="noopener">JPL Horizons</a> ·
       <a href="https://ssd-api.jpl.nasa.gov/doc/cad.html" target="_blank" rel="noopener">CNEOS / JPL Close-Approach Data</a> ·
+      <a href="https://www.swpc.noaa.gov/" target="_blank" rel="noopener">NOAA Space Weather Prediction Center</a> ·
+      <a href="https://kauai.ccmc.gsfc.nasa.gov/DONKI/" target="_blank" rel="noopener">NASA DONKI (CCMC, WSA-Enlil)</a> ·
       <a href="https://github.com/brettonw/YaleBrightStarCatalog" target="_blank" rel="noopener">Yale Bright Star Catalogue, 5th ed. (Hoffleit &amp; Warren 1991), JSON by Bretton Wade (MIT)</a> ·
       <a href="https://threejs.org/" target="_blank" rel="noopener">Three.js</a>
     </span></p>
@@ -196,6 +205,8 @@ const orrery = new Orrery($<HTMLCanvasElement>('sky'));
 // Live data: close approaches to Earth, from our own site (fetched from JPL before each deploy)
 const approaches = new ApproachesCard($('approaches'));
 approaches.load(`${import.meta.env.BASE_URL}data/live/close-approaches.json`);
+const spaceWeather = new SpaceWeatherCard($('spaceWeather'));
+spaceWeather.load(`${import.meta.env.BASE_URL}data/live/space-weather.json`);
 let scene3d: Scene3D | null = null; // loaded on first use (Three.js is a separate file)
 
 // Asteroids, dwarf planets and comets: their own file, loaded after the page
@@ -466,6 +477,7 @@ function applyLanguage(l: Lang) {
   $('howto').textContent = kind === '3d' ? s.howto3d : s.howto2d;
   scene3d?.refreshTexts();
   approaches.render();
+  spaceWeather.render();
   lastPanels = -Infinity;
 }
 

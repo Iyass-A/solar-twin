@@ -32,6 +32,7 @@ export interface CmeArrival {
   cme: string;            // DONKI's id of the CME, e.g. "2026-11-14T08:12:00-CME-001"
   arrival: string;        // predicted arrival of the shock at Earth (ISO); the model says ± about 7 hours
   glancing: boolean;      // only the edge passes Earth
+  minor: boolean;         // the model expects only a minor impact
   speed: number | null;   // km/s near the Sun
   kp: [number, number] | null; // smallest and largest possible Kp the model gives (it depends on the cloud's field)
   modelRun: string;       // when the model run was finished (ISO)
@@ -161,17 +162,28 @@ export function parseFlares(raw: unknown): Flare[] {
  * DONKI WSAEnlilSimulations: model runs, often several for one CME (newer versions, or one for the
  * shock and one for the bulk of the cloud). Per CME, the runs finished within 3 hours of its newest
  * one count; if any of them predicts an arrival at Earth, the earliest one is kept.
+ * Fresh runs can come without their CME (empty cmeInputs, seen in November 2026): those finished
+ * within 3 hours of each other are taken as one CME, so one cloud is not listed twice.
  */
 export function parseEnlil(raw: unknown): CmeArrival[] {
   if (!Array.isArray(raw)) throw new Error('not a list');
   const byCme = new Map<string, any[]>();
+  const orphans: { done: number; sim: any }[] = [];
   for (const sim of raw) {
     const done = isoTime(sim?.modelCompletionTime);
     if (!done) throw new Error(`run without completion time: ${JSON.stringify(sim).slice(0, 200)}`);
     const ids: string[] = (sim.cmeInputs ?? []).map((c: any) => c?.CMEID ?? c?.cmeid ?? c?.cmeID).filter(Boolean);
-    const id = ids[0] ?? sim.simulationID ?? done;
-    byCme.set(id, [...(byCme.get(id) ?? []), sim]);
+    if (ids[0]) byCme.set(ids[0], [...(byCme.get(ids[0]) ?? []), sim]);
+    else orphans.push({ done: Date.parse(done), sim });
   }
+  orphans.sort((a, b) => a.done - b.done);
+  let group: any[] = [], last = -Infinity;
+  for (const o of orphans) {
+    if (o.done - last > 3 * HOUR_MS && group.length) { byCme.set(String(group[0].simulationID), group); group = []; }
+    group.push(o.sim);
+    last = o.done;
+  }
+  if (group.length) byCme.set(String(group[0].simulationID), group);
   const out: CmeArrival[] = [];
   for (const [cme, sims] of byCme) {
     const newest = Math.max(...sims.map((s) => Date.parse(isoTime(s.modelCompletionTime)!)));
@@ -186,6 +198,7 @@ export function parseEnlil(raw: unknown): CmeArrival[] {
       cme,
       arrival: isoTime(s.estimatedShockArrivalTime)!,
       glancing: s.isEarthGB === true,
+      minor: s.isEarthMinorImpact === true,
       speed: numOrNull(input?.speed),
       kp: kps.length ? [Math.min(...kps), Math.max(...kps)] : null,
       modelRun: isoTime(s.modelCompletionTime)!,
@@ -239,7 +252,7 @@ export function flareProblems(list: any): string[] {
 export function cmeProblems(list: any): string[] {
   if (!Array.isArray(list)) return ['CMEs: not a list'];
   return list.flatMap((c: CmeArrival, i: number) => {
-    const bad = typeof c?.cme !== 'string' || !okTime(c.arrival) || !okTime(c.modelRun) || typeof c.glancing !== 'boolean'
+    const bad = typeof c?.cme !== 'string' || !okTime(c.arrival) || !okTime(c.modelRun) || typeof c.glancing !== 'boolean' || typeof c.minor !== 'boolean'
       || (c.speed !== null && !(c.speed > 0 && c.speed < 5000))
       || (c.kp !== null && !(Array.isArray(c.kp) && c.kp[0] >= 0 && c.kp[1] <= 9 && c.kp[0] <= c.kp[1]))
       || (c.link !== null && !/^https:\/\//.test(c.link));

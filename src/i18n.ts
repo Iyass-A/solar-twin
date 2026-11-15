@@ -130,6 +130,51 @@ export interface Strings {
   relTime: (hours: number) => string;
   /** A length of time, rounded to minutes, hours or days. */
   duration: (minutes: number) => string;
+  // Space weather (live data from NOAA SWPC and NASA DONKI)
+  swTitle: string;
+  swIntro: string;
+  /** NOAA scales: R radio blackouts, S solar radiation, G geomagnetic, as a tile title */
+  swScale: { r: string; s: string; g: string };
+  /** One active scale inside a sentence: "a strong geomagnetic storm (G3)" */
+  swActiveItem: (scale: 'r' | 's' | 'g', level: number) => string;
+  swScaleWhat: { r: string; s: string; g: string };
+  /** Levels 0 to 5: quiet, minor, moderate, strong, severe, extreme */
+  swLevels: [string, string, string, string, string, string];
+  swCalm: string;
+  swNowActive: (items: string) => string;
+  swPast24: (x: string) => string;
+  swForecast: string;
+  swFcG: string;
+  swFcRMinor: string;
+  swFcRMajor: string;
+  swFcS: string;
+  swKpTitle: string;
+  swKpWhat: string;
+  swKpQuiet: string;
+  swKpStorm: string;
+  swKpStrong: string;
+  swKpKind: { observed: string; estimated: string; predicted: string };
+  swKpLatest: (value: string, level: string) => string;
+  swKpMaxAhead: (value: string, when: string) => string;
+  swKpTable: string;
+  swTime: string;
+  swFlaresTitle: string;
+  swFlareCount: (total: number, m: number, x: number) => string;
+  swFlareStrongest: string;
+  swFlareWhat: string;
+  swCmeTitle: string;
+  swCmeNone: string;
+  swCmeArrival: (when: string) => string;
+  swCmeArrived: (when: string) => string;
+  swCmeGlancing: string;
+  swCmeMinor: string;
+  swCmeKp: (from: string, to: string) => string;
+  swCmeSpeed: (v: string) => string;
+  swCmeNote: string;
+  swParts: { scales: string; kp: string; flares: string; cmes: string };
+  swMissing: (part: string) => string;
+  swStale: (part: string, date: string) => string;
+  swNone: string;
 }
 
 /** Keys whose value is plain text, for data-t / data-html / data-aria in the page. */
@@ -157,11 +202,13 @@ export function numGrouped(n: number, l: Lang = current): string {
 }
 
 const dateFormats = new Map<string, Intl.DateTimeFormat>();
-type DateKind = 'dateTime' | 'dayMonth' | 'dayMonthTime';
+type DateKind = 'dateTime' | 'dayMonth' | 'dayMonthTime' | 'weekdayDay' | 'clock';
 const DATE_KINDS: Record<DateKind, Intl.DateTimeFormatOptions> = {
   dateTime: { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' },
   dayMonth: { day: 'numeric', month: 'long' },
   dayMonthTime: { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' },
+  weekdayDay: { weekday: 'short', day: 'numeric' },
+  clock: { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' },
 };
 function dateFormat(l: Lang, kind: DateKind, timeZone?: string): Intl.DateTimeFormat {
   const key = `${l}/${kind}/${timeZone ?? ''}`;
@@ -178,6 +225,10 @@ function dateFormat(l: Lang, kind: DateKind, timeZone?: string): Intl.DateTimeFo
 export const dateTime = (ms: number, l: Lang = current, timeZone?: string) => dateFormat(l, 'dateTime', timeZone).format(ms);
 /** Day and month, e.g. "20 تشرين الثاني", "20. November". */
 export const dayMonth = (ms: number, l: Lang = current, timeZone?: string) => dateFormat(l, 'dayMonth', timeZone).format(ms);
+/** Time of day, e.g. "14:32". */
+export const clock = (ms: number, l: Lang = current, timeZone?: string) => dateFormat(l, 'clock', timeZone).format(ms);
+/** Short weekday and day, e.g. "So. 15", "Sun 15". */
+export const weekdayDay = (ms: number, l: Lang = current, timeZone?: string) => dateFormat(l, 'weekdayDay', timeZone).format(ms);
 /** Day, month and time, e.g. "20 تشرين الثاني في 14:32", "20. November um 14:32". */
 export const dayMonthTime = (ms: number, l: Lang = current, timeZone?: string) => dateFormat(l, 'dayMonthTime', timeZone).format(ms);
 
@@ -366,7 +417,7 @@ const AR: Strings = {
   caOnMap: 'موجود عالخريطة: اكبس لتشوفه',
   caUpdated: (d) => `آخر تحديث: ${d}`,
   caStale: (d) => `انتبه: هالبيانات من ${d}، وما قدرنا نجيب أجدد منها.`,
-  caNone: 'ما في بيانات حيّة هون. عالموقع المنشور بتتحدّث كل يوم من JPL.',
+  caNone: 'ما في بيانات حيّة هون. عالموقع المنشور بتتحدّث كل 3 ساعات من JPL.',
   caLoading: 'عم يحمّل…',
   comma: '، ',
   relTime: (h) => {
@@ -375,6 +426,56 @@ const AR: Strings = {
     return h >= 0 ? `بعد ${x}` : `من ${x}`;
   },
   duration: (minutes) => arDuration(minutes),
+  swTitle: 'طقس الفضاء',
+  swIntro: 'شو عم يصير بين الشمس والأرض: عواصف مغناطيسية، توهجات شمسية، وموجات من الشمس جاية علينا. '
+    + 'بالوقت الحقيقي، مو بوقت المحاكاة.',
+  swScale: { r: 'انقطاع الراديو', s: 'الإشعاع الشمسي', g: 'الاضطراب المغناطيسي' },
+  swActiveItem: (k, n) => `${{ r: 'انقطاع راديو', s: 'إشعاع شمسي', g: 'اضطراب مغناطيسي' }[k]} ${AR.swLevels[n]} (${k.toUpperCase()}${n})`,
+  swScaleWhat: {
+    r: 'من التوهجات الشمسية: بيقطع الراديو عالجهة المضوية من الأرض.',
+    s: 'جزيئات سريعة من الشمس: بتأثر عالأقمار الصناعية ورواد الفضاء.',
+    g: 'من رياح الشمس وموجاتها: بيعمل شفق قطبي، وإذا قوي بيأثر عالكهربا والملاحة بالأقمار.',
+  },
+  swLevels: ['هادي', 'خفيف', 'متوسط', 'قوي', 'شديد', 'أقصى'],
+  swCalm: 'هلأ الوضع هادي: ما في عواصف.',
+  swNowActive: (items) => `هلأ في: ${items}.`,
+  swPast24: (x) => `أعلى شي بآخر 24 ساعة: ${x}`,
+  swForecast: 'توقعات الأيام الجاية',
+  swFcG: 'الاضطراب المغناطيسي المتوقع',
+  swFcRMinor: 'احتمال انقطاع راديو خفيف أو متوسط (R1–R2)',
+  swFcRMajor: 'احتمال انقطاع راديو قوي أو أكتر (R3+)',
+  swFcS: 'احتمال إشعاع شمسي (S1+)',
+  swKpTitle: 'مؤشر Kp كل 3 ساعات',
+  swKpWhat: 'بيقيس قديش المجال المغناطيسي للأرض مضطرب، من 0 (هادي) لـ 9. من 5 وطالع يعني عاصفة مغناطيسية، '
+    + 'وكل ما زاد بيبين الشفق القطبي أبعد عن القطب.',
+  swKpQuiet: 'أقل من 5: ما في عاصفة',
+  swKpStorm: 'عاصفة خفيفة أو متوسطة (G1–G2)',
+  swKpStrong: 'عاصفة قوية أو أكتر (G3+)',
+  swKpKind: { observed: 'مقاس', estimated: 'تقدير أولي', predicted: 'توقع' },
+  swKpLatest: (v, level) => `آخر قيمة: ${v} (${level})`,
+  swKpMaxAhead: (v, when) => `أعلى توقع: ${v}، ${when}`,
+  swKpTable: 'الأرقام كجدول',
+  swTime: 'الوقت',
+  swFlaresTitle: 'التوهجات الشمسية بآخر 7 أيام',
+  swFlareCount: (n, m, x) => `${n === 0 ? 'ولا توهج' : n === 1 ? 'توهج واحد' : arabicCount(n, 'توهج', 'توهجين', 'توهجات')}`
+    + `${n ? `، منهم ${m} من الصنف M و${x} من الصنف X` : ''}.`,
+  swFlareStrongest: 'الأقوى:',
+  swFlareWhat: 'الصنف (A وB وC وM وX) بيقيس قوة الأشعة السينية، وكل صنف أقوى بـ 10 مرات من اللي قبله. '
+    + 'توهجات M وX ممكن تقطع الراديو عالجهة المضوية من الأرض.',
+  swCmeTitle: 'موجات من الشمس جاية عالأرض',
+  swCmeNone: 'حسب آخر حسابات ناسا، ما في ولا موجة متوقع توصل عالأرض.',
+  swCmeArrival: (when) => `متوقع توصل ${when} (± 7 ساعات)`,
+  swCmeArrived: (when) => `كان متوقع توصل ${when}`,
+  swCmeGlancing: 'ضربة جانبية بس',
+  swCmeMinor: 'تأثير خفيف بس',
+  swCmeKp: (a, b) => `Kp ممكن بين ${a} و${b}`,
+  swCmeSpeed: (v) => `سرعتها قرب الشمس ${v} كم/ث`,
+  swCmeNote: 'الموجة (بالإنكليزي CME) هي غيمة غاز مكهرب بتقذفها الشمس، وبتوصل الأرض بعد يوم لـ 5 أيام. '
+    + 'هالتوقعات تجريبية، من نموذج WSA-Enlil البحثي تبع ناسا؛ التوقعات الرسمية هي تبع NOAA اللي فوق.',
+  swParts: { scales: 'مستويات العواصف', kp: 'مؤشر Kp', flares: 'التوهجات', cmes: 'توقعات الموجات' },
+  swMissing: (part) => `ما في بيانات هلأ عن ${part}.`,
+  swStale: (part, d) => `انتبه: ${part} من ${d}، وما قدرنا نجيب أجدد.`,
+  swNone: 'ما في بيانات طقس فضاء هون. عالموقع المنشور بتتحدّث كل 3 ساعات.',
 };
 
 const DE: Strings = {
@@ -512,7 +613,7 @@ const DE: Strings = {
   caOnMap: 'Auf der Karte: anklicken zum Anzeigen',
   caUpdated: (d) => `Zuletzt aktualisiert: ${d}`,
   caStale: (d) => `Achtung: Diese Daten sind vom ${d}, neuere konnten wir nicht holen.`,
-  caNone: 'Hier gibt es keine Live-Daten. Auf der veröffentlichten Seite kommen sie jeden Tag neu vom JPL.',
+  caNone: 'Hier gibt es keine Live-Daten. Auf der veröffentlichten Seite kommen sie alle 3 Stunden neu vom JPL.',
   caLoading: 'Wird geladen …',
   comma: ', ',
   relTime: (h) => {
@@ -521,6 +622,55 @@ const DE: Strings = {
     return h >= 0 ? `in ${x}` : `vor ${x}`;
   },
   duration: (minutes) => deDuration(minutes, false),
+  swTitle: 'Weltraumwetter',
+  swIntro: 'Was zwischen Sonne und Erde passiert: geomagnetische Stürme, Sonneneruptionen und Wolken von der Sonne, die auf uns zukommen. '
+    + 'In Echtzeit, nicht in der Zeit der Simulation.',
+  swScale: { r: 'Funkausfälle', s: 'Strahlungssturm', g: 'Geomagnetischer Sturm' },
+  swActiveItem: (k, n) => `${{ r: 'Funkausfälle', s: 'Strahlungssturm', g: 'geomagnetischer Sturm' }[k]} der Stufe ${k.toUpperCase()}${n} (${DE.swLevels[n]})`,
+  swScaleWhat: {
+    r: 'Durch Sonneneruptionen: stört den Funk auf der Tagseite der Erde.',
+    s: 'Schnelle Teilchen von der Sonne: betreffen Satelliten und Raumfahrer.',
+    g: 'Durch Sonnenwind und Sonnenwolken: macht Polarlichter, und wenn er stark ist, stört er Stromnetze und Satellitennavigation.',
+  },
+  swLevels: ['ruhig', 'schwach', 'mäßig', 'stark', 'schwer', 'extrem'],
+  swCalm: 'Gerade ist es ruhig: keine Stürme.',
+  swNowActive: (items) => `Gerade: ${items}.`,
+  swPast24: (x) => `Höchstwert der letzten 24 Stunden: ${x}`,
+  swForecast: 'Vorhersage der nächsten Tage',
+  swFcG: 'Erwarteter geomagnetischer Sturm',
+  swFcRMinor: 'Wahrscheinlichkeit schwacher oder mäßiger Funkausfälle (R1–R2)',
+  swFcRMajor: 'Wahrscheinlichkeit starker Funkausfälle (R3+)',
+  swFcS: 'Wahrscheinlichkeit eines Strahlungssturms (S1+)',
+  swKpTitle: 'Kp-Index alle 3 Stunden',
+  swKpWhat: 'Misst, wie stark das Erdmagnetfeld gestört ist, von 0 (ruhig) bis 9. Ab 5 ist es ein geomagnetischer Sturm, '
+    + 'und je höher, desto weiter vom Pol entfernt sind Polarlichter zu sehen.',
+  swKpQuiet: 'unter 5: kein Sturm',
+  swKpStorm: 'schwacher oder mäßiger Sturm (G1–G2)',
+  swKpStrong: 'starker Sturm oder mehr (G3+)',
+  swKpKind: { observed: 'gemessen', estimated: 'vorläufig', predicted: 'Vorhersage' },
+  swKpLatest: (v, level) => `Letzter Wert: ${v} (${level})`,
+  swKpMaxAhead: (v, when) => `Höchste Vorhersage: ${v}, ${when}`,
+  swKpTable: 'Die Werte als Tabelle',
+  swTime: 'Zeit',
+  swFlaresTitle: 'Sonneneruptionen der letzten 7 Tage',
+  swFlareCount: (n, m, x) => `${n === 0 ? 'Keine Eruption' : plural(n, 'Eruption', 'Eruptionen')}${n ? `, davon ${m} der Klasse M und ${x} der Klasse X` : ''}.`,
+  swFlareStrongest: 'Die stärksten:',
+  swFlareWhat: 'Die Klasse (A, B, C, M, X) misst die Röntgenstrahlung, jede Klasse ist 10-mal stärker als die vorige. '
+    + 'Eruptionen der Klassen M und X können den Funk auf der Tagseite der Erde stören.',
+  swCmeTitle: 'Wolken von der Sonne auf dem Weg zur Erde',
+  swCmeNone: 'Nach den letzten Rechnungen der NASA trifft keine Wolke die Erde.',
+  swCmeArrival: (when) => `Ankunft erwartet ${when} (± 7 Stunden)`,
+  swCmeArrived: (when) => `Ankunft war erwartet ${when}`,
+  swCmeGlancing: 'streift die Erde nur',
+  swCmeMinor: 'nur schwache Wirkung',
+  swCmeKp: (a, b) => `Kp möglich zwischen ${a} und ${b}`,
+  swCmeSpeed: (v) => `Geschwindigkeit nahe der Sonne ${v} km/s`,
+  swCmeNote: 'Eine solche Wolke (koronaler Massenauswurf, CME) ist Gas aus geladenen Teilchen, das die Sonne ausstößt; sie erreicht die Erde nach 1 bis 5 Tagen. '
+    + 'Diese Vorhersagen sind experimentell, aus dem Forschungsmodell WSA-Enlil der NASA; die offizielle Vorhersage ist die der NOAA oben.',
+  swParts: { scales: 'Sturmstufen', kp: 'Kp-Index', flares: 'Eruptionen', cmes: 'Wolken-Vorhersage' },
+  swMissing: (part) => `Gerade keine Daten: ${part}.`,
+  swStale: (part, d) => `Achtung: ${part} vom ${d}, neuere konnten wir nicht holen.`,
+  swNone: 'Hier gibt es keine Weltraumwetter-Daten. Auf der veröffentlichten Seite kommen sie alle 3 Stunden neu.',
 };
 
 const EN: Strings = {
@@ -658,7 +808,7 @@ const EN: Strings = {
   caOnMap: 'On the map: click to show it',
   caUpdated: (d) => `Last updated: ${d}`,
   caStale: (d) => `Note: this data is from ${d}; we could not fetch newer data.`,
-  caNone: 'No live data here. On the published site it comes fresh from JPL every day.',
+  caNone: 'No live data here. On the published site it comes fresh from JPL every 3 hours.',
   caLoading: 'Loading…',
   comma: ', ',
   relTime: (h) => {
@@ -667,6 +817,59 @@ const EN: Strings = {
     return h >= 0 ? `in ${enDuration(minutes)}` : `${enDuration(minutes)} ago`;
   },
   duration: (minutes) => enDuration(minutes),
+  swTitle: 'Space weather',
+  swIntro: 'What is going on between the Sun and Earth: geomagnetic storms, solar flares, and clouds from the Sun on their way to us. '
+    + 'In real time, not in the simulation’s time.',
+  swScale: { r: 'Radio blackouts', s: 'Solar radiation storm', g: 'Geomagnetic storm' },
+  swActiveItem: (k, n) => {
+    const word = EN.swLevels[n];
+    const what = k === 'r' ? `${word} radio blackouts` : `${/^[aeiou]/.test(word) ? 'an' : 'a'} ${word} ${k === 's' ? 'solar radiation storm' : 'geomagnetic storm'}`;
+    return `${what} (${k.toUpperCase()}${n})`;
+  },
+  swScaleWhat: {
+    r: 'From solar flares: radio fades on the sunlit side of Earth.',
+    s: 'Fast particles from the Sun: they affect satellites and astronauts.',
+    g: 'From the solar wind and clouds from the Sun: it makes auroras, and when strong it disturbs power grids and satellite navigation.',
+  },
+  swLevels: ['quiet', 'minor', 'moderate', 'strong', 'severe', 'extreme'],
+  swCalm: 'All quiet right now: no storms.',
+  swNowActive: (items) => `Right now: ${items}.`,
+  swPast24: (x) => `Highest in the last 24 hours: ${x}`,
+  swForecast: 'Forecast for the next days',
+  swFcG: 'Expected geomagnetic storm',
+  swFcRMinor: 'Chance of minor or moderate radio blackouts (R1–R2)',
+  swFcRMajor: 'Chance of strong radio blackouts (R3+)',
+  swFcS: 'Chance of a solar radiation storm (S1+)',
+  swKpTitle: 'Kp index every 3 hours',
+  swKpWhat: 'How disturbed Earth’s magnetic field is, from 0 (quiet) to 9. From 5 up it is a geomagnetic storm, '
+    + 'and the higher it goes, the farther from the poles auroras can be seen.',
+  swKpQuiet: 'below 5: no storm',
+  swKpStorm: 'minor or moderate storm (G1–G2)',
+  swKpStrong: 'strong storm or more (G3+)',
+  swKpKind: { observed: 'measured', estimated: 'preliminary', predicted: 'forecast' },
+  swKpLatest: (v, level) => `Latest: ${v} (${level})`,
+  swKpMaxAhead: (v, when) => `Highest forecast: ${v}, ${when}`,
+  swKpTable: 'The values as a table',
+  swTime: 'Time',
+  swFlaresTitle: 'Solar flares in the last 7 days',
+  swFlareCount: (n, m, x) => `${n === 0 ? 'No flares' : plural(n, 'flare', 'flares')}${n ? `, ${m} of class M and ${x} of class X` : ''}.`,
+  swFlareStrongest: 'Strongest:',
+  swFlareWhat: 'The class (A, B, C, M, X) measures the X-rays, each class 10 times stronger than the one before. '
+    + 'M and X flares can cause radio blackouts on the sunlit side of Earth.',
+  swCmeTitle: 'Clouds from the Sun heading for Earth',
+  swCmeNone: 'By NASA’s latest runs, no cloud is expected to reach Earth.',
+  swCmeArrival: (when) => `Expected to arrive ${when} (± 7 hours)`,
+  swCmeArrived: (when) => `Was expected to arrive ${when}`,
+  swCmeGlancing: 'a glancing blow only',
+  swCmeMinor: 'a minor impact only',
+  swCmeKp: (a, b) => `Kp possibly ${a} to ${b}`,
+  swCmeSpeed: (v) => `speed near the Sun ${v} km/s`,
+  swCmeNote: 'Such a cloud (a coronal mass ejection, CME) is charged gas thrown out by the Sun; it reaches Earth after 1 to 5 days. '
+    + 'These forecasts are experimental, from NASA’s WSA-Enlil research model; the official forecast is NOAA’s, above.',
+  swParts: { scales: 'storm levels', kp: 'Kp index', flares: 'flares', cmes: 'cloud forecast' },
+  swMissing: (part) => `No data right now: ${part}.`,
+  swStale: (part, d) => `Note: ${part} from ${d}; we could not fetch newer data.`,
+  swNone: 'No space weather data here. On the published site it comes fresh every 3 hours.',
 };
 
 export const STRINGS: Record<Lang, Strings> = { ar: AR, de: DE, en: EN };

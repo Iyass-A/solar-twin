@@ -420,6 +420,71 @@ console.log(`\nClose approaches (CNEOS): parser, sizes and times ${liveOk ? 'OK'
 // 12. Live data: space weather (NOAA SWPC, NASA DONKI). The file only where it exists (on GitHub).
 let swOk = true;
 const swFail = (msg: string) => { swOk = false; console.log(`  ${msg}`); };
+// Small helpers
+const G_CASES: [number, number][] = [[4.33, 0], [4.67, 1], [5.33, 1], [5.67, 2], [6.67, 3], [7.67, 4], [8.67, 4], [9, 5]];
+for (const [kp, g] of G_CASES) if (sw.gFromKp(kp) !== g) swFail(`Kp ${kp}: G${sw.gFromKp(kp)}, want G${g}`);
+if (Math.abs(sw.flareFlux('M1.7') - 1.7e-5) > 1e-12 || Math.abs(sw.flareFlux('X2') - 2e-4) > 1e-12 || !Number.isNaN(sw.flareFlux('Q1'))) swFail('flare classes');
+if (sw.isoTime('2026-11-15 03:00:00.000') !== '2026-11-15T03:00:00.000Z' || sw.isoTime('2026-11-15T03:00Z') !== '2026-11-15T03:00:00.000Z' || sw.isoTime('soon') !== null) swFail('times');
+// The parsers, on answers shaped like the real ones (November 2026)
+const swCase = (label: string, fn: () => void) => { try { fn(); } catch (err) { swFail(`${label}: ${err}`); } };
+const swThrows = (label: string, fn: () => unknown) => { let threw = false; try { fn(); } catch { threw = true; } if (!threw) swFail(`${label} was not refused`); };
+const scalesRaw = () => ({
+  '-1': { DateStamp: '2026-11-14', TimeStamp: '00:00:00', R: { Scale: '1', Text: 'minor', MinorProb: null, MajorProb: null }, S: { Scale: '0', Text: 'none', Prob: null }, G: { Scale: '0', Text: 'none' } },
+  '0': { DateStamp: '2026-11-15', TimeStamp: '10:41:00', R: { Scale: '0', Text: 'none', MinorProb: null, MajorProb: null }, S: { Scale: '0', Text: 'none', Prob: null }, G: { Scale: '2', Text: 'moderate' } },
+  '1': { DateStamp: '2026-11-15', TimeStamp: '10:41:00', R: { Scale: null, Text: null, MinorProb: '25', MajorProb: '5' }, S: { Scale: null, Text: null, Prob: '5' }, G: { Scale: '0', Text: 'none' } },
+  '2': { DateStamp: '2026-11-16', TimeStamp: '00:00:00', R: { Scale: null, Text: null, MinorProb: '30', MajorProb: '10' }, S: { Scale: null, Text: null, Prob: '1' }, G: { Scale: '1', Text: 'minor' } },
+});
+swCase('scales', () => {
+  const sc = sw.parseScales(scalesRaw());
+  if (sc.now.g !== 2 || sc.past24h?.r !== 1 || sc.days.length !== 2 || sc.days[1].rMinor !== 30 || sc.days[1].g !== 1 || sc.at !== '2026-11-15T10:41:00.000Z') swFail(`scales: ${JSON.stringify(sc)}`);
+  if (sw.scalesProblems(sc).length) swFail(`scales: ${sw.scalesProblems(sc).join('; ')}`);
+});
+swThrows('scales without "0"', () => sw.parseScales({ '1': scalesRaw()['1'] }));
+swThrows('scales with level 7', () => sw.parseScales({ ...scalesRaw(), '0': { ...scalesRaw()['0'], G: { Scale: '7' } } }));
+// Kp: the 2026 shape (objects with numbers) and the old one (a header row, then strings) give the same
+const kpNew = Array.from({ length: 10 }, (_, i) => ({ time_tag: `2026-11-15T${String(i * 3 % 24).padStart(2, '0')}:00:00`.replace('2026-11-15', i < 8 ? '2026-11-15' : '2026-11-16'), kp: [1, 2.33, 4.67, 5, 6.67, 3, 2, 1.33, 3.33, 2][i], observed: i < 3 ? 'observed' : i < 6 ? 'estimated' : 'predicted', noaa_scale: null }));
+const kpOld = [['time_tag', 'kp', 'observed', 'noaa_scale'], ...kpNew.map((r) => [r.time_tag.replace('T', ' '), String(r.kp), r.observed, r.noaa_scale])];
+swCase('Kp', () => {
+  const a = sw.parseKp(kpNew), b = sw.parseKp(kpOld);
+  if (JSON.stringify(a) !== JSON.stringify(b)) swFail('Kp: the two shapes differ');
+  if (a.length !== 10 || a[2].kp !== 4.67 || a[9].kind !== 'predicted' || sw.kpProblems(a).length) swFail(`Kp: ${sw.kpProblems(a).join('; ')}`);
+});
+swThrows('Kp row with "high"', () => sw.parseKp([{ time_tag: '2026-11-15T00:00:00', kp: 'high', observed: 'observed' }]));
+swThrows('Kp row of an unknown kind', () => sw.parseKp([{ time_tag: '2026-11-15T00:00:00', kp: 2, observed: 'guessed' }]));
+// Flares: the same flare from two satellites counts once
+const flare = (peak: string, cls: string, sat: number) => ({ time_tag: peak, begin_time: peak, max_time: peak, max_class: cls, end_time: peak, satellite: sat });
+swCase('flares', () => {
+  const fl = sw.parseFlares([flare('2026-11-11T21:21:00Z', 'M1.7', 18), flare('2026-11-11T21:21:00Z', 'M1.7', 19), flare('2026-11-08T11:27:00Z', 'C2.7', 18)]);
+  if (fl.length !== 2 || fl[0].cls !== 'C2.7' || sw.flareProblems(fl).length) swFail(`flares: ${JSON.stringify(fl)}`);
+});
+swThrows('flare of class Q', () => sw.parseFlares([flare('2026-11-11T21:21:00Z', 'Q1', 18)]));
+// CMEs: runs grouped by CME, the newest batch decides, runs without their CME grouped by time
+const run = (id: number, done: string, cme: string | null, arrival: string | null, extra: object = {}) => ({
+  simulationID: `WSA-ENLIL/${id}/1`, modelCompletionTime: done, au: 2,
+  cmeInputs: cme ? [{ CMEID: cme, speed: 700, isMostAccurate: true }] : [],
+  estimatedShockArrivalTime: arrival, isEarthGB: false, isEarthMinorImpact: false,
+  kp_18: null, kp_90: arrival ? 4 : null, kp_135: arrival ? 6 : null, kp_180: arrival ? 6 : null,
+  link: `https://ccmc.gsfc.nasa.gov/DONKI/view/WSA-ENLIL/${id}/-1`, ...extra,
+});
+swCase('CMEs', () => {
+  const list = sw.parseEnlil([
+    run(1, '2026-11-09T19:32Z', 'A', null), run(2, '2026-11-09T19:59Z', 'A', null),                // no hit
+    run(3, '2026-11-10T10:00Z', 'B', '2026-11-12T08:00Z'), run(4, '2026-11-10T20:00Z', 'B', null),  // newer run: misses
+    run(5, '2026-11-12T01:00Z', 'C', '2026-11-14T09:00Z', { isEarthGB: true }), run(6, '2026-11-12T02:00Z', 'C', '2026-11-14T06:00Z'), // same batch: earliest
+    run(7, '2026-11-15T00:47Z', null, null), run(8, '2026-11-15T01:23Z', null, null), run(9, '2026-11-15T02:28Z', null, '2026-11-17T15:58Z'), // no CME given
+  ]);
+  const got = list.map((c) => `${c.arrival.slice(0, 16)}${c.glancing ? ' GB' : ''} ${c.kp?.join('-')} ${c.speed}`).join(', ');
+  if (got !== '2026-11-14T06:00 4-6 700, 2026-11-17T15:58 4-6 null' || sw.cmeProblems(list).length) swFail(`CMEs: ${got}`);
+});
+// Texts
+textCase('90 flares', [STRINGS.ar.swFlareCount(90, 3, 0), STRINGS.de.swFlareCount(90, 3, 0), STRINGS.en.swFlareCount(90, 3, 0)],
+  ['90 توهج، منهم 3 من الصنف M و0 من الصنف X.', '90 Eruptionen, davon 3 der Klasse M und 0 der Klasse X.', '90 flares, 3 of class M and 0 of class X.']);
+textCase('no flares', [STRINGS.ar.swFlareCount(0, 0, 0), STRINGS.de.swFlareCount(0, 0, 0), STRINGS.en.swFlareCount(0, 0, 0)],
+  ['ولا توهج.', 'Keine Eruption.', 'No flares.']);
+textCase('a strong geomagnetic storm', [STRINGS.ar.swActiveItem('g', 3), STRINGS.de.swActiveItem('g', 3), STRINGS.en.swActiveItem('g', 3)],
+  ['اضطراب مغناطيسي قوي (G3)', 'geomagnetischer Sturm der Stufe G3 (stark)', 'a strong geomagnetic storm (G3)']);
+textCase('extreme and minor', [STRINGS.en.swActiveItem('s', 5), STRINGS.en.swActiveItem('r', 1), STRINGS.ar.swActiveItem('r', 1)],
+  ['an extreme solar radiation storm (S5)', 'minor radio blackouts (R1)', 'انقطاع راديو خفيف (R1)']);
 const swPath = 'public/data/live/space-weather.json';
 let swNote = 'no file here (it is fetched on GitHub before each deploy)';
 if (existsSync(swPath)) {
