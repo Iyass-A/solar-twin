@@ -376,7 +376,7 @@ function enDuration(minutes: number): string {
 
 const AR: Strings = {
   title: 'التوأم الرقمي للمجموعة الشمسية',
-  tagline: 'المواقع الحقيقية للكواكب وأكتر من 2,000 كويكب ومذنب، وشو عم يصير بالفضاء هلأ',
+  tagline: 'المواقع الحقيقية للكواكب وأكتر من 2,000 كويكب ومذنب، شو عم يصير بالفضاء هلأ، وشو كان صار لو تغيّر شي',
   beta: 'تجريبية',
   feedback: 'عندك ملاحظة؟',
   language: 'اللغة',
@@ -706,7 +706,7 @@ const AR: Strings = {
 
 const DE: Strings = {
   title: 'Digitaler Zwilling des Sonnensystems',
-  tagline: 'Die echten Positionen der Planeten und von über 2.000 Asteroiden und Kometen, und was gerade im All passiert',
+  tagline: 'Die echten Positionen der Planeten und von über 2.000 Asteroiden und Kometen, was gerade im All passiert, und was wäre, wenn sich etwas ändert',
   beta: 'Beta',
   feedback: 'Feedback geben',
   language: 'Sprache',
@@ -1035,7 +1035,7 @@ const DE: Strings = {
 
 const EN: Strings = {
   title: 'Digital Twin of the Solar System',
-  tagline: 'The real positions of the planets and over 2,000 asteroids and comets, and what is happening in space right now',
+  tagline: 'The real positions of the planets and over 2,000 asteroids and comets, what is happening in space right now, and what would happen if something changed',
   beta: 'beta',
   feedback: 'Send feedback',
   language: 'Language',
