@@ -24,6 +24,7 @@ import * as dsn from '../src/live/dsn';
 import * as dsnView from '../src/view/dsn';
 import * as worker from '../workers/dsn/src/index';
 import { SPACECRAFT, WHERE_KEYS } from '../src/data/spacecraft';
+import { checkStartingState } from './check-physics';
 
 const MAX_ERROR_DEG = 1;
 const DAY_MS = 86_400_000;
@@ -685,6 +686,9 @@ if (dsn.DSN_WORKER_URL && !/^https:\/\/[a-z0-9.-]+\/$/.test(dsn.DSN_WORKER_URL))
 if (dsn.ALLOWED_ORIGIN !== 'https://iyass-a.github.io') dsnFail(`allowed site ${dsn.ALLOWED_ORIGIN}`);
 failed ||= !dsnOk;
 console.log(`\nDeep Space Network: ${dsnOk ? 'OK' : 'FAIL'}; ${dsnSummaryNote}; server ${dsn.DSN_WORKER_URL || 'not deployed yet'}`);
+
+// Physics engine (phase 5): its starting state from JPL Horizons, see scripts/check-physics.ts
+failed = !checkStartingState() || failed;
 
 console.log(failed ? '\nRESULT: FAIL' : '\nRESULT: OK');
 if (failed) process.exitCode = 1;

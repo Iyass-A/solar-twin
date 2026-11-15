@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Physics engine, part 1: **the starting state.** Position and velocity of the Sun, the eight planets, the seven moons larger than Pluto (Moon, Io, Europa, Ganymede, Callisto, Titan, Triton) and the barycentres of the nine planetary systems (Pluto's too) at 15 November 2026, 00:00 TDB, from JPL Horizons, with their masses from DE440 and JPL's satellite table (`src/physics/`, `src/data/state-vectors.json`). A planet stands for itself and its smaller moons; each planet and its moons are moved together onto their system's barycentre (up to 1,200 km, for Uranus), keeping the moons' orbits. A new workflow (`fetch-state-vectors.yml`, by hand only, read-only) fetches them and positions every 5 days for a year after, to check the engine against later. Nothing on the page changes yet. `npm run check` checks the masses against known ratios and Horizons' own, the states against Astronomy Engine and the site's planets, and that every moon is bound to its planet at its known distance, going the known way round (Triton backwards).
+
 ## v0.4.0 (15 November 2026), public beta
 
 - Live data, part 1: **close approaches to Earth.** A new card lists every asteroid and comet passing closer than 0.05 au (7.5 million km, 19.5 lunar distances) from a week ago to two months ahead, from NASA/JPL's CNEOS (SBDB Close-Approach Data API): date and time in the visitor's time zone, how long until or since, distance in lunar distances and km (with the 3σ range when it is wide, and the 3σ time uncertainty when it is half an hour or more), speed, and the measured size or one estimated from the brightness. A summary gives the count, how many come closer than the Moon, and the closest; the last week can be shown too, with a line for now. Bodies that are on the map can be picked from the list. In all three languages.
