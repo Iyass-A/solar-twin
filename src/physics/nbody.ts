@@ -1,5 +1,6 @@
 // N-body integrator of the physics engine (phase 5): Newtonian gravity between point masses, plus
-// the equatorial bulge (J2) of oblate planets, which matters for their moons.
+// the equatorial bulge (J2) of oblate planets, which matters for their moons, and (if asked)
+// general relativity near the Sun, which matters for Mercury.
 // Steps: the leapfrog (kick-drift-kick, the same as velocity Verlet), or Yoshida's 4th-order
 // composition of three leapfrog steps. Both are symplectic and time-reversible: the energy error
 // stays bounded instead of drifting, and running backwards retraces the path.
@@ -14,7 +15,13 @@ export interface NBody {
   jd: number;       // time, Julian date (TDB)
   /** Oblate bodies: index, J2 × reference radius^2 [au^2], north pole (unit vector) */
   bulges: { i: number; j2r2: number; k: [number, number, number] }[];
+  /** Index of the Sun for general relativity, or -1 without it */
+  relSun: number;
 }
+
+/** Speed of light [au/day] */
+export const C_AU_DAY = 299792.458 * 86400 / 149597870.7;
+const C2 = C_AU_DAY * C_AU_DAY;
 
 interface BodyIn {
   gmAu: number; r: ArrayLike<number>; v: ArrayLike<number>;
@@ -23,10 +30,17 @@ interface BodyIn {
 
 export type Order = 2 | 4;
 
-/** A new system from bodies with gmAu, r, v and maybe a bulge (all copied), at Julian date jd. */
-export function createNBody(bodies: BodyIn[], jd: number): NBody {
+/**
+ * A new system from bodies with gmAu, r, v and maybe a bulge (all copied), at Julian date jd.
+ * With `relativity`, the heaviest body (the Sun) bends the others' paths as general relativity says.
+ */
+export function createNBody(bodies: BodyIn[], jd: number, options: { relativity?: boolean } = {}): NBody {
   const n = bodies.length;
-  const s: NBody = { n, gm: new Float64Array(n), r: new Float64Array(3 * n), v: new Float64Array(3 * n), a: new Float64Array(3 * n), jd, bulges: [] };
+  const heaviest = bodies.reduce((best, b, i) => (b.gmAu > bodies[best].gmAu ? i : best), 0);
+  const s: NBody = {
+    n, gm: new Float64Array(n), r: new Float64Array(3 * n), v: new Float64Array(3 * n), a: new Float64Array(3 * n), jd, bulges: [],
+    relSun: options.relativity ? heaviest : -1,
+  };
   bodies.forEach((b, i) => {
     s.gm[i] = b.gmAu;
     for (let k = 0; k < 3; k++) { s.r[3 * i + k] = b.r[k]; s.v[3 * i + k] = b.v[k]; }
@@ -38,11 +52,21 @@ export function createNBody(bodies: BodyIn[], jd: number): NBody {
 
 /** A copy that can run on its own (for "branch reality"). */
 export function cloneNBody(s: NBody): NBody {
-  return { n: s.n, gm: s.gm.slice(), r: s.r.slice(), v: s.v.slice(), a: s.a.slice(), jd: s.jd, bulges: s.bulges.map((b) => ({ ...b, k: [...b.k] as [number, number, number] })) };
+  return {
+    n: s.n, gm: s.gm.slice(), r: s.r.slice(), v: s.v.slice(), a: s.a.slice(), jd: s.jd, relSun: s.relSun,
+    bulges: s.bulges.map((b) => ({ ...b, k: [...b.k] as [number, number, number] })),
+  };
 }
 
-/** Fills s.a with the pull of every body on every other, each pair once (so momentum is kept exactly). */
+/** Fills s.a with every pull for the current positions and velocities. */
 export function accelerations(s: NBody) {
+  positionalAccelerations(s);
+  addRelativity(s, s.v, s.a);
+}
+
+/** Fills s.a with the pull of every body on every other, each pair once (so momentum is kept exactly),
+ *  and the bulges: everything that depends on positions alone. */
+function positionalAccelerations(s: NBody) {
   const { n, gm, r, a } = s;
   a.fill(0);
   for (let i = 0; i < n; i++) {
@@ -74,13 +98,58 @@ export function accelerations(s: NBody) {
   }
 }
 
-/** One leapfrog step of h days. s.a must belong to the current positions; it does again afterwards. */
+/**
+ * Adds general relativity near the Sun to `a`, for velocities `v` (first post-Newtonian order, the
+ * Sun's field only; as REBOUNDx "gr"): a_i = GM / (c^2 r^3) · [(4 GM / r - v^2) r + 4 (r·v) v], with r
+ * and v from the Sun; the Sun feels -(GM_i/GM) a_i. It turns Mercury's perihelion by 43" a century.
+ */
+function addRelativity(s: NBody, v: Float64Array, a: Float64Array) {
+  const sun = s.relSun;
+  if (sun < 0) return;
+  const { n, gm, r } = s, mu = gm[sun];
+  const sx = r[3 * sun], sy = r[3 * sun + 1], sz = r[3 * sun + 2];
+  const svx = v[3 * sun], svy = v[3 * sun + 1], svz = v[3 * sun + 2];
+  for (let i = 0; i < n; i++) {
+    if (i === sun) continue;
+    const x = r[3 * i] - sx, y = r[3 * i + 1] - sy, z = r[3 * i + 2] - sz;
+    const vx = v[3 * i] - svx, vy = v[3 * i + 1] - svy, vz = v[3 * i + 2] - svz;
+    const r2 = x * x + y * y + z * z, d = Math.sqrt(r2);
+    const f = mu / (C2 * r2 * d), radial = 4 * mu / d - (vx * vx + vy * vy + vz * vz), along = 4 * (x * vx + y * vy + z * vz);
+    const ax = f * (radial * x + along * vx), ay = f * (radial * y + along * vy), az = f * (radial * z + along * vz);
+    a[3 * i] += ax; a[3 * i + 1] += ay; a[3 * i + 2] += az;
+    const back = gm[i] / mu;
+    a[3 * sun] -= back * ax; a[3 * sun + 1] -= back * ay; a[3 * sun + 2] -= back * az;
+  }
+}
+
+const scratch = new WeakMap<NBody, { vHalf: Float64Array; aPos: Float64Array }>();
+
+/**
+ * One leapfrog step of h days. s.a must belong to the current positions and velocities; it does
+ * again afterwards. Relativity depends on the velocity, so with it the last half kick is solved for
+ * the new velocity (two rounds; it is a 10^-8 effect): an older velocity there would make the step
+ * lopsided in time, and the orbits would slowly lose energy (Mercury: 2° off after a century).
+ */
 export function leapfrogStep(s: NBody, h: number) {
   const { r, v, a } = s, m = 3 * s.n, half = h / 2;
   for (let k = 0; k < m; k++) v[k] += half * a[k];
   for (let k = 0; k < m; k++) r[k] += h * v[k];
-  accelerations(s);
-  for (let k = 0; k < m; k++) v[k] += half * a[k];
+  positionalAccelerations(s);
+  if (s.relSun < 0) {
+    for (let k = 0; k < m; k++) v[k] += half * a[k];
+  } else {
+    let buf = scratch.get(s);
+    if (!buf || buf.vHalf.length !== m) { buf = { vHalf: new Float64Array(m), aPos: new Float64Array(m) }; scratch.set(s, buf); }
+    const { vHalf, aPos } = buf;
+    // Two rounds: a guess from the half-step velocity, then from that guess. Relativity is 10^-8 of
+    // the pull, so the second round leaves the velocity and s.a consistent to some 10^-20.
+    vHalf.set(v); aPos.set(a);
+    for (let round = 0; round < 2; round++) {
+      a.set(aPos);
+      addRelativity(s, v, a);
+      for (let k = 0; k < m; k++) v[k] = vHalf[k] + half * a[k];
+    }
+  }
   s.jd += h;
 }
 
@@ -140,31 +209,44 @@ export function momenta(s: NBody): { p: number[]; L: number[] } {
 }
 
 /**
- * Steps per shortest orbit for the default step. Measured against Horizons over a year (November 2026,
- * 4th order): planets as systems (step ≈ 0.32 day) within 0.003° (Mercury), with moons (≈ 0.009 day)
- * the moons within 0.25° of their orbit (Titan, Io). See scripts/check-physics.ts.
+ * Steps per orbit, at the speed of its closest point: the default step is the shortest such time in
+ * the system over STEPS_PER_ORBIT. Measured against Horizons (November 2026, 4th order, relativity on):
+ * planets as systems (step ≈ 0.16 day) within 0.02° of Astronomy Engine from 1800 to 2050 (Mercury);
+ * with moons (≈ 0.0044 day) the moons within a few tenths of a degree of their orbit after a year
+ * (Titan, Io). Half as many steps leave Mercury 0.24° off in 1800. See scripts/check-physics.ts.
  */
-export const STEPS_PER_ORBIT = 200;
+export const STEPS_PER_ORBIT = 400;
 
-/** The default step [days]: the shortest orbit split into STEPS_PER_ORBIT steps. */
-export const defaultStep = (s: NBody) => shortestPeriod(s) / STEPS_PER_ORBIT;
+/** The default step [days]: the shortest orbit, as fast as at its closest point, in STEPS_PER_ORBIT steps. */
+export const defaultStep = (s: NBody) => shortestTimescale(s) / STEPS_PER_ORBIT;
 
 /**
- * The shortest orbital period in the system [days]: each body around whatever pulls on it most,
- * from their distance now. Steps are chosen as a fraction of it.
+ * The shortest time that matters in the system [days]: for each body, its tightest orbit around a
+ * heavier one (from where they are and how they move now: semi-major axis and eccentricity), taken
+ * at its closest point: period × (1 − e)^1.5. So it does not depend on where the bodies are on their
+ * orbits at the start. Bodies bound to nothing heavier (the Sun, a passing star) add nothing.
  */
-export function shortestPeriod(s: NBody): number {
-  const { n, gm, r } = s;
+export function shortestTimescale(s: NBody): number {
+  const { n, gm, r, v } = s;
   let shortest = Infinity;
   for (let i = 0; i < n; i++) {
-    let best = -1, bestPull = 0, bestD = 0;
+    let tightest = Infinity, time = Infinity;
     for (let j = 0; j < n; j++) {
-      if (j === i || gm[j] < gm[i]) continue; // a body orbits something heavier
-      const d = Math.hypot(r[3 * j] - r[3 * i], r[3 * j + 1] - r[3 * i + 1], r[3 * j + 2] - r[3 * i + 2]);
-      const pull = gm[j] / (d * d);
-      if (pull > bestPull) { bestPull = pull; best = j; bestD = d; }
+      if (j === i || gm[j] < gm[i]) continue;
+      const mu = gm[i] + gm[j];
+      const x = r[3 * i] - r[3 * j], y = r[3 * i + 1] - r[3 * j + 1], z = r[3 * i + 2] - r[3 * j + 2];
+      const vx = v[3 * i] - v[3 * j], vy = v[3 * i + 1] - v[3 * j + 1], vz = v[3 * i + 2] - v[3 * j + 2];
+      const d = Math.hypot(x, y, z), v2 = vx * vx + vy * vy + vz * vz;
+      const invA = 2 / d - v2 / mu;
+      if (!(invA > 0)) continue; // not bound to this one
+      const a = 1 / invA;
+      if (a >= tightest) continue;
+      const rv = x * vx + y * vy + z * vz, c = v2 - mu / d;
+      const e = Math.hypot(c * x - rv * vx, c * y - rv * vy, c * z - rv * vz) / mu;
+      tightest = a;
+      time = 2 * Math.PI * Math.sqrt(a ** 3 / mu) * Math.max(0, 1 - e) ** 1.5;
     }
-    if (best >= 0) shortest = Math.min(shortest, 2 * Math.PI * Math.sqrt(bestD ** 3 / (gm[i] + gm[best])));
+    shortest = Math.min(shortest, time);
   }
   return shortest;
 }

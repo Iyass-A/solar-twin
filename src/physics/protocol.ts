@@ -8,13 +8,14 @@
 export type Mode = 'systems' | 'bodies';
 
 export type ToWorker =
-  | { type: 'start'; sim: string; mode: Mode }   // a new sim from the starting state (src/physics/state.ts)
+  // a new sim from the starting state (src/physics/state.ts); relativity near the Sun unless false
+  | { type: 'start'; sim: string; mode: Mode; relativity?: boolean }
   | { type: 'branch'; sim: string; from: string } // a copy of `from`, at its current time
   | { type: 'goto'; sim: string; jd: number }     // run to this time; a newer goto replaces an older one
   | { type: 'drop'; sim: string };
 
 export type FromWorker =
-  | { type: 'ready'; sim: string; mode: Mode; ids: string[]; jd: number; step: number }
+  | { type: 'ready'; sim: string; mode: Mode; relativity: boolean; ids: string[]; jd: number; step: number }
   | { type: 'progress'; sim: string; jd: number; target: number }
   | { type: 'state'; sim: string; jd: number; r: Float64Array; energyError: number; ms: number }
   | { type: 'error'; sim?: string; message: string };

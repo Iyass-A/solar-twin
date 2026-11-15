@@ -34,6 +34,8 @@ Asteroids and comets use the same kind of Sun-only orbit, from JPL's current ele
 
 The uncertainty clouds are drawn from each orbit's covariance in JPL's Small-Body Database. For every body with a cloud, each build compares the cloud's size with Horizons' own position uncertainty, computed with full dynamics: all 1,690 are within 0.8 to 1.25 times of it (median 1.00). For 79 of them it also checks that the samples reproduce the covariance, within the statistical noise of 4,000 samples. A cloud that does not match Horizons is not drawn (61 bodies), and neither is one for a body whose orbit fit includes forces other than gravity (a comet's outgassing, the Yarkovsky push of sunlight; Apophis, most comets), because there our Sun-only samples are off by up to ten times.
 
+The physics engine (in progress, for "branch reality") starts from JPL Horizons on 15 November 2026 and computes gravity between the Sun, the planets and the large moons itself, with general relativity near the Sun and the giant planets' bulges. Each build runs it back to 1800 and on to 2050 and compares it with Astronomy Engine every 30 days: every planet stays within **0.02°** (Mercury), a tenth of the Kepler positions above; the build fails above 0.05°. After a year it is within 50 km of Horizons for every planet, and the large moons within 0.22° of their orbit.
+
 That is plenty for seeing where things are, but it is not meant for pointing a telescope or planning a spacecraft.
 
 ## How it works
@@ -54,7 +56,7 @@ That is plenty for seeing where things are, but it is not meant for pointing a t
 | The "Now in space" screen: a tile for each live source, one card at a time | `src/view/now.ts` |
 | Live data: Deep Space Network, through a small server on Cloudflare Workers (see below) | `workers/dsn/`, `src/live/dsn.ts`, `src/view/dsn.ts`, `src/data/spacecraft.ts`, `.github/workflows/deploy-worker.yml` |
 | Physics engine (in progress): bodies and masses, and their starting state from JPL Horizons (runs on GitHub) | `src/physics/bodies.ts`, `src/physics/state.ts`, `src/data/state-vectors.json`, `scripts/fetch-state-vectors.ts`, `.github/workflows/fetch-state-vectors.yml` |
-| Physics engine (in progress): the N-body integrator (leapfrog and Yoshida 4th order, with the giant planets' equatorial bulges) | `src/physics/nbody.ts` |
+| Physics engine (in progress): the N-body integrator (leapfrog and Yoshida 4th order, with the giant planets' equatorial bulges and relativity near the Sun) | `src/physics/nbody.ts` |
 | Physics engine (in progress): runs in a Web Worker, towards the latest time asked, in slices of a few ms; the page's side, the messages, and a browser test page | `src/physics/worker.ts`, `src/physics/engine.ts`, `src/physics/client.ts`, `src/physics/protocol.ts`, `scripts/browser/physics-worker.html` |
 | 2D map (canvas) | `src/view/orrery.ts` |
 | 3D scene (Three.js) and the stars | `src/view/scene3d.ts`, `src/view/stars.ts` |

@@ -50,9 +50,9 @@ export class Physics {
     this.ready.clear(); this.states.clear();
   }
 
-  /** A new sim from the starting state (15 November 2026). */
-  start(sim: string, mode: Mode): Promise<Ready> {
-    return new Promise((resolve, reject) => { this.ready.set(sim, { resolve, reject }); this.send({ type: 'start', sim, mode }); });
+  /** A new sim from the starting state (15 November 2026), with relativity near the Sun unless told not to. */
+  start(sim: string, mode: Mode, relativity = true): Promise<Ready> {
+    return new Promise((resolve, reject) => { this.ready.set(sim, { resolve, reject }); this.send({ type: 'start', sim, mode, relativity }); });
   }
 
   /** A copy of another sim at its current time, to change and run on its own. */

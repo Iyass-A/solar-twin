@@ -43,7 +43,7 @@ export class Engine {
       if (msg.type === 'start') {
         const list = msg.mode === 'systems' ? [startBodies()[0], ...startSystems()] : startBodies();
         if (list[0].id !== 'sun') throw new Error('the Sun must come first');
-        const s = createNBody(list, EPOCH_JD);
+        const s = createNBody(list, EPOCH_JD, { relativity: msg.relativity !== false });
         this.add(msg.sim, { s, mode: msg.mode, ids: list.map((b) => b.id), h: defaultStep(s), e0: energy(s) });
       } else if (msg.type === 'branch') {
         const from = this.get(msg.from);
@@ -77,7 +77,7 @@ export class Engine {
   private add(id: string, base: Omit<Sim, 'target' | 'run' | 'since' | 'lastProgress'>) {
     if (this.sims.has(id)) throw new Error(`sim "${id}" exists already`);
     this.sims.set(id, { ...base, target: null, run: null, since: 0, lastProgress: -Infinity });
-    this.post({ type: 'ready', sim: id, mode: base.mode, ids: base.ids, jd: base.s.jd, step: base.h });
+    this.post({ type: 'ready', sim: id, mode: base.mode, relativity: base.s.relSun >= 0, ids: base.ids, jd: base.s.jd, step: base.h });
   }
 
   private schedule() {
