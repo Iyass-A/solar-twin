@@ -208,6 +208,8 @@ export interface Strings {
   dsnAgo: (seconds: number) => string;
   dsnOld: (ago: string) => string;
   dsnOff: string;
+  /** On a page that is not our published site (the server only answers that one) */
+  dsnLocal: string;
   dsnNone: string;
 }
 
@@ -568,6 +570,7 @@ const AR: Strings = {
   dsnOld: (ago) => `انتبه: آخر بيانات بعتتها ناسا كانت ${ago}. يمكن في مشكلة عندهم.`,
   dsnOff: 'الربط المباشر مع شبكة الفضاء العميق لسا ما انعمل. قريباً بيشتغل هون.',
   dsnNone: 'ما قدرنا نجيب بيانات من ناسا هلأ. منرجع منجرّب بعد دقيقة.',
+  dsnLocal: 'ما في بيانات حيّة هون. عالموقع المنشور بتتحدّث كل دقيقة من ناسا.',
 };
 
 const DE: Strings = {
@@ -820,6 +823,7 @@ const DE: Strings = {
   dsnOld: (ago) => `Hinweis: Die neuesten Daten der NASA kamen ${ago}. Vielleicht gibt es dort ein Problem.`,
   dsnOff: 'Die Live-Verbindung zum Deep Space Network ist noch nicht eingerichtet. Bald gibt es sie hier.',
   dsnNone: 'Gerade kommen keine Daten von der NASA. Wir versuchen es in einer Minute wieder.',
+  dsnLocal: 'Hier gibt es keine Live-Daten. Auf der veröffentlichten Seite kommen sie jede Minute neu von der NASA.',
 };
 
 const EN: Strings = {
@@ -1076,6 +1080,7 @@ const EN: Strings = {
   dsnOld: (ago) => `Note: NASA’s latest data came ${ago}. There may be a problem on their side.`,
   dsnOff: 'The live link to the Deep Space Network is not set up yet. It will show here soon.',
   dsnNone: 'No data from NASA right now. We will try again in a minute.',
+  dsnLocal: 'No live data here. On the published site it comes fresh from NASA every minute.',
 };
 
 export const STRINGS: Record<Lang, Strings> = { ar: AR, de: DE, en: EN };

@@ -18,6 +18,7 @@ Version 0.3, public beta.
 - **Uncertainty clouds.** Around a picked asteroid or comet (1,690 of them have one), 300 possible orbits that all fit JPL's observations show where it could really be: ±80 m for Ceres, ±110 km for 2024 YR4, nearly a million km for Arrokoth. Too small to see at this scale, the cloud is drawn enlarged and says by how much; its shape and its size in km are real.
 - **Close approaches to Earth, live.** Every asteroid and comet passing closer than 7.5 million km (19.5 times the Moon's distance), from a week ago to two months ahead, from NASA/JPL's CNEOS, refreshed every 3 hours: when, how close (in lunar distances and km, with the range where the orbit is still uncertain), how fast, and about how big. Those on the map can be picked from the list.
 - **Space weather, live.** NOAA's storm levels now, over the last 24 hours and for the next days (radio blackouts, solar radiation storms, geomagnetic storms), the 3-hour Kp index of the last 3 days with its forecast as a chart, the solar flares of the last week, and the clouds from the Sun (CMEs) that NASA's WSA-Enlil model expects to reach Earth.
+- **Deep Space Network, live.** Which spacecraft NASA's antennas at Goldstone, Madrid and Canberra are talking to right now (NASA's DSN Now), refreshed every minute: how many are in contact and the farthest, and for each antenna the spacecraft, its data rate, its distance, how long its signal takes, and roughly where it is.
 - **Pick a planet** to see its distance from the Sun and from Earth, and how long its light takes to reach us.
 - **Three languages.** Arabic (right to left), German and English. Add `?lang=ar`, `?lang=de` or `?lang=en` to the address to share a link in one language.
 
@@ -49,12 +50,13 @@ That is plenty for seeing where things are, but it is not meant for pointing a t
 | Asteroids and comets for the views; covariances loaded when one is picked | `src/view/smallbodies.ts`, `public/data/cov/` |
 | Live data: close approaches to Earth (fetched on GitHub before each deploy, checked, never committed) | `scripts/fetch-close-approaches.ts`, `src/live/closeApproaches.ts`, `src/view/approaches.ts` |
 | Live data: space weather, and the Kp chart | `scripts/fetch-space-weather.ts`, `src/live/spaceWeather.ts`, `src/view/spaceWeather.ts`, `src/view/kpChart.ts` |
+| Live data: Deep Space Network, through a small server on Cloudflare Workers (see below) | `workers/dsn/`, `src/live/dsn.ts`, `src/view/dsn.ts`, `src/data/spacecraft.ts`, `.github/workflows/deploy-worker.yml` |
 | 2D map (canvas) | `src/view/orrery.ts` |
 | 3D scene (Three.js) and the stars | `src/view/scene3d.ts`, `src/view/stars.ts` |
 | Texts in three languages | `src/i18n.ts` |
 | All self-checks | `scripts/check.ts` |
 
-Everything runs in the browser. There is no server, no cookies, and nothing is loaded from other sites; only the chosen language is saved in your browser. The live data is fetched from JPL, NOAA and NASA on GitHub, every 3 hours and before each deploy, and published as files with the site. If a source does not answer, the previous data stays, and the page says how old it is.
+Everything runs in the browser, with no cookies; only the chosen language is saved in your browser. Nothing is loaded from other sites except the Deep Space Network data: it changes every few seconds, so the page asks our own small server for it once a minute while the tab is visible (`solar-twin-dsn.solar-twin.workers.dev`, on Cloudflare Workers). That server asks NASA at most once a minute however many people look, answers only pages on this site, sets no cookies and keeps no logs. The other live data is fetched from JPL, NOAA and NASA on GitHub, every 3 hours and before each deploy, and published as files with the site. If a source does not answer, the previous data stays, and the page says how old it is.
 
 ## Run it locally
 
@@ -74,7 +76,7 @@ npm run check
 ```
 
 Every push to `main`, and a run every 3 hours, fetches the live data, runs the checks, builds the site and publishes it to GitHub Pages.
-Locally there is no live data, and the live cards say so.
+Locally there is no live data, and the live cards say so. The Deep Space Network server is published by its own workflow, only when the repository has the secrets `CLOUDFLARE_API_TOKEN` (a token that may only edit Workers on one account) and `CLOUDFLARE_ACCOUNT_ID`; without them it does nothing.
 
 ## Data and libraries
 
@@ -85,6 +87,7 @@ Locally there is no live data, and the live cards say so.
 - Asteroids and comets: orbits and their covariance from the [JPL Small-Body Database](https://ssd-api.jpl.nasa.gov/doc/sbdb.html), checked against [JPL Horizons](https://ssd.jpl.nasa.gov/horizons/). The well-known bodies are listed in `data/small-bodies.txt`, the groups in `data/small-body-groups.json`; the "Fetch small-body data" workflow refreshes them into the branch `data-update` for review.
 - Close approaches: [CNEOS](https://cneos.jpl.nasa.gov/ca/), NASA/JPL, through the [SBDB Close-Approach Data API](https://ssd-api.jpl.nasa.gov/doc/cad.html). Sizes without a measured diameter are estimated from the brightness (albedo 0.05 to 0.25), as CNEOS does.
 - Space weather: [NOAA Space Weather Prediction Center](https://www.swpc.noaa.gov/) (storm scales, Kp index and forecast, GOES flares), and CME arrival forecasts from NASA's [DONKI](https://kauai.ccmc.gsfc.nasa.gov/DONKI/) (CCMC, WSA-Enlil model, experimental) through api.nasa.gov.
+- Deep Space Network: [DSN Now](https://eyes.nasa.gov/dsn/), NASA/JPL (`dsn.xml` and `config.xml`), read by our server on Cloudflare Workers.
 - 3D: [Three.js](https://threejs.org/) (MIT)
 
 Their licence notices are collected in `public/THIRD-PARTY-LICENSES.txt`, which is published with the site.
@@ -110,7 +113,7 @@ See the GNU Affero General Public License for more details.
 
 ## What's next
 
-More live data (Deep Space Network), a physics sandbox to "branch reality", a trip planner, and a guide you can ask questions in three languages.
+A "now" screen that brings the live data together, a physics sandbox to "branch reality", a trip planner, and a guide you can ask questions in three languages.
 
 Found something wrong, or have an idea? [Open an issue](https://github.com/Iyass-A/solar-twin/issues/new).
 

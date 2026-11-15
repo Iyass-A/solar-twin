@@ -672,6 +672,9 @@ for (const [code, e] of Object.entries(SPACECRAFT)) {
   for (const l of LANGS) if (e[l.id] !== undefined && (!e[l.id]!.trim() || /[<>]/.test(e[l.id]!))) dsnFail(`${code}: name in ${l.id}`);
 }
 for (const l of LANGS) for (const w of WHERE_KEYS) if (!STRINGS[l.id].dsnWhere[w]?.trim()) dsnFail(`${l.id}: no words for "${w}"`);
+// The page's address for the server: https, a bare host, and the server must allow our site
+if (dsn.DSN_WORKER_URL && !/^https:\/\/[a-z0-9.-]+\/$/.test(dsn.DSN_WORKER_URL)) dsnFail(`server address "${dsn.DSN_WORKER_URL}"`);
+if (dsn.ALLOWED_ORIGIN !== 'https://iyass-a.github.io') dsnFail(`allowed site ${dsn.ALLOWED_ORIGIN}`);
 failed ||= !dsnOk;
 console.log(`\nDeep Space Network: ${dsnOk ? 'OK' : 'FAIL'}; ${dsnSummaryNote}; server ${dsn.DSN_WORKER_URL || 'not deployed yet'}`);
 

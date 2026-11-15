@@ -4,7 +4,7 @@
 // It always shows real time, whatever the simulation clock says.
 // Our texts (src/i18n.ts) contain no markup; values from the server pass dsnProblems() and are escaped anyway.
 
-import { contacts, dsnProblems, inContact, type DsnDish, type DsnFile, type DsnLink } from '../live/dsn';
+import { ALLOWED_ORIGIN, contacts, dsnProblems, inContact, type DsnDish, type DsnFile, type DsnLink } from '../live/dsn';
 import { SPACECRAFT, spacecraftName } from '../data/spacecraft';
 import { STRINGS, clock, lang, num, numGrouped, t, type Lang, type Strings } from '../i18n';
 
@@ -53,7 +53,7 @@ export function activityKind(a: string): ActivityKind | null {
 
 export class DsnCard {
   private file: DsnFile | null = null;
-  private state: 'loading' | 'off' | 'none' | 'ok' = 'loading';
+  private state: 'loading' | 'off' | 'local' | 'none' | 'ok' = 'loading';
   private url = '';
   private timer: number | undefined;
   private readonly root: HTMLElement;
@@ -70,10 +70,13 @@ export class DsnCard {
     });
   }
 
-  /** Starts asking the server (url empty: the server is not set up yet, the card says so). */
+  /**
+   * Starts asking the server. url empty: the server is not set up yet. Pages anywhere but our site
+   * (npm run dev, copies elsewhere) are refused by the server, so they do not ask; both say so.
+   */
   load(url: string) {
+    if (!url || location.origin !== ALLOWED_ORIGIN) { this.state = url ? 'local' : 'off'; this.render(); return; }
     this.url = url;
-    if (!url) { this.state = 'off'; this.render(); return; }
     void this.fetchNow();
   }
 
@@ -109,7 +112,7 @@ export class DsnCard {
     this.root.querySelector('.dsn-intro')!.textContent = s.dsnIntro;
     const f = this.file;
     if (this.state !== 'ok' || !f) {
-      const msg = { loading: s.caLoading, off: s.dsnOff, none: s.dsnNone, ok: '' }[this.state];
+      const msg = { loading: s.caLoading, off: s.dsnOff, local: s.dsnLocal, none: s.dsnNone, ok: '' }[this.state];
       this.body.innerHTML = `<p class="sub">${msg}</p>`;
       return;
     }

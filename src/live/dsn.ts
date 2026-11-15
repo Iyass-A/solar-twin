@@ -11,10 +11,10 @@ export const DSN_CONFIG_URL = 'https://eyes.nasa.gov/dsn/config.xml';
 /** The only site whose pages may read the server's answer. */
 export const ALLOWED_ORIGIN = 'https://iyass-a.github.io';
 /**
- * Our server on Cloudflare (workers/dsn/), where the page gets the data. Empty until the server is
- * deployed: then the card says the live link is not set up yet.
+ * Our server on Cloudflare (workers/dsn/), where the page gets the data (published by
+ * .github/workflows/deploy-worker.yml). Empty: the card says the live link is not set up yet.
  */
-export const DSN_WORKER_URL = '';
+export const DSN_WORKER_URL = 'https://solar-twin-dsn.solar-twin.workers.dev/';
 
 /** Speed of light [km/s]. */
 export const C_KM_S = 299_792.458;
