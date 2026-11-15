@@ -72,7 +72,9 @@ async function fetchBody(naif: number): Promise<Fetched> {
   const head = text.slice(0, start);
 
   const target = /Target body name:\s*(.+?)\s*\{source:\s*([^}]+)\}/.exec(head);
-  if (!target || !target[1].includes(`(${naif})`)) throw new Error(`Horizons answered for "${target?.[1]}", not ${naif}`);
+  // A barycentre may carry its planet's number when the planet has no moons ("Mercury Barycenter (199)")
+  const named = naif < 10 ? /Barycenter/.test(target?.[1] ?? '') : target?.[1].includes(`(${naif})`);
+  if (!target || !named) throw new Error(`Horizons answered for "${target?.[1]}", not ${naif}`);
   const center = /Center body name:\s*(.+?)\s{2,}/.exec(head)?.[1] ?? '';
   if (!center.includes('(0)')) throw new Error(`Centre is "${center}", not the solar-system barycentre`);
 
