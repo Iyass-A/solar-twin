@@ -76,9 +76,10 @@ async function main() {
   if (s) console.log(`  scales now R${s.now.r} S${s.now.s} G${s.now.g} (${s.at}); next days: ${s.days.map((d) => `${d.date} G${d.g ?? '?'} R1-2 ${d.rMinor ?? '?'}% R3+ ${d.rMajor ?? '?'}% S1+ ${d.s ?? '?'}%`).join(' | ')}`);
   const kp = file.kp?.data;
   if (kp) {
-    const past = kp.filter((k) => k.kind !== 'predicted');
+    // SWPC calls the rest of today "estimated" too: what is past is decided by the time
+    const past = kp.filter((k) => Date.parse(k.t) + 3 * 3_600_000 <= now);
     const last = past[past.length - 1];
-    const maxAhead = Math.max(...kp.filter((k) => k.kind === 'predicted').map((k) => k.kp));
+    const maxAhead = Math.max(...kp.filter((k) => Date.parse(k.t) >= now).map((k) => k.kp));
     console.log(`  Kp: ${kp.length} values ${kp[0].t} to ${kp[kp.length - 1].t}; latest ${last?.kp} (${last?.kind}, ${last?.t}); highest forecast ${maxAhead} (G${gFromKp(maxAhead)})`);
   }
   const fl = file.flares?.data;
