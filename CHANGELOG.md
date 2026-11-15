@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.4.0 (15 November 2026), public beta
 
 - Live data, part 1: **close approaches to Earth.** A new card lists every asteroid and comet passing closer than 0.05 au (7.5 million km, 19.5 lunar distances) from a week ago to two months ahead, from NASA/JPL's CNEOS (SBDB Close-Approach Data API): date and time in the visitor's time zone, how long until or since, distance in lunar distances and km (with the 3σ range when it is wide, and the 3σ time uncertainty when it is half an hour or more), speed, and the measured size or one estimated from the brightness. A summary gives the count, how many come closer than the Moon, and the closest; the last week can be shown too, with a line for now. Bodies that are on the map can be picked from the list. In all three languages.
 - Live data, part 2: **space weather.** A second card shows NOAA's space weather scales now and their highest in the last 24 hours (radio blackouts R, solar radiation storms S, geomagnetic storms G, each with what it does), the forecast for the next days, the 3-hour Kp index of the last 3 days and its forecast as a chart (colour by storm level with a legend, a line for now, lighter forecast bars, a tooltip by mouse, touch or arrow keys, and the values as a table), the solar flares of the last 7 days with the strongest, and the CMEs that NASA's WSA-Enlil runs (DONKI) expect to reach Earth, marked as experimental. Each part says when it is missing or more than 12 hours old.
