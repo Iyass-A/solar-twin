@@ -26,7 +26,7 @@ import * as worker from '../workers/dsn/src/index';
 import { SPACECRAFT, WHERE_KEYS } from '../src/data/spacecraft';
 import { checkStartingState, checkIntegrator, checkEngine, checkLongRange, checkEdits, checkScenarios } from './check-physics';
 import { SCENARIOS } from '../src/physics/scenarios';
-import { checkHohmann, checkLambert } from './check-transfer';
+import { checkHohmann, checkLambert, checkPorkchop } from './check-transfer';
 
 const MAX_ERROR_DEG = 1;
 const DAY_MS = 86_400_000;
@@ -721,6 +721,7 @@ failed = !(await checkScenarios()) || failed;
 // Trip planner (phase 6), see scripts/check-transfer.ts
 failed = !checkHohmann() || failed;
 failed = !checkLambert() || failed;
+failed = !checkPorkchop() || failed;
 
 console.log(failed ? '\nRESULT: FAIL' : '\nRESULT: OK');
 if (failed) process.exitCode = 1;

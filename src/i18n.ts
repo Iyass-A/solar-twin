@@ -305,6 +305,27 @@ export interface Strings {
     way: (deg: string, type: 1 | 2) => string;
     badDates: string;
     noTrip: string;
+    // Step 3: the porkchop map of launch dates
+    mapTitle: string;
+    mapIntro: string;
+    colorBy: string;
+    measures: { c3: string; dv: string };
+    units: { c3: string; dv: string };
+    axisDepart: string;
+    axisDays: string;
+    axisYears: string;
+    computing: string;
+    cheaper: string;
+    dearer: string;
+    marks: string;
+    /** The cheapest trip of a type: dates, time on the way and the value come formatted */
+    best: (type: 1 | 2, depart: string, arrive: string, duration: string, value: string) => string;
+    pick: string;
+    typeName: (type: 1 | 2) => string;
+    nearHalf: string;
+    /** After a cheapest trip that lies on the map's edge */
+    edge: string;
+    mapAria: string;
   };
 }
 
@@ -787,6 +808,24 @@ const AR: Strings = {
     way: (deg, type) => `المسار بيلف ${deg} حوالين الشمس: ${type === 1 ? 'النوع الأول (أقل من نص لفّة)' : 'النوع التاني (أكتر من نص لفّة)'}.`,
     badDates: 'لازم يكون يوم الوصول بعد يوم الانطلاق.',
     noTrip: 'ما في مسار واحد لهالتاريخين (الأرض والكوكب بجهتين متعاكستين بالظبط). جرّب يوم تاني.',
+    mapTitle: 'خريطة مواعيد الانطلاق',
+    mapIntro: 'كل نقطة بالخريطة رحلة محسوبة بالظبط: يوم الانطلاق عالمحور الأفقي، ومدة الرحلة عالعمودي، واللون قديش بتكلّف. كل ما كان اللون أفتح، كل ما كانت أرخص. اكبس على أي نقطة لتشوف حسابها تحت. الخط المتقطّع بيفصل بين النوع الأول (تحت) والنوع التاني (فوق).',
+    colorBy: 'اللون حسب',
+    measures: { c3: 'طاقة الإطلاق (C3)', dv: 'المجموع (Δv)' },
+    units: { c3: 'كم²/ث²', dv: 'كم/ث' },
+    axisDepart: 'يوم الانطلاق',
+    axisDays: 'مدة الرحلة (يوم)',
+    axisYears: 'مدة الرحلة (سنة)',
+    computing: 'عم يحسب الخريطة…',
+    cheaper: 'أرخص',
+    dearer: 'أغلى',
+    marks: 'I وII: أرخص رحلة من كل نوع · H: تقدير هوهمان · الدايرة البيضا: الرحلة المحسوبة تحت. بالكيبورد، الأسهم بتحرّك الدايرة.',
+    best: (type, d, a, dur, v) => `أرخص رحلة من النوع ${type === 1 ? 'الأول' : 'التاني'}: انطلاق ${d}، وصول ${a} (${dur})، ${v}.`,
+    pick: 'اختارها',
+    typeName: (type) => (type === 1 ? 'النوع الأول' : 'النوع التاني'),
+    nearHalf: 'هالرحلة بتلف تقريباً نص لفّة بالظبط: مستوى المسار بالكاد محدد، والأرقام بتتغيّر كتير من يوم ليوم. المهمات الحقيقية بتتجنّب هالخط.',
+    edge: '(على طرف الخريطة، فممكن تكون في رحلة أرخص برّاها)',
+    mapAria: 'خريطة مواعيد الانطلاق: يوم الانطلاق ومدة الرحلة، ملوّنة حسب الكلفة',
   },
 };
 
@@ -1157,6 +1196,24 @@ const DE: Strings = {
     way: (deg, type) => `Die Bahn führt ${deg} um die Sonne: ${type === 1 ? 'Typ I (weniger als eine halbe Runde)' : 'Typ II (mehr als eine halbe Runde)'}.`,
     badDates: 'Die Ankunft muss nach dem Start liegen.',
     noTrip: 'Für diese beiden Tage gibt es keine eindeutige Bahn (Erde und Planet stehen sich genau gegenüber). Versuch einen anderen Tag.',
+    mapTitle: 'Karte der Starttermine',
+    mapIntro: 'Jeder Punkt der Karte ist ein genau gerechneter Flug: der Starttag auf der waagrechten Achse, die Flugdauer auf der senkrechten, und die Farbe zeigt, was er kostet. Je heller, desto billiger. Tippe auf einen Punkt, um seine Rechnung unten zu sehen. Die gestrichelte Linie trennt Typ I (unten) von Typ II (oben).',
+    colorBy: 'Farbe nach',
+    measures: { c3: 'Startenergie (C3)', dv: 'Zusammen (Δv)' },
+    units: { c3: 'km²/s²', dv: 'km/s' },
+    axisDepart: 'Starttag',
+    axisDays: 'Flugdauer (Tage)',
+    axisYears: 'Flugdauer (Jahre)',
+    computing: 'Die Karte wird berechnet …',
+    cheaper: 'billiger',
+    dearer: 'teurer',
+    marks: 'I und II: der billigste Flug jedes Typs · H: Hohmann-Schätzung · weißer Kreis: der Flug, der unten gerechnet ist. Mit der Tastatur bewegen die Pfeiltasten den Kreis.',
+    best: (type, d, a, dur, v) => `Billigster Flug vom Typ ${type === 1 ? 'I' : 'II'}: Start am ${d}, Ankunft am ${a} (${dur}), ${v}.`,
+    pick: 'Auswählen',
+    typeName: (type) => (type === 1 ? 'Typ I' : 'Typ II'),
+    nearHalf: 'Dieser Flug geht fast genau eine halbe Runde: Die Ebene der Bahn ist kaum bestimmt, und die Zahlen ändern sich von Tag zu Tag stark. Echte Missionen meiden diese Linie.',
+    edge: '(am Rand der Karte, außerhalb gibt es vielleicht einen billigeren Flug)',
+    mapAria: 'Karte der Starttermine: Starttag und Flugdauer, gefärbt nach den Kosten',
   },
 };
 
@@ -1531,6 +1588,24 @@ const EN: Strings = {
     way: (deg, type) => `The path goes ${deg} round the Sun: ${type === 1 ? 'type I (less than half a turn)' : 'type II (more than half a turn)'}.`,
     badDates: 'The arrival must come after the departure.',
     noTrip: 'There is no single path for these two days (Earth and the planet are exactly opposite each other). Try another day.',
+    mapTitle: 'Map of launch dates',
+    mapIntro: 'Each point on the map is a trip worked out exactly: the launch day across, the time on the way up, and the colour shows what it costs. The lighter, the cheaper. Tap any point to see its numbers below. The dashed line separates type I (below) from type II (above).',
+    colorBy: 'Colour by',
+    measures: { c3: 'Launch energy (C3)', dv: 'Both burns (Δv)' },
+    units: { c3: 'km²/s²', dv: 'km/s' },
+    axisDepart: 'Launch day',
+    axisDays: 'Time on the way (days)',
+    axisYears: 'Time on the way (years)',
+    computing: 'Working out the map…',
+    cheaper: 'cheaper',
+    dearer: 'dearer',
+    marks: 'I and II: the cheapest trip of each type · H: the Hohmann estimate · white circle: the trip worked out below. With a keyboard, the arrow keys move the circle.',
+    best: (type, d, a, dur, v) => `Cheapest trip of type ${type === 1 ? 'I' : 'II'}: leave on ${d}, arrive on ${a} (${dur}), ${v}.`,
+    pick: 'Pick it',
+    typeName: (type) => (type === 1 ? 'type I' : 'type II'),
+    nearHalf: 'This trip goes almost exactly half way round: the plane of its path is barely defined, and the numbers change a lot from day to day. Real missions avoid this line.',
+    edge: '(on the edge of the map, so there may be a cheaper trip beyond it)',
+    mapAria: 'Map of launch dates: launch day and time on the way, coloured by cost',
   },
 };
 

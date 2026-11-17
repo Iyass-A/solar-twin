@@ -674,3 +674,21 @@ button.now-tile[aria-selected="true"] { border-color: #4f9dff; box-shadow: inset
 .trip .tp-exact-intro { margin: 4px 0 10px; line-height: 1.6; }
 .trip .tp-dates { gap: 12px; }
 .trip .tp-facts[hidden] { display: none; }
+/* Step 3: the porkchop map */
+.trip .tp-map-title { margin-top: 20px; padding-top: 14px; border-top: 1px solid #2a3050; }
+.trip .tp-map-intro { margin: 4px 0 10px; line-height: 1.6; }
+.trip .tp-map { position: relative; margin: 2px 0; }
+.trip .tp-canvas { display: block; cursor: crosshair; touch-action: manipulation; border-radius: 4px; }
+.trip .tp-canvas:focus { outline: none; }
+.trip .tp-canvas:focus-visible { outline: 2px solid #4f9dff; outline-offset: 2px; }
+.trip .tp-axis-y { text-align: left; font-size: 0.8rem; margin: 10px 0 2px; }
+.trip .tp-axis-x { text-align: center; font-size: 0.8rem; margin: 0 0 8px; }
+.trip .tp-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 0.78rem; color: #9aa0b4; }
+.trip .tp-legend-title { color: #c3c7d6; }
+.trip .tp-end { font-weight: 600; color: #c3c7d6; }
+.trip .tp-sw { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; }
+.trip .tp-sw i { display: block; width: 34px; height: 10px; border-radius: 2px; }
+.trip .tp-marks { margin: 8px 0 0; line-height: 1.6; }
+.trip .tp-marks[hidden] { display: none; }
+.trip .tp-pick { font-size: 0.85rem; padding: 3px 10px; margin-inline-start: 6px; }
+.trip .tp-tip { min-width: 150px; }

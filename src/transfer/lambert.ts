@@ -3,9 +3,10 @@
 // and the one it has at the end. With the planets' real positions on two real dates, that is a real trip,
 // on their stretched and tilted orbits, not the circles of the Hohmann estimate.
 //
-// Method: universal variables with bisection on psi (Vallado, Fundamentals of Astrodynamics and Applications,
-// algorithm "Lambert, universal variables"; the same equations as Curtis, algorithm 5.2). For less than one
-// revolution the time of flight grows steadily with psi, so bisection always finds the one answer.
+// Method: universal variables (Vallado, Fundamentals of Astrodynamics and Applications, algorithm "Lambert,
+// universal variables"; the same equations as Curtis, algorithm 5.2). For less than one revolution the time
+// of flight grows steadily with psi, so the answer is bracketed and found with the Illinois method (regula falsi
+// that halves a stale end), falling back to bisection: a few iterations instead of some sixty.
 
 import * as Astronomy from 'astronomy-engine';
 import { stumpff } from '../physics/orbit';
@@ -51,15 +52,29 @@ export function lambert(mu: number, r1: Vec, r2: Vec, tof: number): Lambert | nu
     return { t: (chi ** 3 * c3 + A * Math.sqrt(y)) / sq, y, c2 };
   };
 
-  let lo = -4 * Math.PI, hi = 4 * Math.PI * Math.PI; // 4π² is a whole revolution: there the time is endless
+  // A bracket: below lo the trip is too short (or impossible), at hi too long. 4π² is a whole revolution,
+  // where the time is endless, so hi starts just short of it.
+  let lo = -4 * Math.PI, hi = 4 * Math.PI * Math.PI * (1 - 1e-9);
   for (let k = 0; k < 60 && flight(lo).t > tof; k++) lo *= 2; // a very fast (hyperbolic) trip
-  let y = NaN;
-  for (let it = 0; it < 200; it++) {
-    const psi = (lo + hi) / 2;
+  let flo = flight(lo).t - tof, fhi = flight(hi).t - tof;
+  let y = NaN, side = 0;
+  for (let it = 0; it < 300; it++) {
+    // Regula falsi while both ends have a time; bisection otherwise, or when it would not move inside
+    let psi = Number.isFinite(flo) && Number.isFinite(fhi) ? (lo * fhi - hi * flo) / (fhi - flo) : (lo + hi) / 2;
+    if (!(psi > lo && psi < hi)) psi = (lo + hi) / 2;
     const f = flight(psi);
     y = f.y;
-    if (Math.abs(f.t - tof) <= 1e-11 * tof || hi - lo < 1e-14) break;
-    if (f.t < tof) lo = psi; else hi = psi;
+    const d = f.t - tof;
+    if (Math.abs(d) <= 1e-11 * tof || hi - lo < 1e-14) break;
+    if (d < 0) {
+      lo = psi; flo = d;
+      if (side === -1) fhi /= 2; // the high end stayed twice: halve it (Illinois)
+      side = -1;
+    } else {
+      hi = psi; fhi = d;
+      if (side === 1) flo /= 2;
+      side = 1;
+    }
   }
   if (!(y > 0)) return null;
   const f = 1 - y / R1, g = A * Math.sqrt(y / mu), gdot = 1 - y / R2;
@@ -106,7 +121,11 @@ export interface RealTrip {
 /** A ballistic trip from the Earth to a planet, leaving at departJd and arriving at arriveJd (Julian Dates). */
 export function realTrip(target: PlanetId, departJd: number, arriveJd: number): RealTrip | null {
   if (!(arriveJd > departJd)) return null;
-  const e = planetState('earth', departJd), p = planetState(target, arriveJd);
+  return tripFromStates(target, departJd, arriveJd, planetState('earth', departJd), planetState(target, arriveJd));
+}
+
+/** The same, from the Earth's state at departure and the target's at arrival (a porkchop grid reuses them). */
+export function tripFromStates(target: PlanetId, departJd: number, arriveJd: number, e: { r: Vec; v: Vec }, p: { r: Vec; v: Vec }): RealTrip | null {
   const l = lambert(SUN_GM, e.r, p.r, (arriveJd - departJd) * DAY_S);
   if (!l) return null;
   const inf1: Vec = [0, 1, 2].map((k) => l.v1[k] - e.v[k]) as Vec;
