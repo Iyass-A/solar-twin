@@ -296,6 +296,15 @@ export interface Strings {
     outside: string;
     note: string;
     giants: string;
+    // Step 2: Lambert's problem, for two dates the visitor picks
+    exactTitle: string;
+    exactIntro: string;
+    departDate: string;
+    arriveDate: string;
+    /** How far round the Sun the path goes (angle comes formatted, with °), and its type */
+    way: (deg: string, type: 1 | 2) => string;
+    badDates: string;
+    noTrip: string;
   };
 }
 
@@ -769,8 +778,15 @@ const AR: Strings = {
     },
     jump: 'روح لموعد الانطلاق',
     outside: 'هالموعد بعد 2050، وشريط الزمن ما بيوصل لهونيك.',
-    note: 'تقريب: هوهمان بيعتبر المدارين دواير بنفس المستوى. المدارات الحقيقية ممطوطة ومايلة شوي، فالموعد الحقيقي والأرقام بتختلف شوي. الحساب الدقيق لتواريخ حقيقية جاي قريباً.',
+    note: 'تقريب: هوهمان بيعتبر المدارين دواير بنفس المستوى. المدارات الحقيقية ممطوطة ومايلة شوي، فالموعد الحقيقي والأرقام بتختلف شوي. للأرقام الحقيقية: الحساب الدقيق تحت.',
     giants: 'للكواكب البعيدة، المركبات الحقيقية بتمرق جنب كواكب تانية لتاخد منها دفشة جاذبية، متل فوياجر 2 اللي وصلت لنبتون بـ 12 سنة، وبتدخل بمدار ممطوط بدل مدار قريب. هيك بتوصل أسرع وبوقود أقل بكتير.',
+    exactTitle: 'حساب دقيق لتواريخ بتختارها',
+    exactIntro: 'هون الحساب بالمدارات الحقيقية (ممطوطة ومايلة): بتختار يوم الانطلاق ويوم الوصول، ومنلاقي المسار حوالين الشمس اللي بيوصل من مكان الأرض بأول يوم لمكان الكوكب بتاني يوم (مسألة لامبرت).',
+    departDate: 'يوم الانطلاق',
+    arriveDate: 'يوم الوصول',
+    way: (deg, type) => `المسار بيلف ${deg} حوالين الشمس: ${type === 1 ? 'النوع الأول (أقل من نص لفّة)' : 'النوع التاني (أكتر من نص لفّة)'}.`,
+    badDates: 'لازم يكون يوم الوصول بعد يوم الانطلاق.',
+    noTrip: 'ما في مسار واحد لهالتاريخين (الأرض والكوكب بجهتين متعاكستين بالظبط). جرّب يوم تاني.',
   },
 };
 
@@ -1132,8 +1148,15 @@ const DE: Strings = {
     },
     jump: 'Zum Starttermin',
     outside: 'Dieser Termin liegt nach 2050, so weit reicht die Zeitleiste nicht.',
-    note: 'Eine Näherung: Hohmann nimmt beide Bahnen als Kreise in einer Ebene. Die echten Bahnen sind etwas gestreckt und geneigt, darum weichen der echte Termin und die Zahlen etwas ab. Die genaue Rechnung für echte Daten kommt bald.',
+    note: 'Eine Näherung: Hohmann nimmt beide Bahnen als Kreise in einer Ebene. Die echten Bahnen sind etwas gestreckt und geneigt, darum weichen der echte Termin und die Zahlen etwas ab. Die echten Zahlen gibt die genaue Rechnung unten.',
     giants: 'Zu den äußeren Planeten fliegen echte Sonden an anderen Planeten vorbei und holen sich dort Schwung, wie Voyager 2, die in 12 Jahren bei Neptun war, und sie schwenken in eine gestreckte statt in eine niedrige Umlaufbahn ein. So sind sie schneller und brauchen viel weniger Treibstoff.',
+    exactTitle: 'Genau gerechnet, für Tage deiner Wahl',
+    exactIntro: 'Hier wird mit den echten Bahnen gerechnet (gestreckt und geneigt): Du wählst den Start- und den Ankunftstag, und wir suchen die Bahn um die Sonne, die die Erde am ersten Tag mit dem Planeten am zweiten verbindet (das Lambert-Problem).',
+    departDate: 'Start',
+    arriveDate: 'Ankunft',
+    way: (deg, type) => `Die Bahn führt ${deg} um die Sonne: ${type === 1 ? 'Typ I (weniger als eine halbe Runde)' : 'Typ II (mehr als eine halbe Runde)'}.`,
+    badDates: 'Die Ankunft muss nach dem Start liegen.',
+    noTrip: 'Für diese beiden Tage gibt es keine eindeutige Bahn (Erde und Planet stehen sich genau gegenüber). Versuch einen anderen Tag.',
   },
 };
 
@@ -1499,8 +1522,15 @@ const EN: Strings = {
     },
     jump: 'Go to the launch date',
     outside: 'This date is after 2050, beyond the time bar.',
-    note: 'An estimate: Hohmann takes both orbits as circles in one plane. The real orbits are a little stretched and tilted, so the real date and numbers differ a little. The exact calculation for real dates is coming soon.',
+    note: 'An estimate: Hohmann takes both orbits as circles in one plane. The real orbits are a little stretched and tilted, so the real date and numbers differ a little. For the real numbers, see the exact calculation below.',
     giants: 'To the outer planets, real spacecraft fly past other planets to pick up speed from their gravity, like Voyager 2, which reached Neptune in 12 years, and they go into a stretched orbit rather than a low one. That way they are faster and need far less fuel.',
+    exactTitle: 'Worked out exactly, for dates you choose',
+    exactIntro: 'Here the real orbits are used (stretched and tilted): choose the day to leave and the day to arrive, and we find the path round the Sun that joins Earth on the first day to the planet on the second (Lambert’s problem).',
+    departDate: 'Leave',
+    arriveDate: 'Arrive',
+    way: (deg, type) => `The path goes ${deg} round the Sun: ${type === 1 ? 'type I (less than half a turn)' : 'type II (more than half a turn)'}.`,
+    badDates: 'The arrival must come after the departure.',
+    noTrip: 'There is no single path for these two days (Earth and the planet are exactly opposite each other). Try another day.',
   },
 };
 

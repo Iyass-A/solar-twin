@@ -76,7 +76,7 @@ export interface Trip {
 
 const planet = (id: PlanetId) => PLANETS.find((p) => p.id === id)!;
 /** GM of the planet with its smaller moons [km³/s²] (src/physics/bodies.ts). */
-const planetGm = (id: PlanetId) => BODIES.find((b) => b.id === id)!.gm;
+export const planetGm = (id: PlanetId) => BODIES.find((b) => b.id === id)!.gm;
 /** Semi-major axis [km] at JD, from JPL's elements. */
 const semiMajorKm = (id: PlanetId, jd: number) => {
   const p = planet(id);

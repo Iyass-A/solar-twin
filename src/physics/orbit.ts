@@ -31,7 +31,7 @@ export function orbitOf(mu: number, dr: readonly number[], dv: readonly number[]
 }
 
 /** Stumpff functions C(z) and S(z) for the universal variable, with series near z = 0. */
-function stumpff(z: number): [number, number] {
+export function stumpff(z: number): [number, number] {
   if (Math.abs(z) < 1e-3) return [1 / 2 - z / 24 + z * z / 720, 1 / 6 - z / 120 + z * z / 5040];
   if (z > 0) { const s = Math.sqrt(z); return [(1 - Math.cos(s)) / z, (s - Math.sin(s)) / (s * s * s)]; }
   const s = Math.sqrt(-z);

@@ -2,8 +2,15 @@
 // Step 1, the Hohmann transfer: against Curtis' worked example (Earth to Mars), against the universal-variable
 // propagator of src/physics/orbit.ts (an independent way to fly the half ellipse), against NASA's synodic
 // periods, and the launch-window search over the whole time bar.
+// Step 2, Lambert's problem: against worked examples in Curtis and Vallado, against the propagator (orbits
+// flown first, then found again from their two ends), and against NASA's Mars mission design handbook for 2026.
 
 import { hohmann, hyperbolicBurn, leadAngle, tripTo, windows, TARGETS, PARKING_ALT_KM, RADIUS_KM } from '../src/transfer/hohmann';
+import { lambert, planetState, realTrip, type Vec } from '../src/transfer/lambert';
+import { heliocentricPosition } from '../src/astro/kepler';
+import { PLANETS } from '../src/astro/elements';
+import { centuriesSinceJ2000 } from '../src/astro/julian';
+import { AU_KM } from '../src/physics/bodies';
 import { propagate } from '../src/physics/orbit';
 import { SUN_GM } from '../src/physics/bodies';
 import { toJulianDate } from '../src/astro/julian';
@@ -130,5 +137,101 @@ export function checkHohmann(): boolean {
   console.log('  texts in three languages: numbers, relative times');
 
   console.log(`Hohmann transfer: ${ok ? 'OK' : 'FAIL'}`);
+  return ok;
+}
+
+export function checkLambert(): boolean {
+  let ok = true;
+  const fail = (msg: string) => { ok = false; console.log(`  FAIL ${msg}`); };
+  console.log('\nTrip planner: Lambert\'s problem');
+  const off = (a: readonly number[], b: readonly number[]) => Math.max(...a.map((x, k) => Math.abs(x - b[k])));
+
+  // 1. Worked examples. Curtis, Orbital Mechanics for Engineering Students, example 5.2 (Earth, one hour):
+  //    v1 = (−5.9925, 1.9254, 3.2456), v2 = (−3.3125, −4.1966, −0.38529) km/s.
+  //    Vallado, Fundamentals of Astrodynamics and Applications, example 7-5 (Earth, 76 minutes):
+  //    v1 = (2.058913, 2.915965, 0), v2 = (−3.451565, 0.910315, 0) km/s.
+  const c = lambert(398600, [5000, 10000, 2100], [-14600, 2500, 7000], 3600);
+  if (!c || off(c.v1, [-5.9925, 1.9254, 3.2456]) > 6e-5 || off(c.v2, [-3.3125, -4.1966, -0.38529]) > 6e-5) fail(`Curtis 5.2: ${JSON.stringify(c)}`);
+  const v = lambert(398600.4418, [15945.34, 0, 0], [12214.83899, 10249.46731, 0], 76 * 60);
+  if (!v || off(v.v1, [2.058913, 2.915965, 0]) > 3e-6 || off(v.v2, [-3.451565, 0.910315, 0]) > 3e-6) fail(`Vallado 7-5: ${JSON.stringify(v)}`);
+  console.log(`  Curtis 5.2: v1 ${c?.v1.map((x) => x.toFixed(4)).join(', ')} km/s; Vallado 7-5: v1 ${v?.v1.map((x) => x.toFixed(6)).join(', ')} km/s (as in the books)`);
+
+  // 2. Orbits round the Sun flown with the propagator for less than one revolution, then found again from their
+  //    two ends: ellipses short and long way round, near-circles, and hyperbolas. A fixed seed, so it is the same each time.
+  let seed = 12345;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  let worst = 0, cases = 0, longWay = 0, open = 0;
+  for (let i = 0; i < 400; i++) {
+    const r = (0.4 + 5 * rnd()) * AU_KM, th = 2 * Math.PI * rnd(), inc = (rnd() - 0.5) * 0.6;
+    const r0: Vec = [r * Math.cos(th), r * Math.sin(th), r * Math.sin(inc) * 0.3];
+    const vc = Math.sqrt(SUN_GM / r) * (0.6 + 0.9 * rnd()); // from well below circular to hyperbolic
+    const ang = th + Math.PI / 2 + (rnd() - 0.5) * 0.8;
+    const v0: Vec = [vc * Math.cos(ang), vc * Math.sin(ang), vc * (rnd() - 0.5) * 0.2];
+    const energy = (v0[0] ** 2 + v0[1] ** 2 + v0[2] ** 2) / 2 - SUN_GM / Math.hypot(...r0);
+    const period = energy < 0 ? 2 * Math.PI * Math.sqrt((-SUN_GM / (2 * energy)) ** 3 / SUN_GM) : 4e8;
+    const tof = period * (0.05 + 0.9 * rnd());
+    const end = propagate(SUN_GM, r0, v0, tof);
+    const l = lambert(SUN_GM, r0, end.r as Vec, tof);
+    if (!l) continue; // (start and end exactly opposite: no single plane)
+    if (Math.abs(l.angleDeg - 180) < 1) continue; // near 180° the plane is barely defined, as the method says
+    cases++;
+    if (l.angleDeg > 180) longWay++;
+    if (energy >= 0) open++;
+    worst = Math.max(worst, off(l.v1, v0) / vc, off(l.v2, end.v) / vc);
+  }
+  if (!(worst < 1e-7)) fail(`orbits found again from their ends: velocity off by ${worst} of the speed`);
+  if (cases < 300 || longWay < 50 || open < 20) fail(`too few cases: ${cases} (${longWay} the long way, ${open} open)`);
+  console.log(`  ${cases} orbits flown and found again (${longWay} the long way, ${open} hyperbolas): velocities within ${worst.toExponential(1)} of the speed`);
+  if (lambert(SUN_GM, [AU_KM, 0, 0], [0, AU_KM, 0], 0) || lambert(SUN_GM, [AU_KM, 0, 0], [-1.5 * AU_KM, 0, 0], 2e7)) fail('a trip with no time, or exactly opposite ends, must have no answer');
+
+  // 3. The planets' states (Astronomy Engine): positions agree with the site's Kepler planets, velocities with
+  //    how the positions change (units km and km/s)
+  const jd0 = jdOf(2026, 11, 17);
+  let posDeg = 0, velRel = 0;
+  for (const p of PLANETS) {
+    const st = planetState(p.id, jd0), k = heliocentricPosition(p, centuriesSinceJ2000(jd0));
+    const a: Vec = [k.x * AU_KM, k.y * AU_KM, k.z * AU_KM];
+    posDeg = Math.max(posDeg, Math.acos(Math.min(1, (st.r[0] * a[0] + st.r[1] * a[1] + st.r[2] * a[2]) / (Math.hypot(...st.r) * Math.hypot(...a)))) / DEG);
+    const before = planetState(p.id, jd0 - 0.01), after = planetState(p.id, jd0 + 0.01);
+    const fd = [0, 1, 2].map((i) => (after.r[i] - before.r[i]) / (0.02 * DAY_S));
+    velRel = Math.max(velRel, off(fd, st.v) / Math.hypot(...st.v));
+  }
+  if (!(posDeg < 0.25)) fail(`planet positions ${posDeg}° from the site's`);
+  if (!(velRel < 1e-5)) fail(`planet velocities off their positions' change by ${velRel}`);
+  console.log(`  planets' states: within ${posDeg.toFixed(3)}° of the site's Kepler planets, velocities match their motion (${velRel.toExponential(1)})`);
+
+  // 4. NASA's Mars mission design handbook (Burke, Falck and McGuire 2010, NASA/TM-2010-216764, table 2), the 2026
+  //    opportunity, ballistic, dates to the day: departure, arrival, C3 [km²/s²], v∞ at Mars [km/s], declination of
+  //    the launch asymptote [deg], type. (Its ephemeris and times of day differ a little from ours: C3 within 1%.)
+  const handbook: [number[], number[], number, number, number, 1 | 2][] = [
+    [[2026, 11, 14], [2027, 8, 9], 11.11, 2.915, 28.28, 1],
+    [[2026, 10, 31], [2027, 8, 19], 9.144, 2.729, 23.16, 2],
+    [[2026, 11, 6], [2027, 9, 8], 9.646, 2.565, 32.8, 2],
+  ];
+  for (const [d, a, c3, vInf, dla, type] of handbook) {
+    const tr = realTrip('mars', jdOf(d[0], d[1], d[2]), jdOf(a[0], a[1], a[2]));
+    const what = `${d.join('-')} to ${a.join('-')}`;
+    if (!tr) { fail(`${what}: no trip`); continue; }
+    if (!(Math.abs(tr.c3 / c3 - 1) < 0.01)) fail(`${what}: C3 ${tr.c3}, handbook ${c3}`);
+    if (!(Math.abs(tr.vInfArrive - vInf) < 0.005)) fail(`${what}: v∞ ${tr.vInfArrive}, handbook ${vInf}`);
+    if (!(Math.abs(tr.dla - dla) < 0.2)) fail(`${what}: declination ${tr.dla}, handbook ${dla}`);
+    if (tr.type !== type) fail(`${what}: type ${tr.type}, handbook ${type}`);
+    console.log(`  Mars ${what}: C3 ${tr.c3.toFixed(3)} (handbook ${c3}), v∞ ${tr.vInfArrive.toFixed(3)} (${vInf}), declination ${tr.dla.toFixed(2)}° (${dla}°), type ${tr.type === 1 ? 'I' : 'II'}`);
+  }
+  // The real trip on the Hohmann estimate's own dates costs more: the estimate's date is off
+  const h = realTrip('mars', jdOf(2026, 12, 4), jdOf(2027, 8, 20));
+  if (!h || !(h.c3 > 11.11)) fail(`Mars on the Hohmann dates: C3 ${h?.c3}`);
+  console.log(`  Mars on the Hohmann estimate's dates (4 Dec 2026 to 20 Aug 2027): C3 ${h?.c3.toFixed(2)}, more than at the handbook's best`);
+
+  // 5. The texts
+  for (const l of LANGS) {
+    const s = STRINGS[l.id].trip;
+    const deg = `${num(196, 0, l.id)}°`;
+    const all = [s.way(deg, 1), s.way(deg, 2), s.badDates, s.noTrip, s.exactTitle, s.exactIntro, s.departDate, s.arriveDate].join(' ');
+    if (/undefined|NaN/.test(all) || !s.way(deg, 2).includes(deg) || s.way(deg, 1) === s.way(deg, 2)) fail(`${l.id}: "${all}"`);
+    for (const k of ['badDates', 'noTrip', 'exactTitle', 'exactIntro', 'departDate', 'arriveDate'] as const) if (!s[k].trim()) fail(`${l.id}: no text for ${k}`);
+  }
+
+  console.log(`Lambert's problem: ${ok ? 'OK' : 'FAIL'}`);
   return ok;
 }

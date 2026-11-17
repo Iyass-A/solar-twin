@@ -670,3 +670,7 @@ button.now-tile[aria-selected="true"] { border-color: #4f9dff; box-shadow: inset
 .trip .tp-buttons button[hidden], .trip p[hidden] { display: none; }
 .trip .tp-note, .trip .tp-giants { margin: 10px 0 0; line-height: 1.6; }
 .trip .nw { white-space: nowrap; }
+.trip .tp-exact-title { margin-top: 20px; padding-top: 14px; border-top: 1px solid #2a3050; }
+.trip .tp-exact-intro { margin: 4px 0 10px; line-height: 1.6; }
+.trip .tp-dates { gap: 12px; }
+.trip .tp-facts[hidden] { display: none; }
