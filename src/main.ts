@@ -19,6 +19,7 @@ import { DsnCard } from './view/dsn';
 import { DSN_WORKER_URL } from './live/dsn';
 import { NowScreen } from './view/now';
 import { BranchCard } from './view/branch';
+import { TripCard } from './view/trip';
 
 const DAY_MS = 86_400_000;
 
@@ -113,6 +114,8 @@ app.innerHTML = `
   </div>
 
   <section class="card controls branch" id="branch"></section>
+
+  <section class="card controls trip" id="trip"></section>
 
   <section class="now" id="now" aria-labelledby="nowTitle">
     <h2 class="now-head"><span class="now-title" id="nowTitle"></span> <span class="badge live-data" data-t="caBadge"></span></h2>
@@ -236,6 +239,8 @@ dsn.load(DSN_WORKER_URL);
 let scene3d: Scene3D | null = null; // loaded on first use (Three.js is a separate file)
 // "Branch reality": the physics worker starts only when the card is first used
 const branch = new BranchCard($('branch'), () => ({ ms: clock.ms, min: VALID_FROM_MS, max: VALID_TO_MS }));
+// Trip planner: from the Earth to a planet, from the time on screen
+const trip = new TripCard($('trip'), () => ({ ms: clock.ms, min: VALID_FROM_MS, max: VALID_TO_MS }));
 
 // Asteroids, dwarf planets and comets: their own file, loaded after the page
 let smallBodies: SmallBody[] = [];
@@ -314,6 +319,7 @@ function jumpTo(ms: number) {
 
 playBtn.addEventListener('click', () => setPlaying(!clock.playing));
 branch.onJump = (ms) => { setPlaying(false); jumpTo(ms); };
+trip.onJump = (ms, target) => { setPlaying(false); jumpTo(ms); select(target); };
 branch.onPlay = (speed) => {
   speedSel.value = String(speed);
   clock.speed = SPEED_DAYS[speed];
@@ -515,6 +521,7 @@ function applyLanguage(l: Lang) {
   dsn.render();
   nowScreen.render();
   branch.render();
+  trip.render();
   lastPanels = -Infinity;
 }
 
@@ -529,6 +536,7 @@ let lastPanels = -Infinity;
 function updatePanels(date: Date, bodies: BodyFrame[]) {
   const jd = toJulianDate(date);
   updateInfo(bodies, jd);
+  trip.update();
   $('time').textContent = date.toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
   $('jd').textContent = `JD ${num(jd, 5)}`;
   $('live').hidden = !clock.live;

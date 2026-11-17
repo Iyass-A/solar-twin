@@ -265,6 +265,38 @@ export interface Strings {
       list: Record<ScenarioId, { how: string; result: (f: Record<string, string>) => string }>;
     };
   };
+  // Trip planner (phase 6): a trip from the Earth to another planet (src/transfer/, src/view/trip.ts)
+  trip: {
+    title: string;
+    badge: string;
+    intro: string;
+    to: string;
+    duration: string;
+    leave: string;
+    arrive: string;
+    total: string;
+    /** The trip's length in days, with about how many months under it; or in years, with the days (numbers come formatted) */
+    tripDays: (days: string) => string;
+    aboutMonths: (months: string) => string;
+    tripYears: (years: string) => string;
+    kmS: (v: string) => string;
+    /** Launch energy, e.g. "C3 = 8.67 km²/s²" */
+    c3: (v: string) => string;
+    leaveNote: (km: string, c3: string) => string;
+    arriveNote: (km: string, name: string, vInf: string) => string;
+    whenTitle: string;
+    /** Where the target must be at launch, and where it is at the time on screen (angles come formatted, with ° and without sign) */
+    phase: (target: PlanetId, need: string, ahead: boolean, now: string, nowAhead: boolean) => string;
+    window: (depart: string, rel: string, arrive: string) => string;
+    prev: (date: string, rel: string) => string;
+    every: (days: string, months: number) => string;
+    /** "in 17 days", "23 days ago", "today"; in months from 60 days on */
+    rel: (days: number) => string;
+    jump: string;
+    outside: string;
+    note: string;
+    giants: string;
+  };
 }
 
 /** Keys whose value is plain text, for data-t / data-html / data-aria in the page. */
@@ -292,10 +324,11 @@ export function numGrouped(n: number, l: Lang = current): string {
 }
 
 const dateFormats = new Map<string, Intl.DateTimeFormat>();
-type DateKind = 'dateTime' | 'dayMonth' | 'dayMonthTime' | 'weekdayDay' | 'clock';
+type DateKind = 'dateTime' | 'dayMonth' | 'dayMonthYear' | 'dayMonthTime' | 'weekdayDay' | 'clock';
 const DATE_KINDS: Record<DateKind, Intl.DateTimeFormatOptions> = {
   dateTime: { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' },
   dayMonth: { day: 'numeric', month: 'long' },
+  dayMonthYear: { day: 'numeric', month: 'long', year: 'numeric' },
   dayMonthTime: { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' },
   weekdayDay: { weekday: 'short', day: 'numeric' },
   clock: { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' },
@@ -315,6 +348,8 @@ function dateFormat(l: Lang, kind: DateKind, timeZone?: string): Intl.DateTimeFo
 export const dateTime = (ms: number, l: Lang = current, timeZone?: string) => dateFormat(l, 'dateTime', timeZone).format(ms);
 /** Day and month, e.g. "20 تشرين الثاني", "20. November". */
 export const dayMonth = (ms: number, l: Lang = current, timeZone?: string) => dateFormat(l, 'dayMonth', timeZone).format(ms);
+/** Day, month and year, e.g. "4 كانون الأول 2026", "4. Dezember 2026". */
+export const dayMonthYear = (ms: number, l: Lang = current, timeZone?: string) => dateFormat(l, 'dayMonthYear', timeZone).format(ms);
 /** Time of day, e.g. "14:32". */
 export const clock = (ms: number, l: Lang = current, timeZone?: string) => dateFormat(l, 'clock', timeZone).format(ms);
 /** Short weekday and day, e.g. "So. 15", "Sun 15". */
@@ -702,6 +737,41 @@ const AR: Strings = {
       },
     },
   },
+  trip: {
+    title: 'مخطط الرحلات',
+    badge: 'تجريبي',
+    intro: 'لو انطلقنا من الأرض لكوكب تاني، قديش بتطوّل الرحلة، قديش لازم تغيّر المركبة سرعتها (Δv، وهاد اللي بيحدد الوقود)، وإيمتى أحسن وقت؟ '
+      + 'أول جواب هو انتقال هوهمان: أوفر طريق بين مدارين، نص قطع ناقص حوالين الشمس بيلمس مدار الأرض ومدار الكوكب، مع دفشتين: وحدة للانطلاق ووحدة للوصول. '
+      + 'الموعد بينحسب من وقت الشاشة.',
+    to: 'لوين',
+    duration: 'مدة الرحلة',
+    leave: 'دفشة الانطلاق',
+    arrive: 'دفشة الوصول',
+    total: 'المجموع (Δv)',
+    tripDays: (d) => `${d} يوم`,
+    aboutMonths: (m) => `حوالي ${m} شهر`,
+    tripYears: (y) => `${y} سنة`,
+    kmS: (v) => `${v} كم/ث`,
+    c3: (v) => `\u2066C3 = ${v}\u2069 كم²/ث²`, // the formula kept left-to-right
+    leaveNote: (km, c3) => `من مدار على ${km} كم فوق الأرض · طاقة الإطلاق ${c3}`,
+    arriveNote: (km, name, v) => `لمدار على ${km} كم فوق ${name} · سرعة المركبة بالنسبة للكوكب لما توصل: ${v}`,
+    whenTitle: 'إيمتى منطلق؟',
+    phase: (id, need, ahead, now, nowAhead) => `لحظة الانطلاق، لازم ${id === 'venus' ? 'تكون' : 'يكون'} ${AR.planets[id]} ${ahead ? 'قدّام' : 'ورا'} الأرض بـ\u00a0${need} (من الشمس). `
+      + `بوقت الشاشة: ${nowAhead ? 'قدّامها' : 'وراها'} بـ\u00a0${now}.`,
+    window: (d, rel, a) => `أقرب موعد: الانطلاق ${d} (${rel})، والوصول ${a}.`,
+    prev: (d, rel) => `اللي قبله كان ${d} (${rel}).`,
+    every: (days, m) => `وبعدها مرة كل ${days} يوم تقريباً (حوالي ${arabicCount(m, 'شهر', 'شهرين', 'أشهر')}): هي الدورة الاقترانية، لحتى يرجع الكوكب والأرض لنفس الوضع.`,
+    rel: (d) => {
+      if (Math.abs(d) < 1) return 'اليوم';
+      const x = Math.abs(d) < 60 ? arabicCount(Math.round(Math.abs(d)), 'يوم', 'يومين', 'أيام')
+        : arabicCount(Math.round(Math.abs(d) / 30.44), 'شهر', 'شهرين', 'أشهر');
+      return d > 0 ? `بعد ${x}` : `من ${x}`;
+    },
+    jump: 'روح لموعد الانطلاق',
+    outside: 'هالموعد بعد 2050، وشريط الزمن ما بيوصل لهونيك.',
+    note: 'تقريب: هوهمان بيعتبر المدارين دواير بنفس المستوى. المدارات الحقيقية ممطوطة ومايلة شوي، فالموعد الحقيقي والأرقام بتختلف شوي. الحساب الدقيق لتواريخ حقيقية جاي قريباً.',
+    giants: 'للكواكب البعيدة، المركبات الحقيقية بتمرق جنب كواكب تانية لتاخد منها دفشة جاذبية، متل فوياجر 2 اللي وصلت لنبتون بـ 12 سنة، وبتدخل بمدار ممطوط بدل مدار قريب. هيك بتوصل أسرع وبوقود أقل بكتير.',
+  },
 };
 
 const DE: Strings = {
@@ -1030,6 +1100,40 @@ const DE: Strings = {
         },
       },
     },
+  },
+  trip: {
+    title: 'Reiseplaner',
+    badge: 'Experimentell',
+    intro: 'Wie lange dauert ein Flug von der Erde zu einem anderen Planeten, um wie viel muss die Sonde ihre Geschwindigkeit ändern (Δv, davon hängt der Treibstoff ab), und wann startet man am besten? '
+      + 'Die erste Antwort ist der Hohmann-Transfer: der sparsamste Weg zwischen zwei Bahnen, eine halbe Ellipse um die Sonne, die die Erdbahn und die Bahn des Planeten gerade berührt, mit zwei Schüben, einem zum Start und einem zur Ankunft. '
+      + 'Der Termin wird ab der Zeit auf dem Bildschirm gesucht.',
+    to: 'Ziel',
+    duration: 'Flugdauer',
+    leave: 'Schub beim Start',
+    arrive: 'Schub bei der Ankunft',
+    total: 'Zusammen (Δv)',
+    tripDays: (d) => `${d} Tage`,
+    aboutMonths: (m) => `etwa ${m} Monate`,
+    tripYears: (y) => `${y} Jahre`,
+    kmS: (v) => `${v} km/s`,
+    c3: (v) => `C3 = ${v} km²/s²`,
+    leaveNote: (km, c3) => `aus einer Umlaufbahn ${km} km über der Erde · Startenergie ${c3}`,
+    arriveNote: (km, _name, v) => `in eine Umlaufbahn ${km} km über dem Planeten · Geschwindigkeit relativ zum Planeten bei der Ankunft: ${v}`,
+    whenTitle: 'Wann starten?',
+    phase: (id, need, ahead, now, nowAhead) => `Beim Start muss ${DE.planets[id]} ${need} ${ahead ? 'vor' : 'hinter'} der Erde stehen (von der Sonne aus gesehen). `
+      + `Zur Zeit auf dem Bildschirm: ${now} ${nowAhead ? 'davor' : 'dahinter'}.`,
+    window: (d, rel, a) => `Startfenster: Start am ${d} (${rel}), Ankunft am ${a}.`,
+    prev: (d, rel) => `Das vorige war am ${d} (${rel}).`,
+    every: (days, m) => `Danach etwa alle ${days} Tage (rund ${plural(m, 'Monat', 'Monate')}): die synodische Periode, nach der Planet und Erde wieder gleich stehen.`,
+    rel: (d) => {
+      if (Math.abs(d) < 1) return 'heute';
+      const x = Math.abs(d) < 60 ? plural(Math.round(Math.abs(d)), 'Tag', 'Tagen') : plural(Math.round(Math.abs(d) / 30.44), 'Monat', 'Monaten');
+      return d > 0 ? `in ${x}` : `vor ${x}`;
+    },
+    jump: 'Zum Starttermin',
+    outside: 'Dieser Termin liegt nach 2050, so weit reicht die Zeitleiste nicht.',
+    note: 'Eine Näherung: Hohmann nimmt beide Bahnen als Kreise in einer Ebene. Die echten Bahnen sind etwas gestreckt und geneigt, darum weichen der echte Termin und die Zahlen etwas ab. Die genaue Rechnung für echte Daten kommt bald.',
+    giants: 'Zu den äußeren Planeten fliegen echte Sonden an anderen Planeten vorbei und holen sich dort Schwung, wie Voyager 2, die in 12 Jahren bei Neptun war, und sie schwenken in eine gestreckte statt in eine niedrige Umlaufbahn ein. So sind sie schneller und brauchen viel weniger Treibstoff.',
   },
 };
 
@@ -1363,6 +1467,40 @@ const EN: Strings = {
         },
       },
     },
+  },
+  trip: {
+    title: 'Trip planner',
+    badge: 'Experimental',
+    intro: 'How long does a trip from Earth to another planet take, how much must the craft change its speed (Δv, which sets the fuel), and when is the best time to leave? '
+      + 'The first answer is the Hohmann transfer: the cheapest way between two orbits, half an ellipse round the Sun that just touches Earth’s orbit and the planet’s, with two burns, one to leave and one to arrive. '
+      + 'The date is searched from the time on screen.',
+    to: 'To',
+    duration: 'Time on the way',
+    leave: 'Burn to leave',
+    arrive: 'Burn to arrive',
+    total: 'Both (Δv)',
+    tripDays: (d) => `${d} days`,
+    aboutMonths: (m) => `about ${m} months`,
+    tripYears: (y) => `${y} years`,
+    kmS: (v) => `${v} km/s`,
+    c3: (v) => `C3 = ${v} km²/s²`,
+    leaveNote: (km, c3) => `from an orbit ${km} km above Earth · launch energy ${c3}`,
+    arriveNote: (km, name, v) => `into an orbit ${km} km above ${name} · speed relative to the planet on arrival: ${v}`,
+    whenTitle: 'When to leave?',
+    phase: (id, need, ahead, now, nowAhead) => `At launch, ${EN.planets[id]} must be ${need} ${ahead ? 'ahead of' : 'behind'} Earth (seen from the Sun). `
+      + `At the time on screen: ${now} ${nowAhead ? 'ahead' : 'behind'}.`,
+    window: (d, rel, a) => `Launch window: leave on ${d} (${rel}), arrive on ${a}.`,
+    prev: (d, rel) => `The one before was on ${d} (${rel}).`,
+    every: (days, m) => `After that about every ${days} days (some ${plural(m, 'month', 'months')}): the synodic period, after which the planet and Earth line up the same way again.`,
+    rel: (d) => {
+      if (Math.abs(d) < 1) return 'today';
+      const x = Math.abs(d) < 60 ? plural(Math.round(Math.abs(d)), 'day', 'days') : plural(Math.round(Math.abs(d) / 30.44), 'month', 'months');
+      return d > 0 ? `in ${x}` : `${x} ago`;
+    },
+    jump: 'Go to the launch date',
+    outside: 'This date is after 2050, beyond the time bar.',
+    note: 'An estimate: Hohmann takes both orbits as circles in one plane. The real orbits are a little stretched and tilted, so the real date and numbers differ a little. The exact calculation for real dates is coming soon.',
+    giants: 'To the outer planets, real spacecraft fly past other planets to pick up speed from their gravity, like Voyager 2, which reached Neptune in 12 years, and they go into a stretched orbit rather than a low one. That way they are faster and need far less fuel.',
   },
 };
 

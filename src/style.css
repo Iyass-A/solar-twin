@@ -654,3 +654,19 @@ button.now-tile[aria-selected="true"] { border-color: #4f9dff; box-shadow: inset
 @media (max-width: 520px) {
   .branch .br-preset { flex: 1 1 100%; }
 }
+
+/* ---------- Phase 6: trip planner ---------- */
+
+.trip .tp-intro { margin: 4px 0 12px; line-height: 1.6; }
+.trip .tp-facts { margin: 12px 0 4px; display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px 16px; }
+.trip .tp-facts > div { background: #1d2238; border-radius: 8px; padding: 8px 12px; }
+.trip .tp-facts dt { font-size: 0.8rem; color: #9aa0b4; }
+.trip .tp-facts dd { margin: 2px 0 0; }
+.trip .tp-v { display: block; font-size: 1.15rem; font-weight: 600; color: #e8e8f0; }
+.trip .tp-n { display: block; font-size: 0.8rem; color: #9aa0b4; line-height: 1.5; margin-top: 2px; }
+.trip h3 { font-size: 0.95rem; font-weight: 600; margin: 14px 0 4px; color: #e8e8f0; }
+.trip .tp-when p { margin: 4px 0; line-height: 1.6; }
+.trip .tp-buttons { margin-top: 8px; }
+.trip .tp-buttons button[hidden], .trip p[hidden] { display: none; }
+.trip .tp-note, .trip .tp-giants { margin: 10px 0 0; line-height: 1.6; }
+.trip .nw { white-space: nowrap; }

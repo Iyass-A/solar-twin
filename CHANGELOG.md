@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Trip planner, part 1: **the Hohmann transfer** (experimental). A new card under "branch reality", in all three languages: pick a planet and it shows how long the trip from Earth takes, the burn to leave a 300 km orbit round Earth (with the launch energy C3), the burn to stop in a 300 km orbit round the planet (with the speed it arrives at), both together, where the planet must be at launch (ahead of or behind Earth, as seen from the Sun) and where it is at the time on screen, the launch window next to that time and the arrival date, and how often windows come (the synodic period). A button goes to the launch date and picks the planet. For Mars: 259 days, 3.59 + 2.09 = 5.68 km/s, C3 8.67 km²/s², Mars 44.3° ahead, next on 4 December 2026 (arriving 19 August 2027). Both orbits are taken as circles in one plane, so the card says it is an estimate; for the outer planets it adds that real spacecraft use gravity assists and stretched orbits. `npm run check` reproduces Curtis' worked example (Earth to Mars), flies every trip with the universal-variable propagator (it arrives at the target's orbit with the right speed, and so does the target), compares the synodic periods with NASA's fact sheets, and finds every launch window from 1800 to 2050 (2,036, one per synodic period); breaking the phase angle, the escape term, the window search, the synodic period or the transfer time on purpose was caught.
+
 ## v0.5.0 (15 November 2026), public beta
 
 - Version 0.5.0. **Branch reality** with our own physics engine: change the solar system (take a planet out, change a mass, push a planet, let a star pass) and watch the copy run next to reality, with a table of the differences, or start one of three ready-made scenarios with one click. The tagline and link preview mention it, with a new preview image (the Sun twice as heavy: empty circles show where the planets would be).
