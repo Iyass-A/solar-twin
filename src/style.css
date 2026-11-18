@@ -698,3 +698,18 @@ button.now-tile[aria-selected="true"] { border-color: #4f9dff; box-shadow: inset
 .trip .tp-play:hover { background: #4459b0; }
 .trip .tp-play:disabled { opacity: 0.5; cursor: not-allowed; }
 .trip .tp-play-note { margin: 6px 0 0; line-height: 1.6; }
+/* Step 5: the signal delay along the trip */
+.trip .tp-sig-title { margin-top: 20px; padding-top: 14px; border-top: 1px solid #2a3050; }
+.trip .tp-sig-intro { margin: 4px 0 6px; line-height: 1.6; }
+.trip .tp-sig[hidden] { display: none; }
+.trip .tp-sig-chart { position: relative; margin: 2px 0; }
+.trip .tp-sig-lines { margin-top: 4px; }
+.trip .tp-sig-table td, .trip .tp-sig-table th { padding: 2px 8px; text-align: start; }
+.trip .tp-sig-table table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.trip .tp-sig-table > div { overflow-x: auto; }
+.sig-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.sig-area { opacity: 0.1; }
+.sig-sun { fill: #e8e8f0; opacity: 0.12; }
+.sig-dot { stroke: #151a2e; stroke-width: 2; }
+.sig-cross { opacity: 0.6; }
+.sig-rug { opacity: 0.55; }

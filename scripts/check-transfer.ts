@@ -7,6 +7,9 @@
 // Step 3, the porkchop map: the cheapest launch energy of every Mars opportunity from 2026 to 2045 against the
 // same handbook's table 1, and the map's own bookkeeping.
 // Step 4, the trip in the views: its path, flown from its start, ends at the target; the speed it is run at.
+// Step 5, the signal delay: the Earth–Mars light time and the Sun's angle against JPL Horizons (DE441) for a year,
+// the 2° limit against NASA's Mars commanding pauses (2019, 2021, 2023), the instant-distance shortcut against
+// the true light time, and the profile's longest delay and stretches near the Sun against a plain scan.
 
 import { hohmann, hyperbolicBurn, leadAngle, tripTo, windows, TARGETS, PARKING_ALT_KM, RADIUS_KM } from '../src/transfer/hohmann';
 import { lambert, planetState, realTrip, type Vec } from '../src/transfer/lambert';
@@ -22,6 +25,8 @@ import { VALID_FROM_MS, VALID_TO_MS } from '../src/astro/elements';
 import { wrap180 } from '../src/astro/kepler';
 import { STRINGS, LANGS, num, numGrouped } from '../src/i18n';
 import { playSpeed } from '../src/view/views';
+import { signalAt, signalProfile, sunAngle, craftAt, CONJUNCTION_DEG } from '../src/transfer/signal';
+import { readFileSync } from 'node:fs';
 
 const DAY_S = 86400;
 const DEG = Math.PI / 180;
@@ -366,5 +371,137 @@ export function checkTripPath(): boolean {
     for (const k of ['playTrip', 'showPath', 'craft', 'playNote'] as const) if (!s[k].trim()) fail(`${l.id}: no text for ${k}`);
   }
   console.log(`The trip in the views: ${ok ? 'OK' : 'FAIL'}`);
+  return ok;
+}
+
+export function checkSignal(): boolean {
+  let ok = true;
+  const fail = (msg: string) => { ok = false; console.log(`  FAIL ${msg}`); };
+  console.log('\nTrip planner: the signal delay');
+  const iso = (jd: number) => (Number.isFinite(jd) ? new Date((jd - 2440587.5) * DAY_S * 1000).toISOString().slice(0, 16).replace('T', ' ') : 'never');
+  const LIGHT_KM_S = 299_792.458; // the check's own: the metre is defined by it
+  const sub = (a: number[], b: number[]): Vec => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const len = (a: number[]) => Math.hypot(a[0], a[1], a[2]);
+
+  // (a) The Earth–Mars light time and the Sun's angle, against JPL Horizons (DE441 and mar099, geometric, every
+  // 5 days for a year from 15.11.2026; TDB, so 69.184 s ahead of UTC). Mars is the end of a trip there.
+  const ref = JSON.parse(readFileSync('scripts/reference/state-vectors-horizons.json', 'utf8'));
+  const hz = (id: string, i: number) => (ref.targets[id].pos[i] as number[]).map((v) => v * AU_KM);
+  let worstS = 0, worstDeg = 0;
+  for (let i = 0; i < ref.targets['399'].pos.length; i++) {
+    const jdTdb = ref.epochJd + i * ref.stepDays, jdUtc = jdTdb - 69.184 / DAY_S;
+    const e = hz('399', i), mars = hz('499', i), sun = hz('10', i);
+    // The angle at the Earth between the Sun and Mars, worked out here on its own
+    const toSun = sub(sun, e), toMars = sub(mars, e);
+    const wantDeg = Math.acos((toSun[0] * toMars[0] + toSun[1] * toMars[1] + toSun[2] * toMars[2]) / (len(toSun) * len(toMars))) / DEG;
+    const want = len(toMars) / LIGHT_KM_S;
+    // Mars as the end of a trip: what the card gives on the day a trip of 259 days arrives there
+    const tr = realTrip('mars', jdUtc - 259, jdUtc);
+    if (!tr) { fail(`no trip to Mars arriving ${iso(jdUtc)}`); continue; }
+    const at = signalAt(tr, jdUtc);
+    worstS = Math.max(worstS, Math.abs(at.seconds - want));
+    worstDeg = Math.max(worstDeg, Math.abs(at.sepDeg - wantDeg));
+  }
+  if (!(worstS < 0.5)) fail(`the Earth–Mars light time is ${worstS.toFixed(3)} s off Horizons`);
+  if (!(worstDeg < 0.01)) fail(`Mars' angle from the Sun is ${worstDeg.toFixed(4)}° off Horizons`);
+  console.log(`  at Mars, every 5 days for a year, against Horizons: light time within ${worstS.toFixed(3)} s, angle from the Sun within ${worstDeg.toFixed(4)}°`);
+
+  // (b) The 2° limit: Mars within 2° of the Sun in the Earth's sky when NASA's Mars missions sent no commands
+  // (2019: 28 Aug to 7 Sep; 2021: 2 to 16 Oct; 2023: 11 to 25 Nov). The pauses are whole days, and NASA says some
+  // missions add a day or two either side, so the stretch below 2° must start within a day of the pause's first
+  // day and end between two and a half days before its last day and a day after it.
+  const pauses: [number[], number[]][] = [[[2019, 8, 28], [2019, 9, 7]], [[2021, 10, 2], [2021, 10, 16]], [[2023, 11, 11], [2023, 11, 25]]];
+  const found: string[] = [];
+  for (const [a, b] of pauses) {
+    const start = jdOf(a[0], a[1], a[2]), end = jdOf(b[0], b[1], b[2]);
+    let from = NaN, to = NaN;
+    for (let jd = start - 20; jd < end + 20; jd += 0.02) {
+      const near = sunAngle(planetState('earth', jd).r, planetState('mars', jd).r) < CONJUNCTION_DEG;
+      if (near && Number.isNaN(from)) from = jd;
+      if (!near && !Number.isNaN(from) && Number.isNaN(to)) to = jd;
+    }
+    if (!(Math.abs(from - start) <= 1 && to >= end - 2.5 && to <= end + 1)) fail(`Mars near the Sun ${iso(from)} to ${iso(to)}, NASA's pause ${a.join('-')} to ${b.join('-')}`);
+    found.push(`${iso(from).slice(0, 10)} to ${iso(to).slice(0, 10)}`);
+  }
+  console.log(`  Mars within ${CONJUNCTION_DEG}° of the Sun: ${found.join(', ')} (NASA's pauses in commanding: 28.8–7.9.2019, 2–16.10.2021, 11–25.11.2023)`);
+
+  // (c) Six trips: no delay at launch (the craft starts at the Earth's centre), the Earth–target light time at
+  // arrival; the instant distance against the true light time (a signal received now left the craft τ ago);
+  // and the profile's longest delay and stretches near the Sun against a plain scan every 6 hours.
+  const cases: [string, number[], number[]][] = [
+    ['mars', [2026, 10, 31], [2027, 8, 20]], ['venus', [2028, 3, 26], [2028, 9, 14]], ['mercury', [2026, 11, 20], [2027, 3, 1]],
+    ['jupiter', [2027, 12, 6], [2031, 7, 21]], ['saturn', [2030, 1, 1], [2036, 1, 1]], ['neptune', [2027, 5, 22], [2044, 1, 18]],
+  ];
+  let worstEnd = 0, worstLight = 0, worstEdge = 0, worstMax = 0, conj = 0;
+  const lines: string[] = [];
+  for (const [id, d, a] of cases) {
+    const tr = realTrip(id as never, jdOf(d[0], d[1], d[2]), jdOf(a[0], a[1], a[2]));
+    if (!tr) { fail(`${id}: no trip`); continue; }
+    const p = signalProfile(tr);
+    if (p.samples[0].km > 1e-6 || p.samples[0].seconds !== 0) fail(`${id}: a delay at launch (${p.samples[0].km} km)`);
+    const e = planetState('earth', tr.arriveJd).r, q = planetState(tr.target, tr.arriveJd).r;
+    worstEnd = Math.max(worstEnd, Math.abs(p.arrival.seconds - len(sub(q, e)) / LIGHT_KM_S));
+    // The true light time, iterated: |Earth(t) − craft(t − τ)| = c τ
+    for (const sm of p.samples.filter((_, i) => i % 10 === 5)) {
+      let tau = sm.seconds;
+      for (let k = 0; k < 4; k++) tau = len(sub(planetState('earth', sm.jd).r, craftAt(tr, sm.jd - tau / DAY_S))) / LIGHT_KM_S;
+      worstLight = Math.max(worstLight, Math.abs(tau - sm.seconds) / sm.seconds);
+    }
+    // The plain scan
+    const step = 0.25;
+    let max = 0;
+    const wins: [number, number][] = [];
+    let inFrom = NaN;
+    for (let jd = tr.departJd + step; jd <= tr.arriveJd; jd += step) {
+      const sg = signalAt(tr, jd);
+      max = Math.max(max, sg.km);
+      const near = sg.sepDeg < CONJUNCTION_DEG;
+      if (near && Number.isNaN(inFrom)) inFrom = jd;
+      if (!near && !Number.isNaN(inFrom)) { wins.push([inFrom, jd]); inFrom = NaN; }
+    }
+    if (!Number.isNaN(inFrom)) wins.push([inFrom, tr.arriveJd]);
+    max = Math.max(max, p.arrival.km);
+    if (!(p.max.km >= max * (1 - 1e-9))) fail(`${id}: the longest delay ${p.max.km} km is below the scan's ${max} km`);
+    for (const sm of p.samples) if (sm.km > p.max.km) fail(`${id}: a sample farther than the longest delay`);
+    worstMax = Math.max(worstMax, Math.abs(p.max.km - max) / LIGHT_KM_S);
+    if (wins.length !== p.conjunctions.length) fail(`${id}: ${p.conjunctions.length} stretches near the Sun, the scan finds ${wins.length}`);
+    p.conjunctions.forEach((c, k) => {
+      if (!wins[k]) return;
+      worstEdge = Math.max(worstEdge, Math.abs(c.from - (wins[k][0] - step / 2)), Math.abs(c.to - (wins[k][1] - step / 2)));
+      // Each edge is where the angle crosses 2°: below it just inside, above it just outside (unless at launch or arrival)
+      const sep = (jd: number) => signalAt(tr, jd).sepDeg;
+      if (c.from > tr.departJd && !(sep(c.from - 0.001) >= CONJUNCTION_DEG && sep(c.from + 0.001) < CONJUNCTION_DEG)) fail(`${id}: stretch ${k + 1} does not start where the angle crosses 2°`);
+      if (c.to < tr.arriveJd && !(sep(c.to + 0.001) >= CONJUNCTION_DEG && sep(c.to - 0.001) < CONJUNCTION_DEG)) fail(`${id}: stretch ${k + 1} does not end where the angle crosses 2°`);
+      if (!(c.minDeg < CONJUNCTION_DEG && c.minDeg <= Math.min(sep(c.from), sep(c.to)))) fail(`${id}: stretch ${k + 1}'s closest angle ${c.minDeg}`);
+    });
+    conj += p.conjunctions.length;
+    lines.push(`${id} ${(p.arrival.seconds / 60).toFixed(1)} min at arrival, longest ${(p.max.seconds / 60).toFixed(1)} (day ${p.max.day.toFixed(0)}), ${p.conjunctions.length} near the Sun`);
+  }
+  if (!(worstEnd < 1e-5)) fail(`the delay at arrival is ${worstEnd} s off the Earth–target light time`);
+  if (!(worstLight < 2e-4)) fail(`the instant distance is ${worstLight} off the true light time (relative)`);
+  if (!(worstEdge <= 0.13)) fail(`a stretch near the Sun is ${worstEdge.toFixed(3)} days off the scan`);
+  if (!(worstMax < 0.01)) fail(`the longest delay is ${worstMax} s off the scan`);
+  console.log(`  ${lines.join('; ')}`);
+  console.log(`  at launch 0 s, at arrival the Earth–target light time within ${worstEnd.toExponential(1)} s; the instant distance within ${(worstLight * 1e4).toFixed(2)}×10⁻⁴ of the true light time`);
+  console.log(`  longest delay within ${worstMax.toFixed(4)} s of a scan every 6 hours; ${conj} stretches near the Sun, the same as the scan, edges within ${worstEdge.toFixed(3)} days and on the 2° line`);
+
+  // (d) Texts in three languages
+  for (const l of LANGS) {
+    const s = STRINGS[l.id].trip;
+    for (const k of ['sigTitle', 'sigIntro', 'sigMaxAtEnd', 'sigNoConj', 'sigAxisDays', 'sigAxisYears', 'sigUnitMin', 'sigUnitHours', 'sigSun', 'sigTable', 'sigAria'] as const) {
+      if (!s[k].trim()) fail(`${l.id}: no text for ${k}`);
+    }
+    if (!s.sigIntro.includes(numGrouped(299792, l.id)) || !s.sigIntro.includes('2°')) fail(`${l.id}: the intro does not give c and the 2° limit`);
+    const arrive = s.sigArrive('A1', 'B2'), max = s.sigMax('C3', 'D4', 'E5'), now = s.sigNow('F6', 'G7');
+    if (![arrive.includes('A1') && arrive.includes('B2'), max.includes('C3') && max.includes('D4') && max.includes('E5'), now.includes('F6') && now.includes('G7')].every(Boolean)) fail(`${l.id}: a signal line drops a value`);
+    for (const n of [1, 2, 3]) if (!s.sigConj(n, 'H8').includes('H8')) fail(`${l.id}: the stretches near the Sun drop their dates`);
+    for (const n of [4, 12, 47]) {
+      const many = s.sigConjMany(n, 13, 'J1', 'K2');
+      if (!many.includes(String(n)) || !many.includes('13') || !many.includes('J1') || !many.includes('K2')) fail(`${l.id}: many stretches near the Sun drop a value`);
+    }
+    if (!s.craftDelay('Name', 'I9').includes('Name') || !s.craftDelay('Name', 'I9').includes('I9')) fail(`${l.id}: the craft's label drops its name or delay`);
+    if (!s.seconds(25).includes('25')) fail(`${l.id}: seconds drop their number`);
+  }
+  console.log(`The signal delay: ${ok ? 'OK' : 'FAIL'}`);
   return ok;
 }

@@ -8,6 +8,9 @@
 // Step 4: the exact trip in the views (frame(), drawn by src/view/orrery.ts and scene3d.ts): its path round the
 // Sun, flown from its start with the universal-variable propagator, and a button that runs time from launch to
 // arrival, so the craft can be watched on its way; time stops when it arrives.
+// Step 5: the signal delay on the way (src/transfer/signal.ts, drawn by src/view/signalChart.ts): how long a
+// message between the Earth and the craft takes on each day, the longest, at arrival and at the time on screen,
+// and when the craft is too close to the Sun in the Earth's sky for commands; the delay also rides next to the craft.
 
 import { PARKING_ALT_KM, TARGETS, leadAngle, tripTo, windows, type Trip } from '../transfer/hohmann';
 import { planetState, realTrip, type RealTrip, type Vec } from '../transfer/lambert';
@@ -19,7 +22,9 @@ import { cheapest, nearHalfTurn, onEdge, porkchopRange, porkchopStepper, type Me
 import { BAND_COLORS, PorkchopMap, type Pick } from './porkchopMap';
 import { toJulianDate } from '../astro/julian';
 import type { PlanetId } from '../astro/elements';
-import { t, num, numGrouped, dayMonthYear } from '../i18n';
+import { t, num, numGrouped, dayMonthYear, dayMonthYearRange } from '../i18n';
+import { signalAt, signalProfile, type Conjunction, type SignalProfile } from '../transfer/signal';
+import { SignalChart, type SignalText } from './signalChart';
 
 const DAY_MS = 86_400_000;
 const UNIX_EPOCH_JD = 2440587.5;
@@ -71,6 +76,10 @@ export class TripCard {
   private showPath = false;
   private path: { trip: RealTrip; points: Vec3[]; arrive: Vec3 } | null = null;
   private running = false;
+  // Step 5: the signal delay along the exact trip, worked out once per trip
+  private signal: { trip: RealTrip; profile: SignalProfile } | null = null;
+  private readonly sigChart: SignalChart;
+  private sigShown = '';
 
   private readonly el: {
     title: HTMLElement; badge: HTMLElement; intro: HTMLElement; toLabel: HTMLElement; select: HTMLSelectElement;
@@ -80,6 +89,8 @@ export class TripCard {
     mapTitle: HTMLElement; mapIntro: HTMLElement; colorBy: HTMLElement; measure: HTMLSelectElement; axisY: HTMLElement;
     axisX: HTMLElement; legend: HTMLElement; marks: HTMLElement; status: HTMLElement; best: HTMLElement;
     play: HTMLButtonElement; show: HTMLInputElement; showText: HTMLElement; playNote: HTMLElement;
+    sig: HTMLElement; sigTitle: HTMLElement; sigIntro: HTMLElement; sigUnit: HTMLElement; sigAxis: HTMLElement;
+    sigLines: HTMLElement; sigTable: HTMLElement; sigSummary: HTMLElement;
   };
 
   constructor(root: HTMLElement, clock: () => { ms: number; min: number; max: number }) {
@@ -120,7 +131,16 @@ export class TripCard {
         <button type="button" class="tp-play"></button>
         <label class="check"><input type="checkbox" class="tp-show"> <span class="tp-show-text"></span></label>
       </div>
-      <p class="sub tp-play-note"></p>`;
+      <p class="sub tp-play-note"></p>
+      <div class="tp-sig">
+        <h3 class="tp-sig-title"></h3>
+        <p class="sub tp-sig-intro"></p>
+        <div class="sub tp-axis-y tp-sig-unit" dir="ltr"><span dir="auto"></span></div>
+        <div class="tp-sig-chart"></div>
+        <div class="sub tp-axis-x tp-sig-axis"></div>
+        <div class="tp-when tp-sig-lines"></div>
+        <details class="sw-table tp-sig-table"><summary></summary><div></div></details>
+      </div>`;
     const q = <T extends HTMLElement>(c: string) => root.querySelector<T>(c)!;
     this.el = {
       title: q('.tp-title'), badge: q('.tp-badge'), intro: q('.tp-intro'), toLabel: q('.tp-to-label'), select: q('.tp-target'),
@@ -133,7 +153,10 @@ export class TripCard {
       axisY: q('.tp-axis-y span'), axisX: q('.tp-axis-x'), legend: q('.tp-legend'), marks: q('.tp-marks'),
       status: q('.tp-map-status'), best: q('.tp-best'),
       play: q('.tp-play'), show: q('.tp-show'), showText: q('.tp-show-text'), playNote: q('.tp-play-note'),
+      sig: q('.tp-sig'), sigTitle: q('.tp-sig-title'), sigIntro: q('.tp-sig-intro'), sigUnit: q('.tp-sig-unit span'),
+      sigAxis: q('.tp-sig-axis'), sigLines: q('.tp-sig-lines'), sigTable: q('.tp-sig-table div'), sigSummary: q('.tp-sig-table summary'),
     };
+    this.sigChart = new SignalChart(q('.tp-sig-chart'));
     this.el.show.addEventListener('change', () => { this.showPath = this.el.show.checked; });
     this.el.play.addEventListener('click', () => {
       const tr = this.exact?.trip;
@@ -287,12 +310,50 @@ export class TripCard {
     const { min, max } = this.clock();
     this.el.play.disabled = !(x.trip && x.depart >= min && x.depart <= max);
     this.porkMap.setSelected(this.selection());
+    this.renderSignal();
     const html = facts + '\u0000' + lines.map((l) => `<p>${l}</p>`).join('');
     if (html === this.exactShown) return;
     this.exactShown = html;
     this.el.exactFacts.innerHTML = facts;
     this.el.exactFacts.hidden = !facts;
     this.el.exactLines.innerHTML = html.split('\u0000')[1];
+  }
+
+  /** The signal delay along the exact trip: the chart (when the trip changes), its lines and table, and the time on screen. */
+  private renderSignal(redraw = false) {
+    const tr = this.exact?.trip ?? null;
+    this.el.sig.hidden = !tr;
+    if (!tr) { this.signal = null; this.sigShown = ''; return; }
+    const s = t().trip;
+    if (this.signal?.trip !== tr) { this.signal = { trip: tr, profile: signalProfile(tr) }; redraw = true; }
+    const p = this.signal.profile, tof = p.arrival.day;
+    if (redraw) {
+      this.sigChart.set(p, SIGNAL_TEXT);
+      this.el.sigUnit.textContent = p.max.seconds >= 2 * 3600 ? s.sigUnitHours : s.sigUnitMin;
+      this.el.sigAxis.textContent = tof > 1000 ? s.sigAxisYears : s.sigAxisDays;
+      this.el.sigTable.innerHTML = signalTable(p);
+    }
+    // The time on screen as a day of the trip
+    const jd = toJulianDate(new Date(this.clock().ms));
+    const day = jd - tr.departJd;
+    const on = day >= 0 && day <= tof;
+    this.sigChart.setNow(on ? day : null);
+
+    const date = (wjd: number) => `<bdi>${dayMonthYear(jdToMs(wjd), undefined, 'UTC')}</bdi>`;
+    const dayNo = (d: number) => ltr(numGrouped(Math.floor(d)));
+    const lines = [s.sigArrive(nw(delayText(p.arrival.seconds)), nw(delayText(2 * p.arrival.seconds)))];
+    if (tof - p.max.day > 1) lines.push(s.sigMax(nw(delayText(p.max.seconds)), date(p.max.jd), dayNo(p.max.day)));
+    else lines[0] += ` ${s.sigMaxAtEnd}`;
+    // The stretches near the Sun: all of them up to three, or else the first and the last and how far apart
+    const cs = p.conjunctions, span = (c: Conjunction) => `<bdi>${dayMonthYearRange(jdToMs(c.from), jdToMs(c.to), undefined, 'UTC')}</bdi>`;
+    lines.push(!cs.length ? s.sigNoConj
+      : cs.length <= 3 ? s.sigConj(cs.length, cs.map(span).join(s.sigJoin))
+        : s.sigConjMany(cs.length, Math.round((cs[cs.length - 1].from - cs[0].from) / (cs.length - 1) / 30.44), span(cs[0]), span(cs[cs.length - 1])));
+    if (on) lines.push(s.sigNow(dayNo(day), nw(delayText(signalAt(tr, jd).seconds))));
+    const html = lines.map((l) => `<p>${l}</p>`).join('');
+    if (html === this.sigShown) return;
+    this.sigShown = html;
+    this.el.sigLines.innerHTML = html;
   }
 
   /** Texts for the language, then the numbers. */
@@ -318,11 +379,15 @@ export class TripCard {
     this.el.play.textContent = s.playTrip;
     this.el.showText.textContent = s.showPath;
     this.el.playNote.textContent = s.playNote;
+    this.el.sigTitle.textContent = s.sigTitle;
+    this.el.sigIntro.textContent = s.sigIntro;
+    this.el.sigSummary.textContent = s.sigTable;
     this.el.select.querySelectorAll('option').forEach((o) => { o.textContent = t().planets[o.value as PlanetId]; });
     this.shown = '';
     this.exactShown = '';
     this.update();
     this.renderExact();
+    this.renderSignal(true);
     this.renderMap();
   }
 
@@ -352,7 +417,7 @@ export class TripCard {
       path: this.path.points, done: Math.min(1, Math.max(0, done)),
       depart: au(tr.r1 as Vec), arrive: this.path.arrive,
       craft: on ? au(propagate(SUN_GM, tr.r1, tr.v1, (jd - tr.departJd) * DAY_S).r) : null,
-      label: t().trip.craft, departColor: COLORS.earth, arriveColor: COLORS[tr.target],
+      label: on ? t().trip.craftDelay(t().trip.craft, delayText(signalAt(tr, jd).seconds)) : t().trip.craft, departColor: COLORS.earth, arriveColor: COLORS[tr.target],
     };
   }
 
@@ -395,6 +460,7 @@ export class TripCard {
     this.jumpMs = inRange ? departMs : null;
     if (!inRange) lines.push(s.outside);
 
+    this.renderSignal();
     const html = factsHtml(facts) + '\u0000' + lines.map((l) => `<p>${l}</p>`).join('');
     if (html === this.shown) return;
     this.shown = html;
@@ -422,3 +488,28 @@ function tripFacts(days: number, leave: number, c3: number, arrive: number, vInf
 
 const factsHtml = (rows: string[][]) => rows.map(([label, value, note]) =>
   `<div><dt>${label}</dt><dd><span class="tp-v">${value}</span>${note ? `<span class="tp-n">${note}</span>` : ''}</dd></div>`).join('');
+
+/** A delay in words: whole seconds under a minute, then minutes (one decimal), then hours and minutes. */
+export function delayText(seconds: number): string {
+  return seconds < 59.5 ? t().trip.seconds(Math.round(seconds)) : t().light(seconds / 60);
+}
+
+/** A distance from the Earth: km, million km, or au from a thousand million km on. */
+export function distanceText(km: number): string {
+  const s = t();
+  if (km < 1e6) return `${numGrouped(km)} ${s.km}`;
+  if (km < 1e9) return `${num(km / 1e6, km < 1e7 ? 1 : 0)} ${s.millionKm}`;
+  return `${num(km / AU_KM, 2)} ${s.au}`;
+}
+
+const SIGNAL_TEXT: SignalText = { delay: delayText, distance: distanceText };
+
+/** The chart's numbers as a table: thirteen days evenly along the trip, launch and arrival included. */
+function signalTable(p: SignalProfile): string {
+  const s = t().trip, c = s.sigCols, n = p.samples.length - 1;
+  const rows = Array.from({ length: 13 }, (_, k) => p.samples[Math.round((k * n) / 12)]).map((q) =>
+    `<tr><td><bdi>${dayMonthYear(jdToMs(q.jd), undefined, 'UTC')}</bdi></td><td>${ltr(numGrouped(Math.round(q.day)))}</td>`
+    + `<td>${nw(distanceText(q.km))}</td><td>${nw(delayText(q.seconds))}</td>`
+    + `<td>${Number.isFinite(q.sepDeg) ? ltr(`${num(q.sepDeg, 1)}°`) : '–'}</td></tr>`).join('');
+  return `<table><thead><tr><th>${c.date}</th><th>${c.day}</th><th>${c.distance}</th><th>${c.delay}</th><th>${c.sun}</th></tr></thead><tbody>${rows}</tbody></table>`;
+}

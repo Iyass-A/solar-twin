@@ -331,6 +331,38 @@ export interface Strings {
     craft: string;
     playNote: string;
     mapAria: string;
+    // Step 5: the signal delay on the way
+    sigTitle: string;
+    sigIntro: string;
+    /** A delay under a minute, in whole seconds */
+    seconds: (n: number) => string;
+    /** At arrival: one way, and a question and its answer (delays come formatted) */
+    sigArrive: (oneWay: string, both: string) => string;
+    /** The longest delay when it is not at arrival: the delay, its date and the day of the trip (formatted) */
+    sigMax: (delay: string, date: string, day: string) => string;
+    sigMaxAtEnd: string;
+    /** At the time on screen, while it is within the trip (day and delay formatted) */
+    sigNow: (day: string, delay: string) => string;
+    /** How many times the craft comes within 2° of the Sun in the Earth's sky, and when (the stretches come formatted and joined) */
+    sigConj: (n: number, list: string) => string;
+    /** The same for many: how many, about how many months apart, the first and the last (formatted) */
+    sigConjMany: (n: number, months: number, first: string, last: string) => string;
+    sigNoConj: string;
+    /** Between two such stretches */
+    sigJoin: string;
+    sigAxisDays: string;
+    sigAxisYears: string;
+    sigUnitMin: string;
+    sigUnitHours: string;
+    /** On the chart's bands and in its tooltip: the craft is near the Sun in the Earth's sky */
+    sigSun: string;
+    /** "day 120 of the trip" (the number comes formatted) */
+    sigDay: (day: string) => string;
+    sigTable: string;
+    sigCols: { date: string; day: string; distance: string; delay: string; sun: string };
+    sigAria: string;
+    /** The craft's name with its delay, next to it in the views (delay comes formatted) */
+    craftDelay: (name: string, delay: string) => string;
   };
 }
 
@@ -385,6 +417,9 @@ export const dateTime = (ms: number, l: Lang = current, timeZone?: string) => da
 export const dayMonth = (ms: number, l: Lang = current, timeZone?: string) => dateFormat(l, 'dayMonth', timeZone).format(ms);
 /** Day, month and year, e.g. "4 كانون الأول 2026", "4. Dezember 2026". */
 export const dayMonthYear = (ms: number, l: Lang = current, timeZone?: string) => dateFormat(l, 'dayMonthYear', timeZone).format(ms);
+/** Two days as one stretch, e.g. "23–28 تشرين الأول 2028", "27. Juni – 1. Juli 2045". */
+export const dayMonthYearRange = (from: number, to: number, l: Lang = current, timeZone?: string) =>
+  dateFormat(l, 'dayMonthYear', timeZone).formatRange(from, to);
 /** Time of day, e.g. "14:32". */
 export const clock = (ms: number, l: Lang = current, timeZone?: string) => dateFormat(l, 'clock', timeZone).format(ms);
 /** Short weekday and day, e.g. "So. 15", "Sun 15". */
@@ -835,6 +870,31 @@ const AR: Strings = {
     craft: 'المركبة',
     playNote: 'الزر بيرجّع الوقت ليوم الانطلاق وبيشغّله، فبتشوف المركبة ماشية عالمسار لحد ما توصل للكوكب. الخط المليان: اللي قطعته، والمتقطّع: اللي باقي.',
     mapAria: 'خريطة مواعيد الانطلاق: يوم الانطلاق ومدة الرحلة، ملوّنة حسب الكلفة',
+    sigTitle: 'تأخير الإشارة',
+    sigIntro: 'الأرض والمركبة بيحكوا مع بعض بالراديو، والإشارة بتمشي بسرعة الضوء: 299,792 كم بالثانية. فكل ما بعدت المركبة، كل ما طوّلت الرسالة لتوصل، '
+      + 'وما حدا بيقدر يسوقها مباشرة: لازم تتصرّف لحالها بالأوامر اللي وصلتها من قبل. الرسمة بتورجي قديش بتاخد الإشارة باتجاه واحد بكل يوم من الرحلة (سؤال وجواب: الضعف). '
+      + 'المناطق الفاتحة: المركبة قريبة من الشمس بسما الأرض (أقل من 2°)، وغاز الشمس الحامي بيخربط الإشارة، فمهمات ناسا للمريخ ما بتبعت أوامر بهالأيام.',
+    seconds: (n) => arabicCount(n, 'ثانية', 'ثانيتين', 'ثواني'),
+    sigArrive: (one, both) => `لما توصل المركبة، الإشارة بتاخد ${one}، يعني سؤال وجواب ${both}.`,
+    sigMax: (d, date, day) => `أطول تأخير: ${d}، يوم ${date} (اليوم ${day} من الرحلة).`,
+    sigMaxAtEnd: 'وهاد أطول تأخير بالرحلة كلها.',
+    sigNow: (day, d) => `بوقت الشاشة (اليوم ${day} من الرحلة): ${d}.`,
+    sigConj: (n, list) => `${n === 1 ? 'مرة وحدة' : n === 2 ? 'مرتين' : n <= 10 ? `${n} مرات` : `${n} مرة`} بالرحلة، المركبة بتقرّب من الشمس بسما الأرض لأقل من 2°: ${list}. `
+      + 'بهالأيام المهمات الحقيقية ما بتبعت أوامر.',
+    sigConjMany: (n, m, first, last) => `${n <= 10 ? `${n} مرات` : `${n} مرة`} بالرحلة، المركبة بتقرّب من الشمس بسما الأرض لأقل من 2°، تقريباً مرة كل ${arabicCount(m, 'شهر', 'شهرين', 'أشهر')}: `
+      + `أول مرة ${first}، وآخر مرة ${last}. بهالأيام المهمات الحقيقية ما بتبعت أوامر.`,
+    sigNoConj: 'المركبة ما بتقرّب من الشمس بسما الأرض لأقل من 2° بكل الرحلة، فالإشارة بتضل نضيفة.',
+    sigJoin: '، ',
+    sigAxisDays: 'أيام من الانطلاق',
+    sigAxisYears: 'سنين من الانطلاق',
+    sigUnitMin: 'الإشارة (دقيقة)',
+    sigUnitHours: 'الإشارة (ساعة)',
+    sigSun: 'قريبة من الشمس',
+    sigDay: (d) => `اليوم ${d} من الرحلة`,
+    sigTable: 'الأرقام كجدول',
+    sigCols: { date: 'التاريخ', day: 'يوم الرحلة', distance: 'البعد عن الأرض', delay: 'الإشارة (باتجاه واحد)', sun: 'بعدها عن الشمس بالسما' },
+    sigAria: 'تأخير الإشارة بين الأرض والمركبة على طول الرحلة',
+    craftDelay: (name, d) => `${name} · ${d}`,
   },
 };
 
@@ -1227,6 +1287,31 @@ const DE: Strings = {
     craft: 'Sonde',
     playNote: 'Der Knopf stellt die Zeit auf den Starttag und lässt sie laufen: Du siehst die Sonde auf ihrer Bahn, bis sie den Planeten erreicht. Durchgezogen: der zurückgelegte Weg, gestrichelt: der Rest.',
     mapAria: 'Karte der Starttermine: Starttag und Flugdauer, gefärbt nach den Kosten',
+    sigTitle: 'Signallaufzeit',
+    sigIntro: 'Erde und Sonde sprechen per Funk, und das Signal ist mit Lichtgeschwindigkeit unterwegs: 299.792 km pro Sekunde. Je weiter die Sonde weg ist, desto länger braucht eine Nachricht, '
+      + 'und niemand kann sie direkt steuern: Sie muss mit den Befehlen auskommen, die sie vorher bekommen hat. Die Grafik zeigt für jeden Tag der Reise, wie lange das Signal in eine Richtung braucht (Frage und Antwort: doppelt so lange). '
+      + 'Helle Bereiche: Die Sonde steht am Himmel der Erde nah an der Sonne (weniger als 2°), deren heißes Gas das Signal stört; NASAs Mars-Missionen senden an diesen Tagen keine Befehle.',
+    seconds: (n) => plural(n, 'Sekunde', 'Sekunden'),
+    sigArrive: (one, both) => `Bei der Ankunft braucht das Signal ${one}, Frage und Antwort also ${both}.`,
+    sigMax: (d, date, day) => `Längste Laufzeit: ${d}, am ${date} (Tag ${day} der Reise).`,
+    sigMaxAtEnd: 'Das ist auch die längste der ganzen Reise.',
+    sigNow: (day, d) => `Zur Zeit auf dem Bildschirm (Tag ${day} der Reise): ${d}.`,
+    sigConj: (n, list) => `Die Sonde kommt der Sonne am Himmel der Erde ${n === 1 ? 'einmal' : `${n}-mal`} näher als 2°: ${list}. `
+      + 'An diesen Tagen senden echte Missionen keine Befehle.',
+    sigConjMany: (n, m, first, last) => `Die Sonde kommt der Sonne am Himmel der Erde ${n}-mal näher als 2°, etwa alle ${plural(m, 'Monat', 'Monate')}: `
+      + `zuerst ${first}, zuletzt ${last}. An diesen Tagen senden echte Missionen keine Befehle.`,
+    sigNoConj: 'Die Sonde kommt der Sonne am Himmel der Erde auf der ganzen Reise nie näher als 2°, das Signal bleibt sauber.',
+    sigJoin: '; ',
+    sigAxisDays: 'Tage seit dem Start',
+    sigAxisYears: 'Jahre seit dem Start',
+    sigUnitMin: 'Signal (Minuten)',
+    sigUnitHours: 'Signal (Stunden)',
+    sigSun: 'nah an der Sonne',
+    sigDay: (d) => `Tag ${d} der Reise`,
+    sigTable: 'Die Zahlen als Tabelle',
+    sigCols: { date: 'Datum', day: 'Reisetag', distance: 'Abstand zur Erde', delay: 'Signal (eine Richtung)', sun: 'Abstand zur Sonne am Himmel' },
+    sigAria: 'Signallaufzeit zwischen Erde und Sonde entlang der Reise',
+    craftDelay: (name, d) => `${name} · ${d}`,
   },
 };
 
@@ -1623,6 +1708,31 @@ const EN: Strings = {
     craft: 'Spacecraft',
     playNote: 'The button sets the time to the launch day and runs it, so you see the spacecraft move along its path until it reaches the planet. Solid: the way behind it, dashed: the way ahead.',
     mapAria: 'Map of launch dates: launch day and time on the way, coloured by cost',
+    sigTitle: 'Signal delay',
+    sigIntro: 'The Earth and the craft talk by radio, and the signal travels at the speed of light: 299,792 km a second. The farther the craft, the longer a message takes, '
+      + 'and nobody can steer it live: it has to manage with the commands it got before. The chart shows how long the signal takes one way on each day of the trip (a question and its answer: twice that). '
+      + 'Light bands: the craft is close to the Sun in the Earth’s sky (under 2°), whose hot gas garbles the signal; NASA’s Mars missions send no commands on those days.',
+    seconds: (n) => plural(n, 'second', 'seconds'),
+    sigArrive: (one, both) => `On arrival the signal takes ${one}, so a question and its answer ${both}.`,
+    sigMax: (d, date, day) => `Longest delay: ${d}, on ${date} (day ${day} of the trip).`,
+    sigMaxAtEnd: 'That is the longest of the whole trip.',
+    sigNow: (day, d) => `At the time on screen (day ${day} of the trip): ${d}.`,
+    sigConj: (n, list) => `The craft comes within 2° of the Sun in the Earth’s sky ${n === 1 ? 'once' : n === 2 ? 'twice' : `${n} times`}: ${list}. `
+      + 'Real missions send no commands on those days.',
+    sigConjMany: (n, m, first, last) => `The craft comes within 2° of the Sun in the Earth’s sky ${n} times, about every ${plural(m, 'month', 'months')}: `
+      + `first ${first}, last ${last}. Real missions send no commands on those days.`,
+    sigNoConj: 'The craft never comes within 2° of the Sun in the Earth’s sky on this trip, so the signal stays clean.',
+    sigJoin: '; ',
+    sigAxisDays: 'days since launch',
+    sigAxisYears: 'years since launch',
+    sigUnitMin: 'signal (minutes)',
+    sigUnitHours: 'signal (hours)',
+    sigSun: 'near the Sun',
+    sigDay: (d) => `day ${d} of the trip`,
+    sigTable: 'The numbers as a table',
+    sigCols: { date: 'Date', day: 'Day of trip', distance: 'Distance from Earth', delay: 'Signal (one way)', sun: 'From the Sun in the sky' },
+    sigAria: 'Signal delay between the Earth and the craft along the trip',
+    craftDelay: (name, d) => `${name} · ${d}`,
   },
 };
 
