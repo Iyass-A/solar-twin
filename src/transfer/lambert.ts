@@ -13,12 +13,17 @@
 // rises to endless again, so a long enough time has two answers (Vallado, "Lambert, universal variables",
 // multiple revolutions). A trip takes the one of all of them (none to MAX_REVS turns) with the lowest launch
 // speed, as JPL's Small-Body Mission Design tool does: npm run check finds its trips, to the rounding of its numbers.
+//
+// Step 7: a trip can also go to an asteroid or comet (Destination). Arriving there means matching its speed, and
+// then the orbit with the lowest launch speed can be the wrong one: with several whole turns possible, it may
+// arrive fast, so by Δv a trip takes the orbit with the least of both burns instead (Measure).
 
 import * as Astronomy from 'astronomy-engine';
 import { stumpff } from '../physics/orbit';
 import { AU_KM, SUN_GM } from '../physics/bodies';
 import { PARKING_ALT_KM, RADIUS_KM, hyperbolicBurn, planetGm } from './hohmann';
 import { BODY, EQJ_TO_ECL } from '../astro/reference';
+import { smallBodyState, type SmallBodyOrbit } from '../astro/smallbody';
 import type { PlanetId } from '../astro/elements';
 
 export type Vec = [number, number, number];
@@ -186,48 +191,122 @@ export interface Flight {
   r1: Vec; v1: Vec;
 }
 
+/** One orbit between the two states, with the speeds relative to the Earth when leaving and to the target when arriving. */
+interface Candidate { l: Lambert; inf1: Vec; inf2: Vec; vInf1: number; vInf2: number }
+
+/** All the orbits from the Earth's state at departure to the target's at arrival, with none to MAX_REVS whole turns. */
+function candidates(departJd: number, arriveJd: number, e: { r: Vec; v: Vec }, p: { r: Vec; v: Vec }): Candidate[] {
+  return lambertAll(SUN_GM, e.r, p.r, (arriveJd - departJd) * DAY_S).map((l) => {
+    const inf1: Vec = [0, 1, 2].map((k) => l.v1[k] - e.v[k]) as Vec;
+    const inf2: Vec = [0, 1, 2].map((k) => l.v2[k] - p.v[k]) as Vec;
+    return { l, inf1, inf2, vInf1: norm(inf1), vInf2: norm(inf2) };
+  });
+}
+
+function flightOf(departJd: number, arriveJd: number, e: { r: Vec }, c: Candidate): Flight {
+  const { l, inf1, inf2 } = c;
+  const eq = Astronomy.RotateVector(ECL_TO_EQJ, new Astronomy.Vector(inf1[0], inf1[1], inf1[2], new Astronomy.AstroTime(0)));
+  return {
+    departJd, arriveJd, tofDays: arriveJd - departJd, angleDeg: l.angleDeg, revs: l.revs, type: l.angleDeg < 180 ? 1 : 2,
+    vInfDepart: c.vInf1, vInfArrive: c.vInf2, inf1, inf2,
+    dla: (Math.asin(eq.z / c.vInf1) * 180) / Math.PI,
+    r1: e.r, v1: l.v1,
+  };
+}
+
 /**
  * The flight from the Earth's state at departure to the target's at arrival (km, km/s), or null if there is none:
  * of all the orbits with none to MAX_REVS whole turns, the one with the lowest launch speed.
  */
 export function flightBetween(departJd: number, arriveJd: number, e: { r: Vec; v: Vec }, p: { r: Vec; v: Vec }): Flight | null {
-  let best: { l: Lambert; inf1: Vec; vInf: number } | null = null;
-  for (const l of lambertAll(SUN_GM, e.r, p.r, (arriveJd - departJd) * DAY_S)) {
-    const inf1: Vec = [0, 1, 2].map((k) => l.v1[k] - e.v[k]) as Vec;
-    const vInf = norm(inf1);
-    if (!best || vInf < best.vInf) best = { l, inf1, vInf };
-  }
-  if (!best) return null;
-  const { l, inf1 } = best;
-  const inf2: Vec = [0, 1, 2].map((k) => l.v2[k] - p.v[k]) as Vec;
-  const eq = Astronomy.RotateVector(ECL_TO_EQJ, new Astronomy.Vector(inf1[0], inf1[1], inf1[2], new Astronomy.AstroTime(0)));
-  return {
-    departJd, arriveJd, tofDays: arriveJd - departJd, angleDeg: l.angleDeg, revs: l.revs, type: l.angleDeg < 180 ? 1 : 2,
-    vInfDepart: best.vInf, vInfArrive: norm(inf2), inf1, inf2,
-    dla: (Math.asin(eq.z / best.vInf) * 180) / Math.PI,
-    r1: e.r, v1: l.v1,
-  };
+  let best: Candidate | null = null;
+  for (const c of candidates(departJd, arriveJd, e, p)) if (!best || c.vInf1 < best.vInf1) best = c;
+  return best && flightOf(departJd, arriveJd, e, best);
 }
 
+/**
+ * Where a trip goes (step 7): a planet, or an asteroid or comet. A planet's state comes from Astronomy Engine and
+ * the trip ends in an orbit 300 km above it. An asteroid or comet moves round the Sun alone (its orbit from JPL,
+ * src/astro/smallbody.ts), and its pull is next to nothing, so arriving means matching its speed: the burn is v∞.
+ * And its position is known (within a degree of JPL's) only in some years, so a trip must arrive in them.
+ */
+export interface Destination {
+  /** The planet's id, or the small body's ("sb-..."). */
+  id: string;
+  small: boolean;
+  /** Position [km] and velocity [km/s] round the Sun, J2000 ecliptic. */
+  state(jd: number): { r: Vec; v: Vec };
+  /** The burn on arrival for a speed v∞ there [km/s]. */
+  arriveBurn(vInf: number): number;
+  /** The first and last arrival date (Julian Dates): endless for a planet. */
+  from: number; to: number;
+}
+
+const planetDestinations = new Map<PlanetId, Destination>();
+
+/** A planet as a destination. */
+export function planetDestination(id: PlanetId): Destination {
+  let d = planetDestinations.get(id);
+  if (!d) {
+    const gm = planetGm(id), r = RADIUS_KM[id] + PARKING_ALT_KM;
+    d = { id, small: false, state: (jd) => planetState(id, jd), arriveBurn: (v) => hyperbolicBurn(v, gm, r), from: -Infinity, to: Infinity };
+    planetDestinations.set(id, d);
+  }
+  return d;
+}
+
+/** An asteroid or comet as a destination: its orbit round the Sun and the years its position is known in (Julian Dates). */
+export function smallDestination(id: string, orbit: SmallBodyOrbit, from: number, to: number): Destination {
+  return { id, small: true, state: (jd) => smallBodyState(orbit, jd), arriveBurn: (v) => v, from, to };
+}
+
+const destinationOf = (target: PlanetId | Destination) => (typeof target === 'string' ? planetDestination(target) : target);
+
+/**
+ * Which of the orbits a trip takes: 'c3' the lowest launch speed (as JPL's mission design tool), 'dv' the least of
+ * both burns together. They differ only where several whole turns round the Sun are possible: then the orbit
+ * that is cheapest to launch onto can arrive fast, and to stop at an asteroid that costs more than it saves.
+ */
+export type Measure = 'c3' | 'dv';
+
 export interface RealTrip extends Flight {
-  target: PlanetId;
+  /** The destination's id: a planet, or an asteroid or comet ("sb-..."). */
+  target: string;
   /** Launch energy: v∞² leaving the Earth [km²/s²]. */
   c3: number;
-  /** Burns from a 300 km orbit round the Earth and into one round the target, and both [km/s]. */
+  /** Burns from a 300 km orbit round the Earth and on arrival (into one round a planet; to match an asteroid's speed), and both [km/s]. */
   leave: number; arrive: number; total: number;
 }
 
-/** A ballistic trip from the Earth to a planet, leaving at departJd and arriving at arriveJd (Julian Dates). */
-export function realTrip(target: PlanetId, departJd: number, arriveJd: number): RealTrip | null {
-  if (!(arriveJd > departJd)) return null;
-  return tripFromStates(target, departJd, arriveJd, planetState('earth', departJd), planetState(target, arriveJd));
+/**
+ * A ballistic trip from the Earth to a planet (or any destination), leaving at departJd and arriving at arriveJd
+ * (Julian Dates); null if there is none, or if it arrives outside the destination's years.
+ */
+export function realTrip(target: PlanetId | Destination, departJd: number, arriveJd: number, by: Measure = 'c3'): RealTrip | null {
+  const dest = destinationOf(target);
+  if (!(arriveJd > departJd) || !(arriveJd >= dest.from && arriveJd <= dest.to)) return null;
+  return tripFromStates(dest, departJd, arriveJd, planetState('earth', departJd), dest.state(arriveJd), by);
 }
 
 /** The same, from the Earth's state at departure and the target's at arrival (a porkchop grid reuses them). */
-export function tripFromStates(target: PlanetId, departJd: number, arriveJd: number, e: { r: Vec; v: Vec }, p: { r: Vec; v: Vec }): RealTrip | null {
-  const f = flightBetween(departJd, arriveJd, e, p);
-  if (!f) return null;
-  const leave = hyperbolicBurn(f.vInfDepart, planetGm('earth'), RADIUS_KM.earth + PARKING_ALT_KM);
-  const arrive = hyperbolicBurn(f.vInfArrive, planetGm(target), RADIUS_KM[target] + PARKING_ALT_KM);
-  return { ...f, target, c3: f.vInfDepart ** 2, leave, arrive, total: leave + arrive };
+export function tripFromStates(target: PlanetId | Destination, departJd: number, arriveJd: number, e: { r: Vec; v: Vec }, p: { r: Vec; v: Vec }, by: Measure = 'c3'): RealTrip | null {
+  return tripsFromStates(target, departJd, arriveJd, e, p)?.[by] ?? null;
+}
+
+const EARTH_GM = planetGm('earth'), EARTH_PARKING_KM = RADIUS_KM.earth + PARKING_ALT_KM;
+
+/** Both choices of orbit at once (a porkchop grid keeps both): the lowest launch speed, and the least of both burns. */
+export function tripsFromStates(target: PlanetId | Destination, departJd: number, arriveJd: number, e: { r: Vec; v: Vec }, p: { r: Vec; v: Vec }): Record<Measure, RealTrip> | null {
+  const dest = destinationOf(target); // (its years: realTrip and the porkchop grid keep to them)
+  type Pick = { c: Candidate; leave: number; arrive: number };
+  let c3: Pick | null = null, dv: Pick | null = null;
+  for (const c of candidates(departJd, arriveJd, e, p)) {
+    const one = { c, leave: hyperbolicBurn(c.vInf1, EARTH_GM, EARTH_PARKING_KM), arrive: dest.arriveBurn(c.vInf2) };
+    if (!c3 || c.vInf1 < c3.c.vInf1) c3 = one;
+    if (!dv || one.leave + one.arrive < dv.leave + dv.arrive) dv = one;
+  }
+  if (!c3 || !dv) return null;
+  const trip = (x: Pick): RealTrip => ({ ...flightOf(departJd, arriveJd, e, x.c), target: dest.id, c3: x.c.vInf1 ** 2, leave: x.leave, arrive: x.arrive, total: x.leave + x.arrive });
+  const a = trip(c3);
+  return { c3: a, dv: dv === c3 ? a : trip(dv) };
 }

@@ -11,18 +11,27 @@
 // Step 5: the signal delay on the way (src/transfer/signal.ts, drawn by src/view/signalChart.ts): how long a
 // message between the Earth and the craft takes on each day, the longest, at arrival and at the time on screen,
 // and when the craft is too close to the Sun in the Earth's sky for commands; the delay also rides next to the craft.
+// Step 7: the well-known asteroids and comets as targets too (src/data/small-bodies.txt, grouped as there). No Hohmann
+// estimate for them (their orbits are too stretched and tilted for circles): the map covers launch dates over three
+// years from the day on screen, only arrivals in the years the site knows where the body is, and arriving means
+// matching its speed (its pull is next to nothing). The cheapest by C3 is then mostly a fast flyby, so the map is
+// coloured by Δv for them, until the visitor picks a measure.
 
 import { PARKING_ALT_KM, TARGETS, leadAngle, tripTo, windows, type Trip } from '../transfer/hohmann';
-import { planetState, realTrip, type RealTrip, type Vec } from '../transfer/lambert';
+import { planetDestination, realTrip, smallDestination, type Destination, type RealTrip, type Vec } from '../transfer/lambert';
 import { propagate } from '../physics/orbit';
 import { AU_KM, SUN_GM } from '../physics/bodies';
 import { COLORS, type TripPathFrame } from './views';
 import type { Vec3 } from '../astro/kepler';
-import { cheapest, nearHalfTurn, onEdge, porkchopRange, porkchopStepper, type Measure, type Porkchop } from '../transfer/porkchop';
+import {
+  cheapest, nearHalfTurn, onEdge, porkchopRange, porkchopStepper, smallPorkchopRange, SMALL_SPAN_DAYS, SMALL_TOF_MIN, SMALL_TOF_MAX,
+  type Measure, type Porkchop, type PorkchopRange,
+} from '../transfer/porkchop';
 import { BAND_COLORS, PorkchopMap, type Pick } from './porkchopMap';
 import { toJulianDate } from '../astro/julian';
 import type { PlanetId } from '../astro/elements';
-import { t, num, numGrouped, dayMonthYear, dayMonthYearRange } from '../i18n';
+import { t, num, numGrouped, dayMonthYear, dayMonthYearRange, lang } from '../i18n';
+import { SMALL_COLORS, smallLabel, type SmallBody } from './smallbodies';
 import { signalAt, signalProfile, type Conjunction, type SignalProfile } from '../transfer/signal';
 import { SignalChart, type SignalText } from './signalChart';
 
@@ -40,6 +49,25 @@ const RECENT_DAYS = 60;
 const FIRST_DAY = '1800-01-01', LAST_DAY = '2050-12-31';
 const isoDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 const dayMs = (ms: number) => Math.round(ms / DAY_MS) * DAY_MS;
+/** An asteroid's map stays while the time on screen is at most this many days past its first launch date. */
+const SMALL_KEEP_DAYS = 90;
+/** A trip that keeps within this distance of the Sun [au] is run in the inner view (which shows 1.75 au). */
+const INNER_AU = 2;
+const yearOf = (jd: number) => new Date(jdToMs(jd)).getUTCFullYear();
+
+/** How the asteroids and comets are grouped among the targets, as in data/small-bodies.txt. */
+export type TargetGroup = 'main' | 'neo' | 'trojan' | 'far' | 'comet';
+export const TARGET_GROUPS: TargetGroup[] = ['main', 'neo', 'trojan', 'far', 'comet'];
+export function targetGroup(b: SmallBody): TargetGroup {
+  if (b.group === 'comet') return 'comet';
+  if (b.classCode === 'TJN') return 'trojan';
+  if (b.classCode === 'TNO') return 'far';
+  if (b.group === 'neo' || ['AMO', 'APO', 'ATE', 'IEO'].includes(b.classCode)) return 'neo';
+  return 'main';
+}
+
+/** An asteroid or comet the planner can go to. */
+interface SmallTarget { body: SmallBody; dest: Destination; group: TargetGroup; retro: boolean }
 
 /** A number that keeps its left-to-right order inside Arabic text. */
 const ltr = (s: string) => `<span dir="ltr">${s}</span>`;
@@ -47,24 +75,32 @@ const ltr = (s: string) => `<span dir="ltr">${s}</span>`;
 const nw = (s: string) => `<span class="nw">${s}</span>`;
 
 export class TripCard {
-  /** Called to move the time on screen to a launch date and pick the target planet. */
-  onJump: ((ms: number, target: PlanetId) => void) | null = null;
-  /** Called to run a trip in the views: from its launch date, at a speed fitting its length, the target picked. */
-  onPlay: ((departMs: number, tofDays: number, target: PlanetId) => void) | null = null;
+  /** Called to move the time on screen to a launch date and pick the target (a planet's id or an asteroid's). */
+  onJump: ((ms: number, target: string) => void) | null = null;
+  /**
+   * Called to run a trip in the views: from its launch date, at a speed fitting its length, the target picked;
+   * inner: the path keeps within the inner view.
+   */
+  onPlay: ((departMs: number, tofDays: number, target: string, inner: boolean) => void) | null = null;
   /** Called when a trip being run reaches its arrival (the page stops time there). */
   onArrive: ((ms: number) => void) | null = null;
 
-  private target: PlanetId = 'mars';
+  private target: string = 'mars';
+  private smalls: SmallTarget[] = [];
+  // An asteroid's map: its first launch date (the day on screen when it was made) and its range (null: no trip can arrive in its years)
+  private smallAnchor: { target: string; depart0: number; range: PorkchopRange | null } | null = null;
+  /** The visitor picked what the map is coloured by: it then stays for every target. */
+  private measureChosen = false;
   // The windows around the time on screen, kept while that time stays between them
   private around: { target: PlanetId; prev: number; next: number; trip: Trip } | null = null;
   private jumpMs: number | null = null;
   private shown = '';
   // The exact trip: its two dates (UTC midnight), the target they were set for, and its result
-  private exact: { target: PlanetId; depart: number; arrive: number; trip: RealTrip | null } | null = null;
+  private exact: { target: string; depart: number; arrive: number; trip: RealTrip | null } | null = null;
   private exactShown = '';
   private readonly clock: () => { ms: number; min: number; max: number };
   // The porkchop map: which window it is for, the grid (once done), what it is coloured by, the cheapest trips
-  private chart: { key: string; map: Porkchop | null } | null = null;
+  private chart: { key: string; map: Porkchop | null; empty?: boolean } | null = null;
   private chartGen = 0;
   private measure: Measure = 'c3';
   private best: Partial<Record<1 | 2, RealTrip>> = {};
@@ -84,6 +120,7 @@ export class TripCard {
   private readonly el: {
     title: HTMLElement; badge: HTMLElement; intro: HTMLElement; toLabel: HTMLElement; select: HTMLSelectElement;
     facts: HTMLElement; whenTitle: HTMLElement; when: HTMLElement; jump: HTMLButtonElement; note: HTMLElement; giants: HTMLElement;
+    flyby: HTMLElement; mapPart: HTMLElement;
     exactTitle: HTMLElement; exactIntro: HTMLElement; departLabel: HTMLElement; arriveLabel: HTMLElement;
     depart: HTMLInputElement; arrive: HTMLInputElement; exactFacts: HTMLElement; exactLines: HTMLElement;
     mapTitle: HTMLElement; mapIntro: HTMLElement; colorBy: HTMLElement; measure: HTMLSelectElement; axisY: HTMLElement;
@@ -98,15 +135,14 @@ export class TripCard {
     root.innerHTML = `
       <h2 class="card-title"><span class="tp-title"></span> <span class="badge tp-badge"></span></h2>
       <p class="sub tp-intro"></p>
-      <div class="row"><label><span class="tp-to-label"></span> <select class="tp-target">
-        ${TARGETS.map((id) => `<option value="${id}"></option>`).join('')}
-      </select></label></div>
+      <div class="row"><label><span class="tp-to-label"></span> <select class="tp-target"></select></label></div>
       <dl class="tp-facts"></dl>
       <h3 class="tp-when-title"></h3>
       <div class="tp-when"></div>
       <div class="row tp-buttons"><button type="button" class="tp-jump"></button></div>
       <p class="sub tp-note"></p>
       <p class="sub tp-giants" hidden></p>
+      <div class="tp-map-part">
       <h3 class="tp-map-title"></h3>
       <p class="sub tp-map-intro"></p>
       <div class="row"><label><span class="tp-colorby"></span> <select class="tp-measure">
@@ -117,8 +153,10 @@ export class TripCard {
       <div class="sub tp-axis-x"></div>
       <div class="tp-legend"></div>
       <p class="sub tp-marks"></p>
+      <p class="sub tp-flyby" hidden></p>
       <p class="sub tp-map-status" hidden></p>
       <div class="tp-when tp-best"></div>
+      </div>
       <h3 class="tp-exact-title"></h3>
       <p class="sub tp-exact-intro"></p>
       <div class="row tp-dates">
@@ -145,7 +183,7 @@ export class TripCard {
     this.el = {
       title: q('.tp-title'), badge: q('.tp-badge'), intro: q('.tp-intro'), toLabel: q('.tp-to-label'), select: q('.tp-target'),
       facts: q('.tp-facts'), whenTitle: q('.tp-when-title'), when: q('.tp-when'), jump: q('.tp-jump'), note: q('.tp-note'),
-      giants: q('.tp-giants'),
+      giants: q('.tp-giants'), flyby: q('.tp-flyby'), mapPart: q('.tp-map-part'),
       exactTitle: q('.tp-exact-title'), exactIntro: q('.tp-exact-intro'), departLabel: q('.tp-depart-label'),
       arriveLabel: q('.tp-arrive-label'), depart: q('.tp-depart'), arrive: q('.tp-arrive'),
       exactFacts: q('.tp-exact-facts'), exactLines: q('.tp-exact-lines'),
@@ -164,7 +202,8 @@ export class TripCard {
       this.picked = true; // the trip being run stays, whatever the map finds as time moves on
       this.showPath = this.el.show.checked = true;
       this.running = true;
-      this.onPlay?.(jdToMs(tr.departJd), tr.tofDays, tr.target);
+      const inner = this.pathOf(tr).points.every((p) => Math.hypot(p.x, p.y, p.z) <= INNER_AU);
+      this.onPlay?.(jdToMs(tr.departJd), tr.tofDays, tr.target, inner);
     });
     this.porkMap = new PorkchopMap(q('.tp-map'));
     this.porkMap.onPick = (p) => {
@@ -173,8 +212,11 @@ export class TripCard {
     };
     this.el.measure.addEventListener('change', () => {
       this.measure = this.el.measure.value as Measure;
+      this.measureChosen = true;
       this.refreshBest();
+      // The trip below takes the orbit cheapest by the measure too
       if (!this.picked) this.exactToCheapest();
+      else if (this.exact) this.setExact(this.exact.target, this.exact.depart, this.exact.arrive);
       this.renderMap();
     });
     this.el.best.addEventListener('click', (e) => {
@@ -189,10 +231,11 @@ export class TripCard {
       this.visible = entries.some((e) => e.isIntersecting);
       if (this.visible) this.update();
     }, { rootMargin: '300px' }).observe(root);
-    this.el.select.value = this.target;
+    this.fillTargets();
     this.el.select.addEventListener('change', () => {
-      this.target = this.el.select.value as PlanetId;
+      this.target = this.el.select.value;
       this.picked = false;
+      if (!this.measureChosen) this.el.measure.value = this.measure = this.small() ? 'dv' : 'c3';
       this.render();
     });
     this.el.jump.addEventListener('click', () => {
@@ -208,9 +251,60 @@ export class TripCard {
     }
   }
 
+  /** The well-known asteroids and comets, once they are loaded: they join the targets. */
+  setSmallBodies(bodies: SmallBody[]) {
+    this.smalls = bodies.filter((b) => b.famous).map((body) => ({
+      body, dest: smallDestination(body.id, body.orbit, body.validFrom, body.validTo), group: targetGroup(body), retro: body.orbit.i > 90,
+    }));
+    this.fillTargets();
+  }
+
+  /** The targets in the language: the planets, then the asteroids and comets in their groups. */
+  private fillTargets() {
+    const s = t().trip, l = lang();
+    const option = (id: string, name: string) => { const o = document.createElement('option'); o.value = id; o.textContent = name; return o; };
+    const group = (label: string, options: HTMLOptionElement[]) => { const g = document.createElement('optgroup'); g.label = label; g.append(...options); return g; };
+    const groups = [group(s.targetGroups.planets, TARGETS.map((id) => option(id, t().planets[id])))];
+    for (const g of TARGET_GROUPS) {
+      const list = this.smalls.filter((x) => x.group === g);
+      if (list.length) groups.push(group(s.targetGroups[g], list.map((x) => option(x.body.id, smallLabel(x.body, l)))));
+    }
+    this.el.select.replaceChildren(...groups);
+    this.el.select.value = this.target;
+  }
+
+  /** The asteroid or comet with this id (the target's by default), if it is one. */
+  private small(id = this.target): SmallTarget | undefined {
+    return id.startsWith('sb-') ? this.smalls.find((x) => x.body.id === id) : undefined;
+  }
+
+  private nameOf(id: string): string {
+    const sm = this.small(id);
+    return sm ? smallLabel(sm.body, lang()) : t().planets[id as PlanetId];
+  }
+
+  private colorOf(id: string): string {
+    const sm = this.small(id);
+    return sm ? SMALL_COLORS[sm.body.group] : COLORS[id as PlanetId];
+  }
+
+  private destOf(id: string): Destination {
+    return this.small(id)?.dest ?? planetDestination(id as PlanetId);
+  }
+
+  /** A trip's path round the Sun [au], flown from its start (Lambert's orbit, so it ends at the target), and the target there. */
+  private pathOf(tr: RealTrip): { trip: RealTrip; points: Vec3[]; arrive: Vec3 } {
+    if (this.path?.trip !== tr) {
+      const points: Vec3[] = [];
+      for (let i = 0; i <= PATH_POINTS; i++) points.push(au(propagate(SUN_GM, tr.r1, tr.v1, (tr.tofDays * DAY_S * i) / PATH_POINTS).r));
+      this.path = { trip: tr, points, arrive: au(this.destOf(tr.target).state(tr.arriveJd).r) };
+    }
+    return this.path;
+  }
+
   /** Works out the exact trip for two dates (UTC midnight) and shows them in the fields. */
-  private setExact(target: PlanetId, depart: number, arrive: number) {
-    const trip = arrive > depart ? realTrip(target, toJulianDate(new Date(depart)), toJulianDate(new Date(arrive))) : null;
+  private setExact(target: string, depart: number, arrive: number) {
+    const trip = arrive > depart ? realTrip(this.destOf(target), toJulianDate(new Date(depart)), toJulianDate(new Date(arrive)), this.measure) : null;
     this.exact = { target, depart, arrive, trip };
     if (this.el.depart.value !== isoDay(depart)) this.el.depart.value = isoDay(depart);
     if (this.el.arrive.value !== isoDay(arrive)) this.el.arrive.value = isoDay(arrive);
@@ -233,16 +327,30 @@ export class TripCard {
     this.best = map ? { 1: cheapest(map, this.measure, 1) ?? undefined, 2: cheapest(map, this.measure, 2) ?? undefined } : {};
   }
 
-  /** Starts working out the map for a window, a few rows each time the page is idle. */
-  private startMap(key: string, jd: number) {
-    const gen = ++this.chartGen;
-    this.chart = { key, map: null };
+  /**
+   * A map for another target or window: worked out once the card is in view; until then the old one is dropped,
+   * so it never shows for the wrong target.
+   */
+  private newMap(key: string, range: () => PorkchopRange | null) {
+    if (this.visible) { this.startMap(key, range()); return; }
+    if (!this.chart) return;
+    this.chartGen++;
+    this.chart = null;
     this.best = {};
-    const { map, step } = porkchopStepper(porkchopRange(this.target, jd));
+    this.renderMap();
+  }
+
+  /** Starts working out the map for a range, a few rows each time the page is idle (none: no trip can arrive in an asteroid's years). */
+  private startMap(key: string, range: PorkchopRange | null) {
+    const gen = ++this.chartGen;
+    this.chart = { key, map: null, empty: !range };
+    this.best = {};
+    if (!range) { this.renderMap(); return; }
+    const { map, step } = porkchopStepper(range);
     const tick = () => {
       if (gen !== this.chartGen) return; // another planet or window since
       if (!step(12)) { setTimeout(tick, 0); return; }
-      this.chart = { key, map };
+      this.chart = { key, map, empty: !map.c3.some(Number.isFinite) };
       this.refreshBest();
       if (!this.picked) this.exactToCheapest();
       this.renderMap();
@@ -254,7 +362,10 @@ export class TripCard {
   private renderMap() {
     const s = t().trip;
     const map = this.chart?.map ?? null;
-    this.el.status.hidden = !!map;
+    const sm = this.small(), empty = !!this.chart?.empty;
+    // No map at all when no trip can arrive in an asteroid's years (the card says so above, with a button)
+    this.el.mapPart.hidden = !!this.chart && empty && !map;
+    this.el.status.hidden = !!map || empty;
     this.el.status.textContent = s.computing;
     this.porkMap.set(map, this.measure, this.best, this.selection());
     const years = !!map && map.tof0 + (map.ny - 1) * map.tofStep > 1000;
@@ -262,7 +373,7 @@ export class TripCard {
     this.el.axisX.textContent = map ? s.axisDepart : '';
 
     // Legend: the bands from cheap to dear, with where each begins and ends
-    const edges = this.porkMap.bands, fmt = (v: number) => num(v, v >= 10 ? 0 : 1);
+    const edges = this.porkMap.bands, fmt = (v: number) => num(v, v >= 10 ? 0 : v >= 1 ? 1 : 2); // (an asteroid's C3 can be a tenth)
     const swatches = map ? BAND_COLORS.slice(0, edges.length + 1).map((c, k) => {
       const label = k === 0 ? `&lt; ${fmt(edges[0])}` : k === edges.length ? `&gt; ${fmt(edges[k - 1])}` : `${fmt(edges[k - 1])}–${fmt(edges[k])}`;
       return `<span class="tp-sw"><i style="background:${c}"></i><span dir="ltr">${label}</span></span>`;
@@ -270,7 +381,11 @@ export class TripCard {
     this.el.legend.innerHTML = map
       ? `<span class="tp-legend-title">${s.measures[this.measure]} · ${s.units[this.measure]}</span> <span class="tp-end">${s.cheaper}</span>${swatches}<span class="tp-end">${s.dearer}</span>`
       : '';
-    this.el.marks.hidden = !map;
+    this.el.marks.hidden = !map || empty;
+    this.el.marks.textContent = sm ? s.marksSmall : s.marks;
+    this.el.mapIntro.textContent = sm ? s.mapIntroSmall : s.mapIntro;
+    this.el.flyby.hidden = !(sm && map && !empty && this.measure === 'c3');
+    this.el.flyby.textContent = s.sbFlyby;
 
     // The cheapest trip of each type, with a button that works it out below
     // Dates rounded to whole days, as the button puts them in the fields
@@ -283,7 +398,7 @@ export class TripCard {
       const value = this.measure === 'c3' ? nw(s.c3(ltr(num(b.c3, 2)))) : `${s.total} ${kmS(b.total)}`;
       const edge = map && onEdge(map, b) ? ` ${s.edge}` : '';
       return `<p>${s.best(k, date(d), date(a), dur, value)}${edge} <button type="button" class="tp-pick" data-type="${k}">${s.pick}</button></p>`;
-    }).join('');
+    }).join('') || (sm && empty ? `<p>${s.sbNoTrips(this.nameOf(sm.body.id))}</p>` : '');
   }
 
   /** The exact trip as a point on the map. */
@@ -295,15 +410,26 @@ export class TripCard {
 
   private renderExact() {
     const x = this.exact;
-    if (!x) return;
     const s = t().trip;
+    if (!x) { // an asteroid's trip, until the map finds the cheapest or the visitor picks one
+      this.el.play.disabled = true;
+      this.porkMap.setSelected(null);
+      this.renderSignal();
+      this.exactShown = '';
+      this.el.exactFacts.hidden = true;
+      this.el.exactLines.innerHTML = '';
+      return;
+    }
     let facts = '', lines: string[];
+    const sm = this.small(x.target);
+    const outside = sm && !(toJulianDate(new Date(x.arrive)) >= sm.dest.from && toJulianDate(new Date(x.arrive)) <= sm.dest.to);
     if (!(x.arrive > x.depart)) lines = [s.badDates];
+    else if (outside) lines = [s.sbOutsideDates(this.nameOf(x.target), this.knownDate(sm.dest.from), this.knownDate(sm.dest.to))];
     else if (!x.trip) lines = [s.noTrip];
     else {
       const r = x.trip;
-      facts = factsHtml(tripFacts(r.tofDays, r.leave, r.c3, r.arrive, r.vInfArrive, r.total, x.target));
-      lines = [s.way(ltr(`${num(r.angleDeg, 0)}°`), r.type, r.revs)];
+      facts = factsHtml(tripFacts(r.tofDays, r.leave, r.c3, r.arrive, r.vInfArrive, r.total, this.nameOf(x.target), !!sm));
+      lines = [s.way(ltr(`${num(r.angleDeg, 0)}°`), r.type, r.revs, this.measure)];
       if (nearHalfTurn(r.angleDeg)) lines.push(s.nearHalf);
     }
     // The trip can be run from its launch day if that day is on the time bar
@@ -312,11 +438,17 @@ export class TripCard {
     this.porkMap.setSelected(this.selection());
     this.renderSignal();
     const html = facts + '\u0000' + lines.map((l) => `<p>${l}</p>`).join('');
+    this.el.exactFacts.hidden = !facts;
     if (html === this.exactShown) return;
     this.exactShown = html;
     this.el.exactFacts.innerHTML = facts;
     this.el.exactFacts.hidden = !facts;
     this.el.exactLines.innerHTML = html.split('\u0000')[1];
+  }
+
+  /** The first or last day the site knows where an asteroid is. */
+  private knownDate(jd: number): string {
+    return `<bdi>${dayMonthYear(jdToMs(jd), undefined, 'UTC')}</bdi>`;
   }
 
   /** The signal delay along the exact trip: the chart (when the trip changes), its lines and table, and the time on screen. */
@@ -382,7 +514,7 @@ export class TripCard {
     this.el.sigTitle.textContent = s.sigTitle;
     this.el.sigIntro.textContent = s.sigIntro;
     this.el.sigSummary.textContent = s.sigTable;
-    this.el.select.querySelectorAll('option').forEach((o) => { o.textContent = t().planets[o.value as PlanetId]; });
+    this.fillTargets();
     this.shown = '';
     this.exactShown = '';
     this.update();
@@ -406,18 +538,14 @@ export class TripCard {
       this.onArrive?.(jdToMs(tr.arriveJd));
     }
     if (!this.showPath) return null;
-    if (this.path?.trip !== tr) {
-      // The path, flown from its start round the Sun (Lambert's orbit, so it ends at the target)
-      const points: Vec3[] = [];
-      for (let i = 0; i <= PATH_POINTS; i++) points.push(au(propagate(SUN_GM, tr.r1, tr.v1, (tr.tofDays * DAY_S * i) / PATH_POINTS).r));
-      this.path = { trip: tr, points, arrive: au(planetState(tr.target, tr.arriveJd).r) };
-    }
+    const path = this.pathOf(tr);
     const on = done >= 0 && done <= 1;
     return {
-      path: this.path.points, done: Math.min(1, Math.max(0, done)),
-      depart: au(tr.r1 as Vec), arrive: this.path.arrive,
+      path: path.points, done: Math.min(1, Math.max(0, done)),
+      depart: au(tr.r1 as Vec), arrive: path.arrive,
       craft: on ? au(propagate(SUN_GM, tr.r1, tr.v1, (jd - tr.departJd) * DAY_S).r) : null,
-      label: on ? t().trip.craftDelay(t().trip.craft, delayText(signalAt(tr, jd).seconds)) : t().trip.craft, departColor: COLORS.earth, arriveColor: COLORS[tr.target],
+      label: on ? t().trip.craftDelay(t().trip.craft, delayText(signalAt(tr, jd).seconds)) : t().trip.craft,
+      departColor: COLORS.earth, arriveColor: this.colorOf(tr.target),
     };
   }
 
@@ -425,7 +553,11 @@ export class TripCard {
   update() {
     const { ms, min, max } = this.clock();
     const jd = toJulianDate(new Date(ms));
-    const target = this.target;
+    const sm = this.small();
+    // The Hohmann estimate is for the planets only
+    this.el.facts.hidden = this.el.whenTitle.hidden = this.el.note.hidden = !!sm;
+    if (sm) { this.updateSmall(sm, jd, min, max); return; }
+    const target = this.target as PlanetId;
     let a = this.around;
     if (!a || a.target !== target || !(jd > a.prev && jd <= a.next)) {
       const trip = tripTo(target, jd);
@@ -437,7 +569,7 @@ export class TripCard {
     // The nearest window: one that began less than a day ago, or else the next
     const current = jd - a.prev < 1 ? a.prev : a.next;
     const days = trip.h.tofDays;
-    const facts = tripFacts(days, trip.leave, trip.c3, trip.arrive, trip.h.dv2, trip.total, target);
+    const facts = tripFacts(days, trip.leave, trip.c3, trip.arrive, trip.h.dv2, trip.total, t().planets[target]);
     // The exact trip starts from this window's dates, for each planet picked
     if (this.exact?.target !== target) {
       const depart = dayMs(jdToMs(current));
@@ -445,7 +577,7 @@ export class TripCard {
     }
     // The map for this window, once the card is in view
     const key = `${target}:${current.toFixed(2)}`;
-    if (this.visible && this.chart?.key !== key) this.startMap(key, jd);
+    if (this.chart?.key !== key) this.newMap(key, () => porkchopRange(target, jd));
     const now = leadAngle(target, jd);
     const date = (wjd: number) => `<bdi>${dayMonthYear(jdToMs(wjd), undefined, 'UTC')}</bdi>`;
     const lines = [
@@ -468,12 +600,53 @@ export class TripCard {
     this.el.facts.innerHTML = f;
     this.el.when.innerHTML = w;
     this.el.jump.hidden = !inRange;
+    this.el.jump.textContent = s.jump;
     this.el.giants.hidden = !GIANTS.includes(target);
+  }
+
+  /**
+   * An asteroid or comet: no Hohmann estimate, but the years the site knows where it is, and the map over three
+   * years of launch dates from the day on screen (kept while that day is less than SMALL_KEEP_DAYS behind).
+   */
+  private updateSmall(sm: SmallTarget, jd: number, min: number, max: number) {
+    const s = t().trip, id = sm.body.id, name = this.nameOf(id);
+    let a = this.smallAnchor;
+    if (!a || a.target !== id || jd < a.depart0 - 0.5 || jd > a.depart0 + SMALL_KEEP_DAYS) {
+      const depart0 = Math.floor(jd - 0.5) + 0.5;
+      a = this.smallAnchor = { target: id, depart0, range: smallPorkchopRange(sm.dest, depart0) };
+    }
+    // The exact trip waits for the map (or the visitor) for each new target
+    if (this.exact && this.exact.target !== id) {
+      this.exact = null;
+      this.el.depart.value = this.el.arrive.value = '';
+      this.renderExact();
+    }
+    const key = `${id}:${a.depart0}`;
+    if (this.chart?.key !== key) this.newMap(key, () => a.range);
+
+    const lines = [s.sbNoHohmann(ltr(num(SMALL_SPAN_DAYS / 365.25, 0)), ltr(numGrouped(SMALL_TOF_MIN)), ltr(numGrouped(SMALL_TOF_MAX))), s.sbKnown(name, ltr(String(yearOf(sm.dest.from))), ltr(String(yearOf(sm.dest.to))))];
+    if (sm.retro) lines.push(s.sbRetro(name));
+    if (sm.group === 'far') lines.push(s.sbFar);
+    // No trip from here can arrive in its years: offer the first of them
+    const jumpMs = dayMs(jdToMs(sm.dest.from));
+    const offer = !a.range && jumpMs >= min && jumpMs <= max;
+    this.jumpMs = offer ? jumpMs : null;
+    if (!a.range) lines.push(s.sbNoRange);
+
+    this.renderSignal();
+    const html = '\u0000' + lines.map((l) => `<p>${l}</p>`).join('') + (offer ? `\u0001${yearOf(sm.dest.from)}` : '');
+    if (html === this.shown) return;
+    this.shown = html;
+    this.el.facts.innerHTML = '';
+    this.el.when.innerHTML = html.slice(1).split('\u0001')[0];
+    this.el.jump.hidden = !offer;
+    this.el.jump.textContent = s.sbJump(String(yearOf(sm.dest.from)));
+    this.el.giants.hidden = true;
   }
 }
 
-/** The four boxes of a trip: time on the way, the two burns with their notes, and both together. */
-function tripFacts(days: number, leave: number, c3: number, arrive: number, vInf: number, total: number, target: PlanetId): string[][] {
+/** The four boxes of a trip: time on the way, the two burns with their notes, and both together (small: to an asteroid or comet). */
+function tripFacts(days: number, leave: number, c3: number, arrive: number, vInf: number, total: number, name: string, small = false): string[][] {
   const s = t().trip;
   const kmS = (v: number) => nw(s.kmS(ltr(num(v, 2))));
   return [
@@ -481,7 +654,7 @@ function tripFacts(days: number, leave: number, c3: number, arrive: number, vInf
       ? [s.duration, s.tripDays(ltr(numGrouped(days))), s.aboutMonths(ltr(num(days / 30.44, 1)))]
       : [s.duration, s.tripYears(ltr(num(days / 365.25, 1))), s.tripDays(ltr(numGrouped(days)))],
     [s.leave, kmS(leave), s.leaveNote(ltr(numGrouped(PARKING_ALT_KM)), nw(s.c3(ltr(num(c3, 2)))))],
-    [s.arrive, kmS(arrive), s.arriveNote(ltr(numGrouped(PARKING_ALT_KM)), t().planets[target], kmS(vInf))],
+    [s.arrive, kmS(arrive), small ? s.arriveSmall(name) : s.arriveNote(ltr(numGrouped(PARKING_ALT_KM)), name, kmS(vInf))],
     [s.total, kmS(total), ''],
   ];
 }

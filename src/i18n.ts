@@ -303,12 +303,15 @@ export interface Strings {
     arriveDate: string;
     /** How far round the Sun the path goes (angle comes formatted, with °), and its type */
     /** After `revs` whole turns (0: none), the angle comes formatted, with ° */
-    way: (deg: string, type: 1 | 2, revs: number) => string;
+    /** by: whether the whole turns were taken because they need less at launch (c3), or less for both burns together (dv) */
+    way: (deg: string, type: 1 | 2, revs: number, by: 'c3' | 'dv') => string;
     badDates: string;
     noTrip: string;
     // Step 3: the porkchop map of launch dates
     mapTitle: string;
     mapIntro: string;
+    /** For an asteroid or comet: instead of the dashed line, the whole turns */
+    mapIntroSmall: string;
     colorBy: string;
     measures: { c3: string; dv: string };
     units: { c3: string; dv: string };
@@ -323,6 +326,8 @@ export interface Strings {
     best: (type: 1 | 2, depart: string, arrive: string, duration: string, value: string) => string;
     pick: string;
     typeName: (type: 1 | 2) => string;
+    /** Whole turns round the Sun before the last part of the path, in the map's tooltip (1 or more) */
+    turns: (n: number) => string;
     nearHalf: string;
     /** After a cheapest trip that lies on the map's edge */
     edge: string;
@@ -364,6 +369,30 @@ export interface Strings {
     sigAria: string;
     /** The craft's name with its delay, next to it in the views (delay comes formatted) */
     craftDelay: (name: string, delay: string) => string;
+    // Step 7: asteroids and comets as targets
+    targetGroups: { planets: string; main: string; neo: string; trojan: string; far: string; comet: string };
+    /** No Hohmann estimate for an asteroid or comet: the map's launch days (years) and times on the way (days) come formatted */
+    sbNoHohmann: (years: string, minDays: string, maxDays: string) => string;
+    /** The years the site knows where the body is (formatted) */
+    sbKnown: (name: string, from: string, to: string) => string;
+    /** The body goes round the Sun the other way */
+    sbRetro: (name: string) => string;
+    /** Beyond Neptune: real missions take a push from Jupiter */
+    sbFar: string;
+    /** From the day on screen no trip can arrive in its years */
+    sbNoRange: string;
+    /** The button that goes to the first of its years */
+    sbJump: (year: string) => string;
+    /** The map has no trip at all */
+    sbNoTrips: (name: string) => string;
+    /** An arrival day on which the site does not know where the body is; the first and last day come formatted */
+    sbOutsideDates: (name: string, from: string, to: string) => string;
+    /** The arrival box for an asteroid or comet */
+    arriveSmall: (name: string) => string;
+    /** Under the map when it is coloured by C3 */
+    sbFlyby: string;
+    /** The map's markers without the Hohmann estimate, and its empty part */
+    marksSmall: string;
   };
 }
 
@@ -811,8 +840,8 @@ const AR: Strings = {
   trip: {
     title: 'مخطط الرحلات',
     badge: 'تجريبي',
-    intro: 'لو انطلقنا من الأرض لكوكب تاني، قديش بتطوّل الرحلة، قديش لازم تغيّر المركبة سرعتها (Δv، وهاد اللي بيحدد الوقود)، وإيمتى أحسن وقت؟ '
-      + 'أول جواب هو انتقال هوهمان: أوفر طريق بين مدارين، نص قطع ناقص حوالين الشمس بيلمس مدار الأرض ومدار الكوكب، مع دفشتين: وحدة للانطلاق ووحدة للوصول. '
+    intro: 'لو انطلقنا من الأرض لكوكب تاني، أو لكويكب أو مذنب، قديش بتطوّل الرحلة، قديش لازم تغيّر المركبة سرعتها (Δv، وهاد اللي بيحدد الوقود)، وإيمتى أحسن وقت؟ '
+      + 'للكواكب، أول جواب هو انتقال هوهمان: أوفر طريق بين مدارين، نص قطع ناقص حوالين الشمس بيلمس مدار الأرض ومدار الكوكب، مع دفشتين: وحدة للانطلاق ووحدة للوصول. '
       + 'الموعد بينحسب من وقت الشاشة.',
     to: 'لوين',
     duration: 'مدة الرحلة',
@@ -843,18 +872,20 @@ const AR: Strings = {
     note: 'تقريب: هوهمان بيعتبر المدارين دواير بنفس المستوى. المدارات الحقيقية ممطوطة ومايلة شوي، فالموعد الحقيقي والأرقام بتختلف شوي. للأرقام الحقيقية: الحساب الدقيق تحت.',
     giants: 'للكواكب البعيدة، المركبات الحقيقية بتمرق جنب كواكب تانية لتاخد منها دفشة جاذبية، متل فوياجر 2 اللي وصلت لنبتون بـ 12 سنة، وبتدخل بمدار ممطوط بدل مدار قريب. هيك بتوصل أسرع وبوقود أقل بكتير.',
     exactTitle: 'حساب دقيق لتواريخ بتختارها',
-    exactIntro: 'هون الحساب بالمدارات الحقيقية (ممطوطة ومايلة): بتختار يوم الانطلاق ويوم الوصول، ومنلاقي المسار حوالين الشمس اللي بيوصل من مكان الأرض بأول يوم لمكان الكوكب بتاني يوم (مسألة لامبرت).',
+    exactIntro: 'هون الحساب بالمدارات الحقيقية (ممطوطة ومايلة): بتختار يوم الانطلاق ويوم الوصول، ومنلاقي المسار حوالين الشمس اللي بيوصل من مكان الأرض بأول يوم لمكان الهدف بتاني يوم (مسألة لامبرت).',
     departDate: 'يوم الانطلاق',
     arriveDate: 'يوم الوصول',
-    way: (deg, type, revs) => (revs
+    way: (deg, type, revs, by) => (revs
       ? `المسار بيلف حوالين الشمس ${revs === 1 ? 'لفّة كاملة' : revs === 2 ? 'لفّتين كاملين' : `${revs} لفّات كاملة`} وبعدين ${deg} كمان، `
-        + 'لأنو هيك أوفر للإطلاق من الطريق المباشر. '
+        + `لأنو هيك ${by === 'c3' ? 'أوفر للإطلاق' : 'أوفر بالدفشتين سوا'} من الطريق المباشر. `
       : `المسار بيلف ${deg} حوالين الشمس: `)
       + `${type === 1 ? 'النوع الأول (أقل من نص لفّة)' : 'النوع التاني (أكتر من نص لفّة)'}${revs ? ' بآخر لفّة' : ''}.`,
     badDates: 'لازم يكون يوم الوصول بعد يوم الانطلاق.',
-    noTrip: 'ما في مسار واحد لهالتاريخين (الأرض والكوكب بجهتين متعاكستين بالظبط). جرّب يوم تاني.',
+    noTrip: 'ما في مسار واحد لهالتاريخين (الأرض والهدف بجهتين متعاكستين بالظبط). جرّب يوم تاني.',
     mapTitle: 'خريطة مواعيد الانطلاق',
     mapIntro: 'كل نقطة بالخريطة رحلة محسوبة بالظبط: يوم الانطلاق عالمحور الأفقي، ومدة الرحلة عالعمودي، واللون قديش بتكلّف. كل ما كان اللون أفتح، كل ما كانت أرخص. اكبس على أي نقطة لتشوف حسابها تحت. الخط المتقطّع بيفصل بين النوع الأول (تحت) والنوع التاني (فوق).',
+    mapIntroSmall: 'كل نقطة بالخريطة رحلة محسوبة بالظبط: يوم الانطلاق عالمحور الأفقي، ومدة الرحلة عالعمودي، واللون قديش بتكلّف. كل ما كان اللون أفتح، كل ما كانت أرخص. اكبس على أي نقطة لتشوف حسابها تحت. '
+      + 'بالرحلات الطويلة المسار ممكن يلف حوالين الشمس مرة أو أكتر قبل ما يوصل، فالخريطة بتصير متل الفسيفساء: كل قطعة عدد لفّات تاني.',
     colorBy: 'اللون حسب',
     measures: { c3: 'طاقة الإطلاق (C3)', dv: 'المجموع (Δv)' },
     units: { c3: 'كم²/ث²', dv: 'كم/ث' },
@@ -868,12 +899,13 @@ const AR: Strings = {
     best: (type, d, a, dur, v) => `أرخص رحلة من النوع ${type === 1 ? 'الأول' : 'التاني'}: انطلاق ${d}، وصول ${a} (${dur})، ${v}.`,
     pick: 'اختارها',
     typeName: (type) => (type === 1 ? 'النوع الأول' : 'النوع التاني'),
+    turns: (n) => (n === 1 ? 'بعد لفّة كاملة' : n === 2 ? 'بعد لفّتين كاملين' : `بعد ${n} لفّات كاملة`),
     nearHalf: 'هالرحلة بتلف تقريباً نص لفّة بالظبط: مستوى المسار بالكاد محدد، والأرقام بتتغيّر كتير من يوم ليوم. المهمات الحقيقية بتتجنّب هالخط.',
     edge: '(على طرف الخريطة، فممكن تكون في رحلة أرخص برّاها)',
     playTrip: 'شغّل الرحلة بالمشهد',
     showPath: 'ورجيني المسار بالمشهد',
     craft: 'المركبة',
-    playNote: 'الزر بيرجّع الوقت ليوم الانطلاق وبيشغّله، فبتشوف المركبة ماشية عالمسار لحد ما توصل للكوكب. الخط المليان: اللي قطعته، والمتقطّع: اللي باقي.',
+    playNote: 'الزر بيرجّع الوقت ليوم الانطلاق وبيشغّله، فبتشوف المركبة ماشية عالمسار لحد ما توصل. الخط المليان: اللي قطعته، والمتقطّع: اللي باقي.',
     mapAria: 'خريطة مواعيد الانطلاق: يوم الانطلاق ومدة الرحلة، ملوّنة حسب الكلفة',
     sigTitle: 'تأخير الإشارة',
     sigIntro: 'الأرض والمركبة بيحكوا مع بعض بالراديو، والإشارة بتمشي بسرعة الضوء: 299,792 كم بالثانية. فكل ما بعدت المركبة، كل ما طوّلت الرسالة لتوصل، '
@@ -900,6 +932,19 @@ const AR: Strings = {
     sigCols: { date: 'التاريخ', day: 'يوم الرحلة', distance: 'البعد عن الأرض', delay: 'الإشارة (باتجاه واحد)', sun: 'بعدها عن الشمس بالسما' },
     sigAria: 'تأخير الإشارة بين الأرض والمركبة على طول الرحلة',
     craftDelay: (name, d) => `${name} · ${d}`,
+    targetGroups: { planets: 'الكواكب', main: 'حزام الكويكبات', neo: 'كويكبات قريبة من الأرض', trojan: 'طرواديات المشتري', far: 'ورا نبتون', comet: 'مذنبات' },
+    sbNoHohmann: (y, a, b) => 'للكويكبات والمذنبات ما في تقدير هوهمان: مداراتها ممطوطة ومايلة كتير لنعتبرها دواير. '
+      + `بدالها، الخريطة تحت بتحسب كل رحلة بالظبط، لمواعيد انطلاق على ${y} سنين من وقت الشاشة، ومدة رحلة من ${a} لـ ${b} يوم (متل أداة ناسا لتصميم رحلات الأجسام الصغيرة)، وأطول للأجسام البعيدة.`,
+    sbKnown: (name, from, to) => `الموقع بيعرف وين ${name} (ضمن درجة من حساب ناسا) بس من ${from} لـ ${to}، فالرحلة لازم توصل بهالسنين.`,
+    sbRetro: (name) => `${name} بيلف حوالين الشمس بالعكس. قريب من الشمس، وين بيمشي بسرعة، أي مركبة بتلاقيه وجهاً لوجه وبسرعة هايلة: مركبة جوتو الأوروبية مرقت جنب مذنب هالي بـ\u00a068\u00a0كم/ث سنة 1986. بعيد عن الشمس بيمشي على مهله، فالفرق أقل بكتير.`,
+    sbFar: 'المركبات الحقيقية للأجسام البعيدة بتمرق جنب المشتري لتاخد منه دفشة جاذبية: نيو هورايزنز انطلقت 2006 ووصلت لبلوتو 2015، بأقل من 10 سنين. هالمخطط ما بيحسب هالدفشات، فأرقامه للطريق المباشر بس.',
+    sbNoRange: 'من وقت الشاشة، ما في رحلة بتوصل بهالسنين.',
+    sbJump: (year) => `روح لـ ${year}`,
+    sbNoTrips: (name) => `ما في ولا رحلة لـ ${name} بهالخريطة.`,
+    sbOutsideDates: (name, from, to) => `الموقع بيعرف وين ${name} بس من ${from} لـ ${to}: اختار يوم وصول بيناتهن.`,
+    arriveSmall: (name) => `لتوقف جنب ${name} بدل ما تمرق جنبه، المركبة بتلغي كل سرعتها بالنسبة إلو (جاذبيته ضعيفة كتير، فما بتساعد).`,
+    sbFlyby: 'للكويكبات والمذنبات، أرخص طاقة إطلاق (C3) غالباً معناها مرور سريع جنبه بس: شوف دفشة الوصول. لتوقف عنده، لوّن الخريطة حسب المجموع (Δv).',
+    marksSmall: 'I وII: أرخص رحلة من كل نوع · الدايرة البيضا: الرحلة المحسوبة تحت. بالكيبورد، الأسهم بتحرّك الدايرة. المحل الفاضي: الموقع ما بيعرف وين الجسم بيوم الوصول.',
   },
 };
 
@@ -1233,8 +1278,8 @@ const DE: Strings = {
   trip: {
     title: 'Reiseplaner',
     badge: 'Experimentell',
-    intro: 'Wie lange dauert ein Flug von der Erde zu einem anderen Planeten, um wie viel muss die Sonde ihre Geschwindigkeit ändern (Δv, davon hängt der Treibstoff ab), und wann startet man am besten? '
-      + 'Die erste Antwort ist der Hohmann-Transfer: der sparsamste Weg zwischen zwei Bahnen, eine halbe Ellipse um die Sonne, die die Erdbahn und die Bahn des Planeten gerade berührt, mit zwei Schüben, einem zum Start und einem zur Ankunft. '
+    intro: 'Wie lange dauert ein Flug von der Erde zu einem anderen Planeten, einem Asteroiden oder Kometen, um wie viel muss die Sonde ihre Geschwindigkeit ändern (Δv, davon hängt der Treibstoff ab), und wann startet man am besten? '
+      + 'Für die Planeten ist die erste Antwort der Hohmann-Transfer: der sparsamste Weg zwischen zwei Bahnen, eine halbe Ellipse um die Sonne, die die Erdbahn und die Bahn des Planeten gerade berührt, mit zwei Schüben, einem zum Start und einem zur Ankunft. '
       + 'Der Termin wird ab der Zeit auf dem Bildschirm gesucht.',
     to: 'Ziel',
     duration: 'Flugdauer',
@@ -1264,17 +1309,19 @@ const DE: Strings = {
     note: 'Eine Näherung: Hohmann nimmt beide Bahnen als Kreise in einer Ebene. Die echten Bahnen sind etwas gestreckt und geneigt, darum weichen der echte Termin und die Zahlen etwas ab. Die echten Zahlen gibt die genaue Rechnung unten.',
     giants: 'Zu den äußeren Planeten fliegen echte Sonden an anderen Planeten vorbei und holen sich dort Schwung, wie Voyager 2, die in 12 Jahren bei Neptun war, und sie schwenken in eine gestreckte statt in eine niedrige Umlaufbahn ein. So sind sie schneller und brauchen viel weniger Treibstoff.',
     exactTitle: 'Genau gerechnet, für Tage deiner Wahl',
-    exactIntro: 'Hier wird mit den echten Bahnen gerechnet (gestreckt und geneigt): Du wählst den Start- und den Ankunftstag, und wir suchen die Bahn um die Sonne, die die Erde am ersten Tag mit dem Planeten am zweiten verbindet (das Lambert-Problem).',
+    exactIntro: 'Hier wird mit den echten Bahnen gerechnet (gestreckt und geneigt): Du wählst den Start- und den Ankunftstag, und wir suchen die Bahn um die Sonne, die die Erde am ersten Tag mit dem Ziel am zweiten verbindet (das Lambert-Problem).',
     departDate: 'Start',
     arriveDate: 'Ankunft',
-    way: (deg, type, revs) => (revs
-      ? `Die Bahn läuft ${revs === 1 ? 'einmal' : `${revs}-mal`} ganz um die Sonne und dann noch ${deg}, weil das beim Start sparsamer ist als der direkte Weg. `
+    way: (deg, type, revs, by) => (revs
+      ? `Die Bahn läuft ${revs === 1 ? 'einmal' : `${revs}-mal`} ganz um die Sonne und dann noch ${deg}, weil das ${by === 'c3' ? 'beim Start' : 'für beide Schübe zusammen'} sparsamer ist als der direkte Weg. `
       : `Die Bahn führt ${deg} um die Sonne: `)
       + `${type === 1 ? 'Typ I (weniger als eine halbe Runde)' : 'Typ II (mehr als eine halbe Runde)'}${revs ? ' in der letzten Runde' : ''}.`,
     badDates: 'Die Ankunft muss nach dem Start liegen.',
-    noTrip: 'Für diese beiden Tage gibt es keine eindeutige Bahn (Erde und Planet stehen sich genau gegenüber). Versuch einen anderen Tag.',
+    noTrip: 'Für diese beiden Tage gibt es keine eindeutige Bahn (Erde und Ziel stehen sich genau gegenüber). Versuch einen anderen Tag.',
     mapTitle: 'Karte der Starttermine',
     mapIntro: 'Jeder Punkt der Karte ist ein genau gerechneter Flug: der Starttag auf der waagrechten Achse, die Flugdauer auf der senkrechten, und die Farbe zeigt, was er kostet. Je heller, desto billiger. Tippe auf einen Punkt, um seine Rechnung unten zu sehen. Die gestrichelte Linie trennt Typ I (unten) von Typ II (oben).',
+    mapIntroSmall: 'Jeder Punkt der Karte ist ein genau gerechneter Flug: der Starttag auf der waagrechten Achse, die Flugdauer auf der senkrechten, und die Farbe zeigt, was er kostet. Je heller, desto billiger. Tippe auf einen Punkt, um seine Rechnung unten zu sehen. '
+      + 'Bei langen Flügen kann die Bahn ein- oder mehrmals um die Sonne laufen, bevor sie ankommt, deshalb sieht die Karte wie ein Mosaik aus: Jedes Stück hat eine andere Zahl von Runden.',
     colorBy: 'Farbe nach',
     measures: { c3: 'Startenergie (C3)', dv: 'Zusammen (Δv)' },
     units: { c3: 'km²/s²', dv: 'km/s' },
@@ -1288,12 +1335,13 @@ const DE: Strings = {
     best: (type, d, a, dur, v) => `Billigster Flug vom Typ ${type === 1 ? 'I' : 'II'}: Start am ${d}, Ankunft am ${a} (${dur}), ${v}.`,
     pick: 'Auswählen',
     typeName: (type) => (type === 1 ? 'Typ I' : 'Typ II'),
+    turns: (n) => (n === 1 ? 'nach einer ganzen Runde' : `nach ${n} ganzen Runden`),
     nearHalf: 'Dieser Flug geht fast genau eine halbe Runde: Die Ebene der Bahn ist kaum bestimmt, und die Zahlen ändern sich von Tag zu Tag stark. Echte Missionen meiden diese Linie.',
     edge: '(am Rand der Karte, außerhalb gibt es vielleicht einen billigeren Flug)',
     playTrip: 'Flug in der Ansicht abspielen',
     showPath: 'Bahn in der Ansicht zeigen',
     craft: 'Sonde',
-    playNote: 'Der Knopf stellt die Zeit auf den Starttag und lässt sie laufen: Du siehst die Sonde auf ihrer Bahn, bis sie den Planeten erreicht. Durchgezogen: der zurückgelegte Weg, gestrichelt: der Rest.',
+    playNote: 'Der Knopf stellt die Zeit auf den Starttag und lässt sie laufen: Du siehst die Sonde auf ihrer Bahn, bis sie ihr Ziel erreicht. Durchgezogen: der zurückgelegte Weg, gestrichelt: der Rest.',
     mapAria: 'Karte der Starttermine: Starttag und Flugdauer, gefärbt nach den Kosten',
     sigTitle: 'Signallaufzeit',
     sigIntro: 'Erde und Sonde sprechen per Funk, und das Signal ist mit Lichtgeschwindigkeit unterwegs: 299.792 km pro Sekunde. Je weiter die Sonde weg ist, desto länger braucht eine Nachricht, '
@@ -1320,6 +1368,19 @@ const DE: Strings = {
     sigCols: { date: 'Datum', day: 'Reisetag', distance: 'Abstand zur Erde', delay: 'Signal (eine Richtung)', sun: 'Abstand zur Sonne am Himmel' },
     sigAria: 'Signallaufzeit zwischen Erde und Sonde entlang der Reise',
     craftDelay: (name, d) => `${name} · ${d}`,
+    targetGroups: { planets: 'Planeten', main: 'Asteroidengürtel', neo: 'Erdnahe Asteroiden', trojan: 'Jupiter-Trojaner', far: 'Jenseits von Neptun', comet: 'Kometen' },
+    sbNoHohmann: (y, a, b) => 'Für Asteroiden und Kometen gibt es keine Hohmann-Schätzung: Ihre Bahnen sind zu gestreckt und geneigt, um sie als Kreise zu nehmen. '
+      + `Stattdessen rechnet die Karte unten jeden Flug genau, für Starttage über ${y} Jahre ab der Zeit auf dem Bildschirm und Flugdauern von ${a} bis ${b} Tagen (wie das Werkzeug der NASA zur Missionsplanung für kleine Körper), für ferne Körper länger.`,
+    sbKnown: (name, from, to) => `Wo ${name} ist, weiß die Seite (auf ein Grad genau wie die Rechnung der NASA) nur von ${from} bis ${to}, also muss der Flug in diesen Jahren ankommen.`,
+    sbRetro: (name) => `${name} läuft andersherum um die Sonne. Nahe der Sonne, wo er schnell ist, trifft ihn jede Sonde frontal und sehr schnell: Die europäische Sonde Giotto flog 1986 mit 68\u00a0km/s am Halleyschen Kometen vorbei. Weit draußen ist er langsam, dort macht das viel weniger aus.`,
+    sbFar: 'Echte Sonden zu fernen Körpern holen sich unterwegs Schwung bei Jupiter: New Horizons startete 2006 und erreichte Pluto 2015, in weniger als 10 Jahren. Dieser Planer rechnet solche Vorbeiflüge nicht, seine Zahlen gelten nur für den direkten Weg.',
+    sbNoRange: 'Ab der Zeit auf dem Bildschirm kann kein Flug in diesen Jahren ankommen.',
+    sbJump: (year) => `Zu ${year} springen`,
+    sbNoTrips: (name) => `Auf dieser Karte gibt es keinen Flug zu ${name}.`,
+    sbOutsideDates: (name, from, to) => `Wo ${name} ist, weiß die Seite nur vom ${from} bis zum ${to}: Wähl einen Ankunftstag dazwischen.`,
+    arriveSmall: (name) => `Um bei ${name} zu bleiben statt vorbeizufliegen, baut die Sonde ihre ganze Geschwindigkeit relativ zum Ziel ab (dessen Schwerkraft ist viel zu schwach, um zu helfen).`,
+    sbFlyby: 'Bei Asteroiden und Kometen bedeutet die kleinste Startenergie (C3) meist nur einen schnellen Vorbeiflug: siehe den Schub bei der Ankunft. Um dort zu bleiben, färbe die Karte nach „Zusammen (Δv)“.',
+    marksSmall: 'I und II: der billigste Flug jedes Typs · weißer Kreis: der Flug, der unten gerechnet ist. Mit der Tastatur bewegen die Pfeiltasten den Kreis. Leer: Am Ankunftstag weiß die Seite nicht, wo der Körper ist.',
   },
 };
 
@@ -1657,8 +1718,8 @@ const EN: Strings = {
   trip: {
     title: 'Trip planner',
     badge: 'Experimental',
-    intro: 'How long does a trip from Earth to another planet take, how much must the craft change its speed (Δv, which sets the fuel), and when is the best time to leave? '
-      + 'The first answer is the Hohmann transfer: the cheapest way between two orbits, half an ellipse round the Sun that just touches Earth’s orbit and the planet’s, with two burns, one to leave and one to arrive. '
+    intro: 'How long does a trip from Earth to another planet, an asteroid or a comet take, how much must the craft change its speed (Δv, which sets the fuel), and when is the best time to leave? '
+      + 'For the planets, the first answer is the Hohmann transfer: the cheapest way between two orbits, half an ellipse round the Sun that just touches Earth’s orbit and the planet’s, with two burns, one to leave and one to arrive. '
       + 'The date is searched from the time on screen.',
     to: 'To',
     duration: 'Time on the way',
@@ -1688,17 +1749,19 @@ const EN: Strings = {
     note: 'An estimate: Hohmann takes both orbits as circles in one plane. The real orbits are a little stretched and tilted, so the real date and numbers differ a little. For the real numbers, see the exact calculation below.',
     giants: 'To the outer planets, real spacecraft fly past other planets to pick up speed from their gravity, like Voyager 2, which reached Neptune in 12 years, and they go into a stretched orbit rather than a low one. That way they are faster and need far less fuel.',
     exactTitle: 'Worked out exactly, for dates you choose',
-    exactIntro: 'Here the real orbits are used (stretched and tilted): choose the day to leave and the day to arrive, and we find the path round the Sun that joins Earth on the first day to the planet on the second (Lambert’s problem).',
+    exactIntro: 'Here the real orbits are used (stretched and tilted): choose the day to leave and the day to arrive, and we find the path round the Sun that joins Earth on the first day to the target on the second (Lambert’s problem).',
     departDate: 'Leave',
     arriveDate: 'Arrive',
-    way: (deg, type, revs) => (revs
-      ? `The path goes ${revs === 1 ? 'once' : revs === 2 ? 'twice' : `${revs} times`} all the way round the Sun and then ${deg} more, as that needs less at launch than the direct way. `
+    way: (deg, type, revs, by) => (revs
+      ? `The path goes ${revs === 1 ? 'once' : revs === 2 ? 'twice' : `${revs} times`} all the way round the Sun and then ${deg} more, as that needs less ${by === 'c3' ? 'at launch' : 'for both burns together'} than the direct way. `
       : `The path goes ${deg} round the Sun: `)
       + `${type === 1 ? 'type I (less than half a turn)' : 'type II (more than half a turn)'}${revs ? ' in the last turn' : ''}.`,
     badDates: 'The arrival must come after the departure.',
-    noTrip: 'There is no single path for these two days (Earth and the planet are exactly opposite each other). Try another day.',
+    noTrip: 'There is no single path for these two days (Earth and the target are exactly opposite each other). Try another day.',
     mapTitle: 'Map of launch dates',
     mapIntro: 'Each point on the map is a trip worked out exactly: the launch day across, the time on the way up, and the colour shows what it costs. The lighter, the cheaper. Tap any point to see its numbers below. The dashed line separates type I (below) from type II (above).',
+    mapIntroSmall: 'Each point on the map is a trip worked out exactly: the launch day across, the time on the way up, and the colour shows what it costs. The lighter, the cheaper. Tap any point to see its numbers below. '
+      + 'On long trips the path can go round the Sun once or more before it arrives, so the map looks like a mosaic: each piece has a different number of turns.',
     colorBy: 'Colour by',
     measures: { c3: 'Launch energy (C3)', dv: 'Both burns (Δv)' },
     units: { c3: 'km²/s²', dv: 'km/s' },
@@ -1712,12 +1775,13 @@ const EN: Strings = {
     best: (type, d, a, dur, v) => `Cheapest trip of type ${type === 1 ? 'I' : 'II'}: leave on ${d}, arrive on ${a} (${dur}), ${v}.`,
     pick: 'Pick it',
     typeName: (type) => (type === 1 ? 'type I' : 'type II'),
+    turns: (n) => (n === 1 ? 'after one whole turn' : `after ${n} whole turns`),
     nearHalf: 'This trip goes almost exactly half way round: the plane of its path is barely defined, and the numbers change a lot from day to day. Real missions avoid this line.',
     edge: '(on the edge of the map, so there may be a cheaper trip beyond it)',
     playTrip: 'Play the trip in the view',
     showPath: 'Show the path in the view',
     craft: 'Spacecraft',
-    playNote: 'The button sets the time to the launch day and runs it, so you see the spacecraft move along its path until it reaches the planet. Solid: the way behind it, dashed: the way ahead.',
+    playNote: 'The button sets the time to the launch day and runs it, so you see the spacecraft move along its path until it arrives. Solid: the way behind it, dashed: the way ahead.',
     mapAria: 'Map of launch dates: launch day and time on the way, coloured by cost',
     sigTitle: 'Signal delay',
     sigIntro: 'The Earth and the craft talk by radio, and the signal travels at the speed of light: 299,792 km a second. The farther the craft, the longer a message takes, '
@@ -1744,6 +1808,19 @@ const EN: Strings = {
     sigCols: { date: 'Date', day: 'Day of trip', distance: 'Distance from Earth', delay: 'Signal (one way)', sun: 'From the Sun in the sky' },
     sigAria: 'Signal delay between the Earth and the craft along the trip',
     craftDelay: (name, d) => `${name} · ${d}`,
+    targetGroups: { planets: 'Planets', main: 'Asteroid belt', neo: 'Near-Earth asteroids', trojan: 'Jupiter trojans', far: 'Beyond Neptune', comet: 'Comets' },
+    sbNoHohmann: (y, a, b) => 'There is no Hohmann estimate for asteroids and comets: their orbits are too stretched and tilted to be taken as circles. '
+      + `Instead the map below works out every trip exactly, for launch days over ${y} years from the time on screen and ${a} to ${b} days on the way (as NASA’s mission design tool for small bodies does), longer for distant ones.`,
+    sbKnown: (name, from, to) => `The site knows where ${name} is (to within a degree of NASA’s calculation) only from ${from} to ${to}, so a trip has to arrive in those years.`,
+    sbRetro: (name) => `${name} goes round the Sun the other way. Near the Sun, where it moves fast, any spacecraft meets it head-on and very fast: Europe’s Giotto flew past Halley’s comet at 68\u00a0km/s in 1986. Far out it moves slowly, and that matters much less.`,
+    sbFar: 'Real spacecraft to distant bodies take a push from Jupiter’s gravity on the way: New Horizons left in 2006 and reached Pluto in 2015, in under 10 years. This planner leaves such flybys out, so its numbers are for the direct way only.',
+    sbNoRange: 'From the time on screen, no trip can arrive in those years.',
+    sbJump: (year) => `Go to ${year}`,
+    sbNoTrips: (name) => `There is no trip to ${name} on this map.`,
+    sbOutsideDates: (name, from, to) => `The site knows where ${name} is only from ${from} to ${to}: pick an arrival day in between.`,
+    arriveSmall: (name) => `To stay with ${name} rather than fly past, the craft must lose all its speed relative to it (its gravity is far too weak to help).`,
+    sbFlyby: 'For asteroids and comets, the lowest launch energy (C3) mostly means just a fast flyby: see the arrival burn. To stay there, colour the map by “Both burns (Δv)”.',
+    marksSmall: 'I and II: the cheapest trip of each type · white circle: the trip worked out below. With a keyboard, the arrow keys move the circle. Empty: on that arrival day the site does not know where the body is.',
   },
 };
 

@@ -13,11 +13,20 @@
 // Step 6, against JPL's Small-Body Mission Design tool: for eight asteroids and a comet, JPL's picked missions and
 // a map of launch dates and times of flight, worked out again here on JPL Horizons' states (so it tests the trip
 // calculation, revolutions included), and the site's own asteroid states against Horizons.
+// Step 7, trips to the well-known asteroids and comets: their destinations and years, the choice among whole turns
+// by each measure, the map's range for all 36, its cells, and its cheapest trips against JPL's 10-day map.
 
-import { hohmann, hyperbolicBurn, leadAngle, tripTo, windows, TARGETS, PARKING_ALT_KM, RADIUS_KM } from '../src/transfer/hohmann';
-import { lambert, lambertRevs, lambertAll, flightBetween, planetState, realTrip, MAX_REVS, type Vec } from '../src/transfer/lambert';
+import { hohmann, hyperbolicBurn, leadAngle, tripTo, windows, TARGETS, PARKING_ALT_KM, RADIUS_KM, planetGm } from '../src/transfer/hohmann';
+import {
+  lambert, lambertRevs, lambertAll, flightBetween, planetState, realTrip, MAX_REVS, planetDestination, smallDestination, tripsFromStates, type Vec,
+} from '../src/transfer/lambert';
 import { smallBodyState } from '../src/astro/smallbody';
-import { porkchopRange, porkchop, porkchopStepper, cheapest, bandEdges, mapMin, onEdge, nearHalfTurn, RIDGE_DEG } from '../src/transfer/porkchop';
+import {
+  porkchopRange, porkchop, porkchopStepper, cheapest, bandEdges, mapMin, onEdge, nearHalfTurn, RIDGE_DEG, smallPorkchopRange, kindsOf,
+  SMALL_SPAN_DAYS, SMALL_TOF_MIN, SMALL_TOF_MAX,
+} from '../src/transfer/porkchop';
+import { loadSmallBodies } from '../src/view/smallbodies';
+import { targetGroup, TARGET_GROUPS } from '../src/view/trip';
 import { heliocentricPosition } from '../src/astro/kepler';
 import { PLANETS } from '../src/astro/elements';
 import { centuriesSinceJ2000 } from '../src/astro/julian';
@@ -665,5 +674,180 @@ export function checkMissionDesign(): boolean {
   console.log(`  the site's asteroid states (Sun only) against Horizons where it shows them: within ${posWorst.toFixed(3)}°, velocities within ${(velWorst * 100).toFixed(2)}%;`
     + ` trips on them: launch v∞ ${median.toFixed(4)} km/s from JPL (median), ${p95.toFixed(3)} (95%), ${tripWorst.length} trips up to 15 km/s`);
   console.log(`Against JPL's mission design tool: ${ok ? 'OK' : 'FAIL'}`);
+  return ok;
+}
+
+/**
+ * Step 7: trips to the well-known asteroids and comets. The destinations (a planet's burn on arrival into a 300 km
+ * orbit, an asteroid's = v∞; arrivals only in its years), the two ways a cell picks among the whole turns (lowest
+ * launch speed as JPL, or least of both burns), the map's range from the day on screen for all 36 bodies, its
+ * cells against single trips, its cheapest trips against JPL's map, and the texts.
+ */
+export function checkSmallTrips(): boolean {
+  let ok = true;
+  const fail = (msg: string) => { ok = false; console.log(`  FAIL ${msg}`); };
+  console.log('\nTrip planner: to asteroids and comets');
+  const bodies = loadSmallBodies(JSON.parse(readFileSync('src/data/small-bodies.json', 'utf8'))).filter((b) => b.famous);
+  const destOf = (b: (typeof bodies)[number]) => smallDestination(b.id, b.orbit, b.validFrom, b.validTo);
+  const byDes = (des: string) => bodies.find((b) => b.pdes === des)!;
+  if (bodies.length !== 36) fail(`${bodies.length} well-known bodies, not 36`);
+
+  // Destinations: a planet as before; an asteroid's arrival burn is v∞ itself, and only in its years
+  const d0 = jdOf(2026, 10, 31), a0 = jdOf(2027, 8, 20);
+  const m1 = realTrip('mars', d0, a0), m2 = realTrip(planetDestination('mars'), d0, a0);
+  if (!m1 || !m2 || m1.c3 !== m2.c3 || m1.total !== m2.total || m1.target !== 'mars') fail('a trip to Mars by name and as a destination differ');
+  const bennu = destOf(byDes('101955'));
+  const bt = realTrip(bennu, jdOf(2029, 9, 22), jdOf(2033, 4, 30), 'dv');
+  if (!bt || bt.arrive !== bt.vInfArrive || Math.abs(bt.leave - hyperbolicBurn(bt.vInfDepart, planetGm('earth'), RADIUS_KM.earth + PARKING_ALT_KM)) > 1e-12 || bt.target !== bennu.id) fail(`the burns of a trip to Bennu: ${bt?.leave} + ${bt?.arrive} (v∞ ${bt?.vInfArrive})`);
+  if (bt) { // its path, flown from its start as the views draw it, ends at Bennu
+    const end = propagate(SUN_GM, bt.r1, bt.v1, bt.tofDays * DAY_S).r, p = bennu.state(bt.arriveJd).r;
+    const off = Math.hypot(end[0] - p[0], end[1] - p[1], end[2] - p[2]);
+    if (!(off < 10)) fail(`the path to Bennu misses it by ${off} km`);
+  }
+  const apophis = destOf(byDes('99942'));
+  if (realTrip(apophis, jdOf(2027, 1, 1), apophis.to + 1) || !realTrip(apophis, jdOf(2027, 1, 1), apophis.to - 1)) fail('a trip to Apophis arriving after its last known day is not refused, or one before it is');
+
+  // The two choices among the whole turns: by C3 it is JPL's (lowest launch speed), by Δv the least of both burns of all of them
+  let cells = 0, cheaperDv = 0, worse = 0, notLeast = 0;
+  for (const b of [byDes('101955'), byDes('433'), byDes('162173'), byDes('2P')]) {
+    const d = destOf(b);
+    for (let k = 0; k < 60; k++) {
+      const dep = jdOf(2027, 1, 1) + 17 * k, arr = dep + 400 + 19 * k;
+      if (arr > d.to) continue;
+      const e = planetState('earth', dep), p = d.state(arr);
+      const both = tripsFromStates(d, dep, arr, e, p), f = flightBetween(dep, arr, e, p);
+      if (!both || !f) continue;
+      cells++;
+      if (both.c3.vInfDepart !== f.vInfDepart || both.c3.revs !== f.revs) fail(`${b.pdes} ${dep}: the trip by C3 is not JPL's lowest launch speed`);
+      if (both.dv.total > both.c3.total + 1e-12) worse++;
+      if (both.dv.total < both.c3.total - 1e-6) cheaperDv++;
+      const least = Math.min(...lambertAll(SUN_GM, e.r, p.r, (arr - dep) * DAY_S).map((l) => {
+        const v1 = Math.hypot(l.v1[0] - e.v[0], l.v1[1] - e.v[1], l.v1[2] - e.v[2]), v2 = Math.hypot(l.v2[0] - p.v[0], l.v2[1] - p.v[1], l.v2[2] - p.v[2]);
+        return hyperbolicBurn(v1, planetGm('earth'), RADIUS_KM.earth + PARKING_ALT_KM) + v2;
+      }));
+      if (Math.abs(both.dv.total - least) > 1e-9) notLeast++;
+    }
+  }
+  if (worse || notLeast || cells < 150 || cheaperDv < 10) fail(`choosing by Δv: ${worse} dearer than by C3, ${notLeast} not the least, ${cheaperDv} of ${cells} cheaper`);
+  console.log(`  ${cells} trips to Bennu, Eros, Ryugu and Encke: by C3 the lowest launch speed (JPL's rule), by Δv the least of both burns of all the whole turns; ${cheaperDv} of them take other turns for it`);
+
+  // The map's range from 18.11.2026 for all 36: launch days from that day for three years at most, 30 days and up on
+  // the way, at most 110 rows; and for some of every kind the whole map: every trip on it arriving in the body's
+  // years, and none missing there
+  const jd = jdOf(2026, 11, 18);
+  let ranges = 0, empty = 0, missing = 0, outside = 0, worstMs = 0, far = 0;
+  const WHOLE = ['10', '99942', '101955', '2024 YR4', '3548', '134340', '1P', '67P'];
+  const lines: string[] = [];
+  for (const b of bodies) {
+    const d = destOf(b);
+    const r = smallPorkchopRange(d, jd);
+    if (!r) { fail(`${b.pdes}: no map from 18.11.2026`); continue; }
+    ranges++;
+    const lastDep = r.depart0 + (r.nx - 1) * r.departStep, lastTof = r.tof0 + (r.ny - 1) * r.tofStep;
+    if (r.depart0 !== jd || r.tof0 !== SMALL_TOF_MIN || r.ny > 110 || lastDep - r.depart0 > SMALL_SPAN_DAYS + 1e-9 || lastDep + r.tof0 > d.to + 1e-9
+      || Math.abs(r.tofStep / r.departStep - Math.round(r.tofStep / r.departStep)) > 1e-9 || r.hohmannJd !== null) fail(`${b.pdes}: range ${JSON.stringify({ ...r, dest: undefined })}`);
+    if (!(lastTof >= SMALL_TOF_MAX - r.tofStep || r.depart0 + lastTof > d.to - r.tofStep)) fail(`${b.pdes}: the map stops at ${lastTof} days on the way`);
+    if (lastTof > SMALL_TOF_MAX + r.tofStep) far++;
+    if (!WHOLE.includes(b.pdes)) continue;
+    const t0 = performance.now();
+    const map = porkchop(r);
+    worstMs = Math.max(worstMs, performance.now() - t0);
+    let n = 0;
+    for (let j = 0; j < r.ny; j++) for (let i = 0; i < r.nx; i++) {
+      const at = j * r.nx + i, arr = r.depart0 + i * r.departStep + r.tof0 + j * r.tofStep;
+      const inYears = arr >= d.from && arr <= d.to;
+      if (Number.isFinite(map.c3[at])) { n++; if (!inYears) outside++; } else if (inYears) missing++;
+      if (Number.isFinite(map.c3[at]) !== Number.isFinite(map.dv[at])) missing++;
+    }
+    if (!n) empty++;
+    if (['101955', '99942', '134340', '1P'].includes(b.pdes)) lines.push(`${b.jplName} ${r.nx}×${r.ny} to ${numGrouped(lastTof)} days`);
+  }
+  if (ranges !== 36 || empty || missing || outside || far < 10 || lines.length !== 4) fail(`maps: ${ranges} ranges, ${empty} empty, ${missing} trips missing in the years, ${outside} outside them, ${far} longer than 1,500 days`);
+  console.log(`  all 36 maps from 18.11.2026: launch days for 3 years at most, at most 110 rows, ${far} of them longer than 1,500 days on the way;`
+    + ` ${WHOLE.length} whole maps: every trip arriving in the body's years, none missing there (${lines.join(', ')}; the slowest ${worstMs.toFixed(0)} ms here)`);
+  // Where no trip can arrive in the years: none; from the first of them on, one
+  const hygiea = destOf(byDes('10'));
+  if (smallPorkchopRange(hygiea, jdOf(1950, 6, 1)) || !smallPorkchopRange(hygiea, Math.round(hygiea.from - 0.5) + 0.5) || smallPorkchopRange(apophis, apophis.to - 10)) fail('a map where no trip can arrive in the body\'s years, or none where one can');
+
+  // Cells against single trips, by both measures, and the cheapest trips: inside the map, of their type, on the
+  // map's edge when they arrive on the body's last known day (Apophis)
+  const rb = smallPorkchopRange(bennu, jd)!, mb = porkchop(rb);
+  for (const [i, j] of [[5, 7], [37, 61], [100, 70], [120, 80]]) {
+    const dep = rb.depart0 + i * rb.departStep, tof = rb.tof0 + j * rb.tofStep, at = j * rb.nx + i;
+    for (const m of ['c3', 'dv'] as const) {
+      const tr = realTrip(bennu, dep, dep + tof, m);
+      const v = m === 'c3' ? mb.c3[at] : mb.dv[at], k = kindsOf(mb, m);
+      if (!tr || Math.abs((m === 'c3' ? tr.c3 : tr.total) - v) > 1e-9 * v || tr.type !== k.type[at] || tr.revs !== k.revs[at]) fail(`Bennu cell ${i},${j} by ${m}: ${v} against ${m === 'c3' ? tr?.c3 : tr?.total}`);
+    }
+  }
+  for (const m of ['c3', 'dv'] as const) for (const type of [1, 2] as const) {
+    const c = cheapest(mb, m, type), values = m === 'c3' ? mb.c3 : mb.dv, k = kindsOf(mb, m);
+    let grid = Infinity;
+    for (let at = 0; at < values.length; at++) if (k.type[at] === type && !nearHalfTurn(k.angle[at]) && values[at] < grid) grid = values[at];
+    const v = c && (m === 'c3' ? c.c3 : c.total);
+    if (!c || c.type !== type || c.departJd < rb.depart0 || c.arriveJd > bennu.to || !(v! <= grid)) fail(`Bennu's cheapest by ${m} of type ${type}: ${v} against ${grid} on the grid`);
+  }
+  const bestDv = [cheapest(mb, 'dv', 1)!, cheapest(mb, 'dv', 2)!].sort((p, q) => p.total - q.total)[0];
+  // (of type II: it leaves in March 2027, inside the map's launch days and times on the way, but arrives on the last known day)
+  const ra = smallPorkchopRange(apophis, jd)!, ma = porkchop(ra), ca = cheapest(ma, 'dv', 2);
+  if (!ca || !onEdge(ma, ca) || ca.arriveJd < apophis.to - ra.departStep) fail(`Apophis: the cheapest trip ${ca?.arriveJd} is not on its last known day, or not on the edge`);
+  console.log(`  map cells = single trips by C3 and by Δv; to Bennu the cheapest by Δv ${num(bestDv.total, 2, 'en')} km/s (${bestDv.revs} whole turns, arriving at ${num(bestDv.vInfArrive, 2, 'en')} km/s);`
+    + ` to Apophis it arrives on its last known day, on the edge`);
+
+  // Against JPL's map (10 days apart, over ten years): where JPL's lowest launch speed arrives in the body's years,
+  // ours on the same days (the site's own states) is within 0.03 km/s, our map round it finds one at least as low,
+  // and JPL's grid days round ours give no lower one, as JPL's minimum says
+  const ref = JSON.parse(readFileSync('scripts/reference/mission-design-jpl.json', 'utf8'));
+  const MJD = 2400000.5, TOL = 0.03;
+  const found: string[] = [];
+  for (const [des, b] of Object.entries<any>(ref.bodies)) {
+    const m = b.min.vinf_dep, d = destOf(byDes(des));
+    const dep = m.dep + MJD, arr = dep + m.tof;
+    if (arr < d.from || arr > d.to) continue;
+    const same = realTrip(d, dep, arr, 'c3');
+    if (!same || Math.abs(same.vInfDepart - m.value) > TOL) fail(`${des}: on JPL's cheapest days ours is ${same?.vInfDepart}, JPL's ${m.value}`);
+    const map = porkchop(smallPorkchopRange(d, dep - 1.5 * 365)!);
+    const c = [cheapest(map, 'c3', 1), cheapest(map, 'c3', 2)].filter((x): x is NonNullable<typeof x> => !!x).sort((p, q) => p.c3 - q.c3)[0];
+    if (!c || !(c.vInfDepart <= m.value + TOL)) { fail(`${des}: our map's lowest launch speed ${c?.vInfDepart}, JPL's ${m.value}`); continue; }
+    const g0 = Math.floor((c.departJd - MJD - ref.grid.mjd0) / ref.grid.step) * ref.grid.step + ref.grid.mjd0;
+    const t0 = Math.floor((c.tofDays - ref.grid.tofMin) / ref.grid.step) * ref.grid.step + ref.grid.tofMin;
+    for (const dd of [0, ref.grid.step]) for (const tt of [0, ref.grid.step]) {
+      const g = realTrip(d, g0 + dd + MJD, g0 + dd + t0 + tt + MJD, 'c3');
+      if (g && g.vInfDepart < m.value - TOL) fail(`${des}: on JPL's grid day ${g0 + dd}+${t0 + tt} ours is ${g.vInfDepart}, below JPL's minimum ${m.value}`);
+    }
+    found.push(`${b.object.fullname.replace(/ \(.*\)/, '')} ${num(c.vInfDepart, 3, 'en')} (JPL ${m.value})`);
+  }
+  if (found.length < 5) fail(`only ${found.length} of JPL's minima in the site's years`);
+  console.log(`  lowest launch speed v∞ [km/s] on our maps against JPL's 10-day grid: ${found.join(', ')}; JPL's grid days round each give none lower`);
+  // JPL's picked missions that arrive in the site's years, as the planner works them out (the site's states, by C3):
+  // both speeds, at launch and at arrival (where the asteroid's own velocity counts)
+  const dDep: number[] = [], dArr: number[] = [];
+  for (const [des, b] of Object.entries<any>(ref.bodies)) {
+    const d = destOf(byDes(des)), fq: string[] = b.q.fields;
+    for (const r of b.q.missions) {
+      const q = Object.fromEntries(fq.map((k, i) => [k, r[i]]));
+      const t = realTrip(d, q.MJD0 + MJD, q.MJDf + MJD, 'c3');
+      if (t) { dDep.push(Math.abs(t.vInfDepart - q.vinf_dep)); dArr.push(Math.abs(t.vInfArrive - q.vinf_arr)); }
+    }
+  }
+  const quant = (a: number[], f: number) => [...a].sort((x, y) => x - y)[Math.floor(a.length * f)];
+  if (dDep.length < 300 || !(quant(dDep, 0.5) < 0.01 && quant(dArr, 0.5) < 0.01 && quant(dDep, 0.95) < 0.1 && quant(dArr, 0.95) < 0.1)) fail(`JPL's picked missions: v∞ ${quant(dDep, 0.5)} / ${quant(dArr, 0.5)} km/s (median), ${quant(dDep, 0.95)} / ${quant(dArr, 0.95)} (95%)`);
+  console.log(`  ${dDep.length} of JPL's picked missions in the site's years: v∞ at launch ${num(quant(dDep, 0.5), 4, 'en')} km/s from JPL (median), ${num(quant(dDep, 0.95), 3, 'en')} (95%); at arrival ${num(quant(dArr, 0.5), 4, 'en')} and ${num(quant(dArr, 0.95), 3, 'en')}`);
+
+  // Groups, as in data/small-bodies.txt, and the texts
+  const groups = Object.fromEntries(TARGET_GROUPS.map((g) => [g, bodies.filter((b) => targetGroup(b) === g).length]));
+  if (groups.main !== 8 || groups.neo !== 10 || groups.trojan !== 2 || groups.far !== 6 || groups.comet !== 10) fail(`groups ${JSON.stringify(groups)}`);
+  for (const l of LANGS) {
+    const s = STRINGS[l.id].trip;
+    const texts = [s.sbNoHohmann('3', numGrouped(30, l.id), numGrouped(1500, l.id)), s.sbKnown('X', '2006', '2036'), s.sbRetro('X'), s.sbFar, s.sbNoRange, s.sbJump('2025'),
+      s.sbNoTrips('X'), s.sbOutsideDates('X', 'A', 'B'), s.arriveSmall('X'), s.sbFlyby, s.marksSmall, s.mapIntroSmall, s.turns(1), s.turns(3),
+      s.way('52°', 1, 3, 'dv'), ...TARGET_GROUPS.map((g) => s.targetGroups[g]), s.targetGroups.planets];
+    if (texts.some((x) => !x.trim() || /undefined|NaN/.test(x))) fail(`${l.id}: a text for asteroids is missing`);
+    if (!texts[0].includes(numGrouped(1500, l.id)) || !texts[0].includes('3') || !texts[1].includes('2006') || !texts[1].includes('2036') || !texts[5].includes('2025')
+      || !texts[7].includes('A') || !texts[7].includes('B') || !texts[2].includes('68') || !texts[2].includes('1986') || s.turns(3) === s.turns(1)) fail(`${l.id}: a text for asteroids lacks its numbers`);
+    if (s.way('52°', 1, 3, 'dv') === s.way('52°', 1, 3, 'c3')) fail(`${l.id}: the path's whole turns read the same by C3 and by Δv`);
+  }
+  console.log(`  groups: ${Object.entries(groups).map(([g, n]) => `${g} ${n}`).join(', ')}; texts in three languages`);
+  console.log(`To asteroids and comets: ${ok ? 'OK' : 'FAIL'}`);
   return ok;
 }

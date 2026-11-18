@@ -239,7 +239,7 @@ dsn.load(DSN_WORKER_URL);
 let scene3d: Scene3D | null = null; // loaded on first use (Three.js is a separate file)
 // "Branch reality": the physics worker starts only when the card is first used
 const branch = new BranchCard($('branch'), () => ({ ms: clock.ms, min: VALID_FROM_MS, max: VALID_TO_MS }));
-// Trip planner: from the Earth to a planet, from the time on screen
+// Trip planner: from the Earth to a planet (or a well-known asteroid or comet, once they are loaded), from the time on screen
 const trip = new TripCard($('trip'), () => ({ ms: clock.ms, min: VALID_FROM_MS, max: VALID_TO_MS }));
 
 // Asteroids, dwarf planets and comets: their own file, loaded after the page
@@ -251,6 +251,7 @@ import('./data/small-bodies.json')
   .then((m) => {
     smallBodies = loadSmallBodies(m.default);
     famous = smallBodies.filter((b) => b.famous);
+    trip.setSmallBodies(famous);
     $('smallRows').innerHTML = famous.map((b) => `
       <tr data-id="${b.id}">
         <td id="n-${b.id}" dir="auto"></td>
@@ -321,9 +322,9 @@ playBtn.addEventListener('click', () => setPlaying(!clock.playing));
 branch.onJump = (ms) => { setPlaying(false); jumpTo(ms); };
 trip.onJump = (ms, target) => { setPlaying(false); jumpTo(ms); select(target); };
 // Run a trip in the views: from its launch day, at the speed that takes closest to 15 seconds for it, and up to the views
-trip.onPlay = (departMs, tofDays, target) => {
-  // Out to Mars the trip fits the inner view, where it is large enough to follow
-  const inner = target === 'mercury' || target === 'venus' || target === 'mars';
+trip.onPlay = (departMs, tofDays, target, fits) => {
+  // Out to Mars the trip fits the inner view, where it is large enough to follow; to an asteroid, if its path does
+  const inner = target === 'mercury' || target === 'venus' || target === 'mars' || (target.startsWith('sb-') && fits);
   const mode: ViewMode = inner ? 'inner' : orrery.mode === 'inner' ? 'compressed' : orrery.mode;
   if (mode !== orrery.mode) { viewSel.value = mode; setView(mode); }
   select(target);

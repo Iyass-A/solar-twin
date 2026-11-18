@@ -1,11 +1,12 @@
 // The porkchop map of the trip planner (phase 6, step 3), drawn on a canvas: launch day across, time on the way
 // up, colour by cost in bands of one blue (sequential, validated with the dataviz skill's validator for the dark
 // card: light is cheap, the dark end clears 2:1 against the card). Values between grid points are interpolated,
-// so the band edges are smooth. A dashed line separates type I (below) from type II (above). Markers: the
+// so the band edges are smooth. A dashed line separates type I (below) from type II (above), for a planet (to an
+// asteroid or comet, whole turns round the Sun cut the map into a mosaic, and the tooltip names them). Markers: the
 // cheapest trip of each type, the Hohmann estimate, and the trip worked out below (a white circle). Hover or tap
 // shows a tooltip; a click, a tap or the arrow keys pick a trip. Time runs left to right, as on the time bar.
 
-import { bandEdges, mapMin, type Measure, type Porkchop } from '../transfer/porkchop';
+import { bandEdges, kindsOf, mapMin, type Measure, type Porkchop } from '../transfer/porkchop';
 import type { RealTrip } from '../transfer/lambert';
 import { t, num, langInfo, dayMonthYear, lang, LANGS } from '../i18n';
 
@@ -105,25 +106,29 @@ export class PorkchopMap {
     const y = (days: number) => m.top + ph - ((days - map.tof0) / ((map.ny - 1) * map.tofStep)) * ph;
 
     // The line between the types: in each column, where the path turns from less to more than half a turn
-    ctx.save();
-    ctx.strokeStyle = 'rgba(232, 232, 240, 0.7)';
-    ctx.lineWidth = 1.2;
-    ctx.setLineDash([4, 3]);
-    ctx.beginPath();
-    let open = false;
-    for (let i = 0; i < map.nx; i++) {
-      let yy = NaN;
-      for (let j = 1; j < map.ny; j++) {
-        const a = map.angle[(j - 1) * map.nx + i], b = map.angle[j * map.nx + i];
-        if (a < 180 && b >= 180) { yy = y(map.tof0 + (j - 1 + (180 - a) / (b - a)) * map.tofStep); break; }
+    // (not to an asteroid or comet: there whole turns round the Sun cut the map into pieces, each with its own types)
+    if (map.hohmannJd !== null) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(232, 232, 240, 0.7)';
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      let open = false;
+      const { angle } = kindsOf(map, this.measure);
+      for (let i = 0; i < map.nx; i++) {
+        let yy = NaN;
+        for (let j = 1; j < map.ny; j++) {
+          const a = angle[(j - 1) * map.nx + i], b = angle[j * map.nx + i];
+          if (a < 180 && b >= 180) { yy = y(map.tof0 + (j - 1 + (180 - a) / (b - a)) * map.tofStep); break; }
+        }
+        if (Number.isNaN(yy)) { open = false; continue; }
+        const xx = x(map.depart0 + i * map.departStep);
+        if (open) ctx.lineTo(xx, yy); else ctx.moveTo(xx, yy);
+        open = true;
       }
-      if (Number.isNaN(yy)) { open = false; continue; }
-      const xx = x(map.depart0 + i * map.departStep);
-      if (open) ctx.lineTo(xx, yy); else ctx.moveTo(xx, yy);
-      open = true;
+      ctx.stroke();
+      ctx.restore();
     }
-    ctx.stroke();
-    ctx.restore();
 
     // Axes: a frame, launch months across, days or years up
     ctx.strokeStyle = '#3a4166';
@@ -170,7 +175,7 @@ export class PorkchopMap {
       ctx.fillText(text, xx, yy);
     };
     const inside = (xx: number, yy: number) => xx >= m.left && xx <= m.left + pw && yy >= m.top && yy <= m.top + ph;
-    {
+    if (map.hohmannJd !== null && map.hohmannDays !== null) { // (none for an asteroid or comet)
       const xx = x(map.hohmannJd), yy = y(map.hohmannDays);
       if (inside(xx, yy)) {
         ctx.beginPath();
@@ -256,12 +261,12 @@ export class PorkchopMap {
     const at = Math.min(map.ny - 1, Math.max(0, j)) * map.nx + Math.min(map.nx - 1, Math.max(0, i));
     const s = t().trip;
     const days = p.arriveJd - p.departJd;
-    const value = this.measure === 'c3' ? map.c3[at] : map.dv[at];
+    const value = this.measure === 'c3' ? map.c3[at] : map.dv[at], { type, revs } = kindsOf(map, this.measure);
     const lines = [
       Number.isFinite(value) ? `${num(value, 2)} ${s.units[this.measure]}` : '—',
       `${s.departDate}: ${dayMonthYear(jdToMs(p.departJd), undefined, 'UTC')}`,
       `${s.arriveDate}: ${dayMonthYear(jdToMs(p.arriveJd), undefined, 'UTC')}`,
-      `${days < 730 ? s.tripDays(String(days)) : s.tripYears(num(days / 365.25, 1))}${map.type[at] ? ` · ${s.typeName(map.type[at] as 1 | 2)}` : ''}`,
+      `${days < 730 ? s.tripDays(String(days)) : s.tripYears(num(days / 365.25, 1))}${type[at] ? ` · ${s.typeName(type[at] as 1 | 2)}` : ''}${revs[at] ? ` · ${s.turns(revs[at])}` : ''}`,
     ];
     this.tip.dir = langInfo().dir;
     this.tip.replaceChildren(...lines.map((l, k) => {
