@@ -24,7 +24,7 @@ import { getJson, sleep } from './live-common';
 const API = 'https://ssd-api.jpl.nasa.gov/mdesign.api';
 const HORIZONS = 'https://ssd.jpl.nasa.gov/api/horizons.api';
 /** Dates per Horizons request (it takes up to 10,000; this keeps the address short). */
-const TLIST_CHUNK = 150;
+const TLIST_CHUNK = 50;
 /** Eros, Vesta, Psyche, Didymos, Bennu, Ceres, Ryugu and comet 67P: orbits our site follows within 1° for years. */
 const BODIES = ['433', '4', '16', '65803', '101955', '1', '162173', '67P'];
 /** The map: launches from 1 November 2026 for ten years, 30 to 1,500 days on the way, every 10 days. */
@@ -118,7 +118,9 @@ async function horizonsStates(command: string, mjds: number[]) {
     const start = text.indexOf('$$SOE'), end = text.indexOf('$$EOE');
     if (start < 0 || end < 0) throw new Error(`No table in Horizons answer for ${command}: ${text.slice(0, 400).replace(/\s+/g, ' ')}`);
     target = /Target body name:\s*(.+?)\s{2,}/.exec(text.slice(0, start))?.[1] ?? target;
-    for (const line of text.slice(start + 5, end).trim().split('\n')) {
+    const lines = text.slice(start + 5, end).trim().split('\n');
+    if (lines.length !== chunk.length) console.log(`  Horizons ${command}: asked ${chunk.length} dates (${chunk[0]}…${chunk[chunk.length - 1]}), got ${lines.length}: ${lines[0]?.slice(0, 40)} … ${lines[lines.length - 1]?.slice(0, 40)}`);
+    for (const line of lines) {
       const c = line.split(',').map((x) => x.trim());
       const jd = Number(c[0]), v = c.slice(2, 8).map(Number);
       if (!Number.isFinite(jd) || v.length !== 6 || v.some((x) => !Number.isFinite(x))) throw new Error(`Unexpected Horizons row for ${command}: ${line}`);
