@@ -122,7 +122,7 @@ export class SkyChart {
 
   private label(q: { x: number; y: number }, r: number, text: string, size: number, color: string) {
     const { ctx } = this;
-    ctx.font = `600 ${Math.round(size)}px "Noto Sans Arabic", "Segoe UI", system-ui, sans-serif`;
+    ctx.font = `600 ${Math.round(size)}px "Inter", "Noto Sans Arabic", system-ui, sans-serif`;
     // Latin names (JPL's, "2026 WJ") read left to right even on an Arabic page
     ctx.direction = /[\u0600-\u06ff]/.test(text) ? 'rtl' : 'ltr';
     ctx.textBaseline = 'middle';
@@ -159,7 +159,7 @@ export class SkyChart {
     // Its name near the left edge, on the line
     const q = project(p, fromLonLat(c.lon + this.halfWidthDeg(p) * 0.88, 0));
     if (q && q.y > 40 && q.y < canvas.height - 40) {
-      ctx.font = `${Math.round(22 * this.k)}px "Noto Sans Arabic", "Segoe UI", system-ui, sans-serif`;
+      ctx.font = `${Math.round(22 * this.k)}px "Inter", "Noto Sans Arabic", system-ui, sans-serif`;
       ctx.fillStyle = ECLIPTIC_COLOR.replace('0.35', '0.7');
       ctx.textAlign = 'left';
       ctx.textBaseline = 'bottom';
@@ -337,7 +337,7 @@ export class SkyChart {
     ctx.beginPath();
     ctx.moveTo(x0, y0 - 8 * this.k); ctx.lineTo(x0, y0); ctx.lineTo(x0 + len, y0); ctx.lineTo(x0 + len, y0 - 8 * this.k);
     ctx.stroke();
-    ctx.font = `${Math.round(22 * this.k)}px "Noto Sans Arabic", "Segoe UI", system-ui, sans-serif`;
+    ctx.font = `${Math.round(22 * this.k)}px "Inter", "Noto Sans Arabic", system-ui, sans-serif`;
     ctx.fillStyle = DIM_COLOR;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';

@@ -10,6 +10,14 @@
 // time it takes to draw.
 
 import '../style.css';
+// The video page brings its own fonts (served from our site, SIL Open Font License), so a video looks the same
+// wherever it is recorded: Inter for Latin letters and digits, Noto Sans Arabic for Arabic
+import '@fontsource/inter/400.css';
+import '@fontsource/inter/600.css';
+import '@fontsource/inter/700.css';
+import '@fontsource/noto-sans-arabic/400.css';
+import '@fontsource/noto-sans-arabic/600.css';
+import '@fontsource/noto-sans-arabic/700.css';
 import './stage.css';
 import { PLANETS } from '../astro/elements';
 import { heliocentricPosition, orbitPath } from '../astro/kepler';
@@ -22,7 +30,7 @@ import { SkyChart } from '../view/skyChart';
 import { approximate, eventNote, eventTitle, latLon } from '../view/skyEvents';
 import type { BodyFrame } from '../view/views';
 import {
-  along, eventScene, hoursPerSecond, sceneAt, shotAt, shotOpacity, simTime, totalDuration, weekScenes, type Scene, type Shot,
+  along, eventScene, framePlan, hoursPerSecond, sceneAt, shotAt, shotOpacity, simTime, totalDuration, weekScenes, type Scene, type Shot,
 } from './scenes';
 
 const HOUR_MS = 3_600_000;
@@ -227,6 +235,10 @@ async function start() {
   const i = pick === null ? NaN : Number(pick);
   scenes = Number.isInteger(i) && events[i] ? [eventScene(events[i])] : weekScenes(events, fromMs, toMs);
   duration = totalDuration(scenes);
+  // The chart's canvas text does not ask for the fonts by itself: load each weight before the first frame
+  await Promise.all(['400', '600', '700'].flatMap((w) => [
+    document.fonts.load(`${w} 20px "Inter"`, 'Aa1°'), document.fonts.load(`${w} 20px "Noto Sans Arabic"`, 'السما'),
+  ]));
   await document.fonts.ready;
   // The 3D view's stars come in their own file: wait for them, so the first frame has them too
   for (let k = 0; k < 200 && !scene3d.starsReady; k++) await new Promise((r) => setTimeout(r, 25));
@@ -240,7 +252,22 @@ const ready = start();
 
 declare global {
   interface Window {
-    stage: { ready: Promise<void>; duration: () => number; seek: (t: number) => void; scenes: () => number; lang: () => Lang };
+    stage: {
+      ready: Promise<void>;
+      duration: () => number;
+      seek: (t: number) => void;
+      scenes: () => number;
+      /** The frames to record, scene by scene (scripts/record-video.mjs) */
+      plan: (fps: number) => { start: number; frames: number; name: string }[];
+      lang: () => Lang;
+    };
   }
 }
-window.stage = { ready, duration: () => duration, seek: (time) => render(time), scenes: () => scenes.length, lang };
+window.stage = {
+  ready,
+  duration: () => duration,
+  seek: (time) => render(time),
+  scenes: () => scenes.length,
+  plan: (fps) => framePlan(scenes, fps).map((p, i) => ({ ...p, name: scenes[i].event?.kind ?? scenes[i].kind })),
+  lang,
+};

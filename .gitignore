@@ -29,3 +29,8 @@ public/data/live/
 # Cloudflare Wrangler (workers/dsn/): local state and build output
 .wrangler/
 workers/dsn/dist/
+
+# Videos recorded by scripts/record-video.mjs
+video/
+*.mp4
+*.scenes/

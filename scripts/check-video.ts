@@ -15,7 +15,7 @@ import {
   type SkyBody,
 } from '../src/video/sky';
 import {
-  FADE_S, MAX_EVENTS, eventScene, sceneAt, shotAt, shotOpacity, simTime, totalDuration, weekScenes, type SkyShot,
+  FADE_S, MAX_EVENTS, eventScene, framePlan, sceneAt, shotAt, shotOpacity, simTime, totalDuration, weekScenes, type SkyShot,
 } from '../src/video/scenes';
 import { chartCenter } from '../src/view/skyChart';
 import { LANGS, STRINGS } from '../src/i18n';
@@ -169,6 +169,12 @@ export function checkVideo(): boolean {
     if (ends.index !== seq.length - 1 || ends.local !== seq[seq.length - 1].duration) fail('week: past the end');
     const second = sceneAt(seq, seq[0].duration + 0.001);
     if (second.index !== 1 || Math.abs(second.local - 0.001) > 1e-9) fail('week: the second scene does not start after the first');
+    // The frames: whole numbers per scene, adding up to the whole video, each scene starting where the last ended
+    const plan = framePlan(seq);
+    if (plan.some((x, i) => !Number.isInteger(x.frames) || Math.abs(x.frames - seq[i].duration * 30) > 1e-9)) fail('frames: a scene is not a whole number of frames at 30 per second');
+    if (plan.reduce((n, x) => n + x.frames, 0) !== Math.round(total * 30)) fail('frames: the scenes do not add up to the video');
+    if (plan.some((x, i) => i > 0 && Math.abs(x.start - (plan[i - 1].start + plan[i - 1].frames / 30)) > 1e-9)) fail('frames: a gap or an overlap between scenes');
+    for (const e of all) if (!Number.isInteger(eventScene(e).duration * 30)) { fail(`frames: ${e.kind} lasts ${eventScene(e).duration} s`); break; }
     const s1 = seq[1];
     if (shotAt(s1, s1.duration).to !== s1.duration) fail('week: the last shot at the end of a scene');
     lines.push(`30 days from 15.7.2027: ${week.length} events, ${kept.length} kept (the total eclipse among them), ${total.toFixed(1)} s with opening and closing`);

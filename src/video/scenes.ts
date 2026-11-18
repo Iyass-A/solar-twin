@@ -190,6 +190,22 @@ export function sceneAt(scenes: Scene[], t: number): { scene: Scene; index: numb
 
 export const totalDuration = (scenes: Scene[]) => scenes.reduce((s, x) => s + x.duration, 0);
 
+/** Frames per second of the recorded video. */
+export const FPS = 30;
+
+/**
+ * The frames to record, scene by scene (one video file each): where each scene starts [s] and how many frames it has.
+ * Frame k of a scene is drawn at start + k / fps, so the scenes join without a frame twice or one missing.
+ */
+export function framePlan(scenes: Scene[], fps = FPS): { start: number; frames: number }[] {
+  let start = 0;
+  return scenes.map((sc) => {
+    const plan = { start, frames: Math.round(sc.duration * fps) };
+    start += sc.duration;
+    return plan;
+  });
+}
+
 /** The shot playing at a time in the scene (the last one at its very end). */
 export function shotAt(scene: Scene, local: number): Shot {
   return scene.shots.find((s) => local >= s.from && local < s.to) ?? scene.shots[scene.shots.length - 1];
