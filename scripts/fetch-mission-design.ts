@@ -2,6 +2,9 @@
 // planner against: for a few well-known asteroids and a comet, the ballistic trips from Earth that JPL has
 // worked out (mode Q: its picked missions) and a grid of launch dates and times of flight (mode M: a
 // porkchop map). Our Lambert solver, flown to the same body on the same dates, must give the same speeds.
+// So that the check tests the trip calculation and not where our site puts the bodies (it moves asteroids
+// with the Sun alone), it also fetches from JPL Horizons the Earth's and each body's position and velocity
+// round the Sun on every date that the kept trips leave or arrive (MJD, TDB).
 //
 //   npx tsx scripts/fetch-mission-design.ts [bodies] [outDir]
 //
@@ -19,6 +22,9 @@ import { dirname } from 'node:path';
 import { getJson, sleep } from './live-common';
 
 const API = 'https://ssd-api.jpl.nasa.gov/mdesign.api';
+const HORIZONS = 'https://ssd.jpl.nasa.gov/api/horizons.api';
+/** Dates per Horizons request (it takes up to 10,000; this keeps the address short). */
+const TLIST_CHUNK = 150;
 /** Eros, Vesta, Psyche, Didymos, Bennu, Ceres, Ryugu and comet 67P: orbits our site follows within 1° for years. */
 const BODIES = ['433', '4', '16', '65803', '101955', '1', '162173', '67P'];
 /** The map: launches from 1 November 2026 for ten years, 30 to 1,500 days on the way, every 10 days. */
@@ -93,6 +99,66 @@ for (const des of bodies) {
   (out.bodies as Record<string, unknown>)[des] = entry;
   await sleep(GAP_MS);
 }
+
+// ---------- Horizons: the Earth and each body round the Sun on the trips' dates ----------
+
+/** Heliocentric ecliptic J2000 position [km] and velocity [km/s] from Horizons on each MJD (TDB). */
+async function horizonsStates(command: string, mjds: number[]) {
+  const states: Record<string, number[]> = {};
+  let target = '';
+  for (let k = 0; k < mjds.length; k += TLIST_CHUNK) {
+    const chunk = mjds.slice(k, k + TLIST_CHUNK);
+    const params = new URLSearchParams({
+      format: 'json', COMMAND: `'${command}'`, OBJ_DATA: "'NO'", MAKE_EPHEM: "'YES'", EPHEM_TYPE: "'VECTORS'",
+      CENTER: "'500@10'", REF_PLANE: "'ECLIPTIC'", REF_SYSTEM: "'ICRF'", VEC_TABLE: "'2'", VEC_CORR: "'NONE'",
+      OUT_UNITS: "'KM-S'", CSV_FORMAT: "'YES'", TIME_TYPE: "'TDB'", TLIST_TYPE: "'MJD'", TLIST: `'${chunk.join(' ')}'`,
+    });
+    const data = await getJson(`${HORIZONS}?${params}`);
+    const text: string = data.result ?? '';
+    const start = text.indexOf('$$SOE'), end = text.indexOf('$$EOE');
+    if (start < 0 || end < 0) throw new Error(`No table in Horizons answer for ${command}: ${text.slice(0, 400).replace(/\s+/g, ' ')}`);
+    target = /Target body name:\s*(.+?)\s{2,}/.exec(text.slice(0, start))?.[1] ?? target;
+    for (const line of text.slice(start + 5, end).trim().split('\n')) {
+      const c = line.split(',').map((x) => x.trim());
+      const jd = Number(c[0]), v = c.slice(2, 8).map(Number);
+      if (!Number.isFinite(jd) || v.length !== 6 || v.some((x) => !Number.isFinite(x))) throw new Error(`Unexpected Horizons row for ${command}: ${line}`);
+      states[String(Math.round(jd - 2400000.5))] = [...v.slice(0, 3).map((x) => Number(x.toFixed(2))), ...v.slice(3).map((x) => Number(x.toFixed(8)))];
+    }
+    await sleep(GAP_MS);
+  }
+  const missing = mjds.filter((m) => !states[String(m)]);
+  if (missing.length) throw new Error(`Horizons gave no state for ${command} on MJD ${missing.slice(0, 5).join(', ')}…`);
+  return { target, states };
+}
+
+/** The dates a body's kept trips leave on (the Earth's) and arrive on (the Earth's and the body's). */
+function tripDates(entry: any) {
+  const dep = new Set<number>(), arr = new Set<number>();
+  const f: string[] = entry.q?.fields ?? [];
+  for (const r of entry.q?.missions ?? []) { dep.add(r[f.indexOf('MJD0')]); arr.add(r[f.indexOf('MJDf')]); }
+  for (const d of entry.map?.dep ?? []) for (const t of entry.map?.tof ?? []) { dep.add(d); arr.add(d + t); }
+  for (const m of Object.values<any>(entry.min ?? {})) if (m) { dep.add(m.dep); arr.add(m.dep + m.tof); }
+  return { dep: [...dep].filter(Number.isFinite), arr: [...arr].filter(Number.isFinite) };
+}
+
+const earthDates = new Set<number>();
+const horizons: Record<string, unknown> = {};
+for (const [des, entry] of Object.entries<any>(out.bodies as Record<string, unknown>)) {
+  if (entry.error) continue;
+  const { dep, arr } = tripDates(entry);
+  [...dep, ...arr].forEach((d) => earthDates.add(d));
+  const command = /^\d+$/.test(des) ? `${des};` : `DES=${des};CAP;NOFRAG;`; // numbered asteroid, or comet: closest apparition
+  try {
+    const h = await horizonsStates(command, [...arr].sort((a, b) => a - b));
+    console.log(`  Horizons ${des}: "${h.target}", ${Object.keys(h.states).length} dates`);
+    horizons[des] = h;
+  } catch (err) {
+    console.log(`::warning title=Horizons::${des}: ${String(err)}`);
+  }
+}
+const earth = await horizonsStates('399', [...earthDates].sort((a, b) => a - b));
+console.log(`  Horizons Earth: "${earth.target}", ${Object.keys(earth.states).length} dates`);
+out.horizons = { note: 'Heliocentric, ICRF, J2000 ecliptic; km and km/s; keyed by MJD (TDB). From JPL Horizons (https://ssd.jpl.nasa.gov/horizons/).', earth, bodies: horizons };
 
 const text = JSON.stringify(out);
 const path = `${outDir}/scripts/reference/mission-design-jpl.json`;
