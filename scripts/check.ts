@@ -27,6 +27,7 @@ import { SPACECRAFT, WHERE_KEYS } from '../src/data/spacecraft';
 import { checkStartingState, checkIntegrator, checkEngine, checkLongRange, checkEdits, checkScenarios } from './check-physics';
 import { SCENARIOS } from '../src/physics/scenarios';
 import { checkHohmann, checkLambert, checkPorkchop, checkTripPath, checkSignal, checkMissionDesign, checkSmallTrips } from './check-transfer';
+import { checkEvents, checkEventTexts } from './check-events';
 
 const MAX_ERROR_DEG = 1;
 const DAY_MS = 86_400_000;
@@ -726,6 +727,10 @@ failed = !checkTripPath() || failed;
 failed = !checkSignal() || failed;
 failed = !checkMissionDesign() || failed;
 failed = !checkSmallTrips() || failed;
+
+// Sky events (phase 8), see scripts/check-events.ts
+failed = !checkEvents() || failed;
+failed = !checkEventTexts() || failed;
 
 console.log(failed ? '\nRESULT: FAIL' : '\nRESULT: OK');
 if (failed) process.exitCode = 1;

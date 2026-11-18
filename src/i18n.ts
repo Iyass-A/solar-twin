@@ -6,6 +6,7 @@ import type { ViewMode } from './view/views';
 import type { SmallGroup } from './view/smallbodies';
 import type { Where } from './data/spacecraft';
 import type { ScenarioId } from './physics/scenarios';
+import type { MoonPhase, Season } from './events/events';
 
 export type Lang = 'ar' | 'de' | 'en';
 
@@ -215,7 +216,7 @@ export interface Strings {
   // The "Now in space" screen: one tile per live source, each opening its card
   nowTitle: string;
   nowIntro: string;
-  nowTabs: { dsn: string; weather: string; approaches: string };
+  nowTabs: { dsn: string; weather: string; approaches: string; events: string };
   /** "Updated 2 hours ago": the time comes from relTime or dsnAgo */
   nowUpdated: (ago: string) => string;
   nowNoData: string;
@@ -227,6 +228,61 @@ export interface Strings {
   nowWeatherAheadCalm: string;
   nowCme: (when: string) => string;
   nowApproaches: (count: number, until: string) => string;
+  // Sky events (phase 8): what happens in the sky in the next 7 or 30 days. Texts with "HTML" get formatted
+  // numbers (in spans) and names; the rest is plain text.
+  events: {
+    title: string;
+    badge: string;
+    intro: string;
+    daysLabel: string;
+    days7: string;
+    days30: string;
+    summary: (count: number, days: 7 | 30) => string;
+    tileMain: (count: number) => string;
+    next: (what: string, when: string) => string;
+    jump: string;
+    jumpTitle: string;
+    jumpPick: (planet: string) => string;
+    /** A time given only roughly (perihelion, aphelion) */
+    about: (time: string) => string;
+    /** Ends where the link to Astronomy Engine follows */
+    note: (timeZone: string) => string;
+    moonName: string;
+    moon: Record<MoonPhase, string>;
+    moonNotes: Record<MoonPhase, string>;
+    conjunction: { superior: (p: string) => string; inferior: (p: string) => string; plain: (p: string) => string };
+    conjunctionNotes: { superior: string; inferior: string; plain: string };
+    opposition: (p: string) => string;
+    oppositionNote: string;
+    brightDistance: (mag: string, distance: string) => string;
+    optics: string;
+    elongation: (p: string, sky: 'evening' | 'morning') => string;
+    elongationNote: (deg: string, sky: 'evening' | 'morning') => string;
+    brightness: (mag: string) => string;
+    solar: { total: string; annular: string; partial: string };
+    solarWhere: (where: string) => string;
+    solarPartial: string;
+    solarSafety: string;
+    lunar: { total: string; partial: string; penumbral: string };
+    lunarNotes: { total: (d: string) => string; partial: (d: string) => string; penumbral: (d: string) => string };
+    seasons: Record<Season, string>;
+    seasonNotes: Record<Season, string>;
+    perihelion: string;
+    aphelion: string;
+    perihelionNote: (distance: string) => string;
+    aphelionNote: (distance: string) => string;
+    pair: (a: string, b: string) => string;
+    pairNote: (deg: string) => string;
+    glare: string;
+    neo: (name: string) => string;
+    neoNote: (distance: string) => string;
+    neoCloser: string;
+    neoClosest: string;
+    north: string;
+    south: string;
+    east: string;
+    west: string;
+  };
   // "Branch reality" (phase 5): a copy of the solar system, changed, run by the physics engine
   branch: {
     title: string;
@@ -482,6 +538,8 @@ export function timeUnit(minutes: number): { n: number; unit: 'min' | 'h' | 'd' 
 }
 
 // Arabic counts for the close approaches: "مرور واحد", "مرورين", "5 مرورات", "33 مرور"
+// "حدث واحد", "حدثين", "5 أحداث", "11 حدث"
+const eventsAr = (n: number) => (n === 0 ? 'ولا حدث كبير' : n === 1 ? 'حدث واحد' : arabicCount(n, 'حدث', 'حدثين', 'أحداث'));
 const flybysAr = (n: number) => (n === 0 ? 'ولا مرور' : n === 1 ? 'مرور واحد' : arabicCount(n, 'مرور', 'مرورين', 'مرورات'));
 const moonAr = (m: number) => `${m === 0 ? 'ولا واحد' : m === 1 ? 'واحد' : m === 2 ? 'تنين' : m} منهم أقرب من القمر`;
 
@@ -761,8 +819,8 @@ const AR: Strings = {
   dsnNone: 'ما قدرنا نجيب بيانات من ناسا هلأ. منرجع منجرّب بعد دقيقة.',
   dsnLocal: 'ما في بيانات حيّة هون. عالموقع المنشور بتتحدّث كل دقيقة من ناسا.',
   nowTitle: 'هلأ بالفضاء',
-  nowIntro: 'شو عم يصير بالفضاء بهاللحظة، من ناسا وNOAA. اكبس على وحدة لتشوف التفاصيل.',
-  nowTabs: { dsn: 'شبكة الفضاء العميق', weather: 'طقس الفضاء', approaches: 'مرورات قريبة من الأرض' },
+  nowIntro: 'شو عم يصير بالفضاء بهاللحظة، من ناسا وNOAA، وشو رح يصير بالسما. اكبس على وحدة لتشوف التفاصيل.',
+  nowTabs: { dsn: 'شبكة الفضاء العميق', weather: 'طقس الفضاء', approaches: 'مرورات قريبة من الأرض', events: 'أحداث السما' },
   nowUpdated: (ago) => `آخر تحديث ${ago}`,
   nowNoData: 'ما في بيانات هلأ',
   nowDsn: (n) => (n === 0 ? 'ولا مركبة على اتصال'
@@ -773,6 +831,79 @@ const AR: Strings = {
   nowWeatherAheadCalm: 'والأيام الجاية هادية كمان',
   nowCme: (when) => `موجة من الشمس متوقعة ${when}`,
   nowApproaches: (n, until) => `${flybysAr(n)} لحد ${until}`,
+  events: {
+    title: 'أحداث السما',
+    badge: 'محسوبة بمتصفحك',
+    intro: 'شو رح يصير بالسما بالأيام الجاية: أوجه القمر، الكسوف والخسوف، الكواكب قدّام الشمس أو وراها، '
+      + 'ولما القمر أو كوكبين بيقرّبوا من بعض بالسما. كلها محسوبة هون بمتصفحك، بالوقت الحقيقي، مو بوقت المحاكاة.',
+    daysLabel: 'قديش لقدّام',
+    days7: 'الأسبوع الجاي',
+    days30: 'الشهر الجاي',
+    summary: (n, d) => `${d === 7 ? 'بالأسبوع الجاي' : 'بالشهر الجاي'}: ${eventsAr(n)}.`,
+    tileMain: (n) => `${eventsAr(n)} بالشهر الجاي`,
+    next: (what, when) => `الجاي: ${what}، ${when}`,
+    jump: 'روح لهالوقت',
+    jumpTitle: 'بيوقّف الوقت وبيروح لهاللحظة بالمشهد',
+    jumpPick: (p) => `بيوقّف الوقت، بيروح لهاللحظة بالمشهد، وبيختار ${p}`,
+    about: (x) => `حوالي ${x}`,
+    note: (tz) => `الأوقات بتوقيتك (${tz}). كلها من مركز الأرض: القمر ممكن يبيّن لحد درجة تقريباً بغير مطرح، حسب وين انت. `
+      + 'السطوع بالقدر الظاهري: كل ما الرقم أصغر، كل ما أسطع (الزهرة حوالي −4). '
+      + 'الأوقات ضمن كم دقيقة من جداول NAOJ وUSNO وناسا. الكويكبات من CNEOS (بطاقة المرورات). الحساب:',
+    moonName: 'القمر',
+    moon: { new: 'محاق', firstQuarter: 'تربيع أول', full: 'بدر', lastQuarter: 'تربيع أخير' },
+    moonNotes: {
+      new: 'القمر بين الأرض والشمس، فما بيبيّن. بعد يومين بيطلع هلال رفيع بالمسا.',
+      firstQuarter: 'نص القمر مضوي. بيبيّن العصر وأول الليل.',
+      full: 'القمر كله مضوي: بيطلع وقت غياب الشمس وبيضل طول الليل.',
+      lastQuarter: 'نص القمر مضوي. بيبيّن آخر الليل والصبح.',
+    },
+    conjunction: {
+      superior: (p) => `${p} ورا الشمس`,
+      inferior: (p) => `${p} بيننا وبين الشمس`,
+      plain: (p) => `${p} ورا الشمس`,
+    },
+    conjunctionNotes: {
+      superior: 'اقتران علوي: ضايع بضو الشمس هالأيام، وبعدها بيرجع يبيّن بالمسا.',
+      inferior: 'اقتران سفلي: ضايع بضو الشمس هالأيام، وبعدها بيبلّش يبيّن بالصبح.',
+      plain: 'اقتران: ضايع بضو الشمس هالأيام، وبعدها بيرجع يبيّن بالصبح.',
+    },
+    opposition: (p) => `${p} مقابل الشمس`,
+    oppositionNote: 'تقابل: الأرض بين الشمس والكوكب. أحسن وقت لتشوفه: بيطلع وقت غياب الشمس وبيضل طول الليل، وهو بأقرب وأسطع شي.',
+    brightDistance: (m, d) => `سطوعه\u00a0${m}، وبعده ${d}.`,
+    optics: 'بدك منظار لتشوفه.',
+    elongation: (p, sky) => `${p} بأبعد نقطة عن الشمس بسما ${sky === 'evening' ? 'المسا' : 'الصبح'}`,
+    elongationNote: (d, sky) => `أكبر استطالة: ${d} عن الشمس. أحسن وقت لتشوفه: ${sky === 'evening' ? 'بعد غياب الشمس، واطي بالغرب' : 'قبل شروق الشمس، واطي بالشرق'}.`,
+    brightness: (m) => `سطوعه\u00a0${m}.`,
+    solar: { total: 'كسوف كلي للشمس', annular: 'كسوف حلقي للشمس', partial: 'كسوف جزئي للشمس' },
+    solarWhere: (where) => `بيبيّن بس من شريط ضيّق عالأرض، ووقت الذروة نص الضل على ${where}. حواليه كسوف جزئي.`,
+    solarPartial: 'بيبيّن كسوف جزئي من جزء من الأرض بس.',
+    solarSafety: 'ما تتطلّع عالشمس أبداً بلا نضارات كسوف.',
+    lunar: { total: 'خسوف كلي للقمر', partial: 'خسوف جزئي للقمر', penumbral: 'خسوف شبه الظل للقمر' },
+    lunarNotes: {
+      total: (d) => `القمر كله بضل الأرض لمدة ${d}، وبيصير لونه أحمر. بيبيّن من كل مطرح فيه ليل وقتها.`,
+      partial: (d) => `جزء من القمر بضل الأرض لمدة ${d}. بيبيّن من كل مطرح فيه ليل وقتها.`,
+      penumbral: (d) => `القمر بيمرق بشبه ضل الأرض لمدة ${d}: بيعتم شوي بس، وصعب تلاحظه.`,
+    },
+    seasons: { marchEquinox: 'اعتدال آذار', juneSolstice: 'انقلاب حزيران', septemberEquinox: 'اعتدال أيلول', decemberSolstice: 'انقلاب كانون الأول' },
+    seasonNotes: {
+      marchEquinox: 'الليل والنهار تقريباً متساويين بكل العالم: بداية الربيع بالنص الشمالي من الأرض، والخريف بالجنوبي.',
+      juneSolstice: 'أطول نهار بالنص الشمالي من الأرض وأقصر نهار بالجنوبي: بداية الصيف بالشمال.',
+      septemberEquinox: 'الليل والنهار تقريباً متساويين بكل العالم: بداية الخريف بالنص الشمالي من الأرض، والربيع بالجنوبي.',
+      decemberSolstice: 'أقصر نهار بالنص الشمالي من الأرض وأطول نهار بالجنوبي: بداية الشتا بالشمال.',
+    },
+    perihelion: 'الأرض بأقرب نقطة من الشمس',
+    aphelion: 'الأرض بأبعد نقطة من الشمس',
+    perihelionNote: (d) => `على بعد ${d}. وهاد ما إلو علاقة بالفصول: وقتها شتا بالشمال. الفصول من ميلان الأرض.`,
+    aphelionNote: (d) => `على بعد ${d}، ومع هيك صيف بالشمال: الفصول من ميلان الأرض، مو من بعدها.`,
+    pair: (a, b) => `${a} جنب ${b}`,
+    pairNote: (d) => `بيناتهم ${d} بالسما (عرض القمر نص درجة).`,
+    glare: 'بس قريبين من الشمس بالسما، فصعب تشوفهن.',
+    neo: (name) => `${name} بيمرق جنب الأرض`,
+    neoNote: (d) => `على بعد ${d}.`,
+    neoCloser: 'أقرب من القمر!',
+    neoClosest: 'الأقرب بالشهر الجاي.',
+    north: 'شمال', south: 'جنوب', east: 'شرق', west: 'غرب',
+  },
   branch: {
     title: 'فرّع الواقع',
     badge: 'تجريبي',
@@ -1200,8 +1331,8 @@ const DE: Strings = {
   dsnNone: 'Gerade kommen keine Daten von der NASA. Wir versuchen es in einer Minute wieder.',
   dsnLocal: 'Hier gibt es keine Live-Daten. Auf der veröffentlichten Seite kommen sie jede Minute neu von der NASA.',
   nowTitle: 'Jetzt im All',
-  nowIntro: 'Was gerade im All passiert, von NASA und NOAA. Wähle eine Kachel für die Details.',
-  nowTabs: { dsn: 'Deep Space Network', weather: 'Weltraumwetter', approaches: 'Nahe Vorbeiflüge' },
+  nowIntro: 'Was gerade im All passiert, von NASA und NOAA, und was bald am Himmel geschieht. Wähle eine Kachel für die Details.',
+  nowTabs: { dsn: 'Deep Space Network', weather: 'Weltraumwetter', approaches: 'Nahe Vorbeiflüge', events: 'Himmelsereignisse' },
   nowUpdated: (ago) => `Aktualisiert ${ago}`,
   nowNoData: 'Gerade keine Daten',
   nowDsn: (n) => (n === 0 ? 'Kein Raumfahrzeug in Kontakt' : `${plural(n, 'Raumfahrzeug', 'Raumfahrzeuge')} in Kontakt`),
@@ -1211,6 +1342,79 @@ const DE: Strings = {
   nowWeatherAheadCalm: 'Auch die nächsten Tage ruhig',
   nowCme: (when) => `Wolke von der Sonne erwartet: ${when}`,
   nowApproaches: (n, until) => (n === 0 ? `Kein Vorbeiflug bis ${until}` : `${plural(n, 'Vorbeiflug', 'Vorbeiflüge')} bis ${until}`),
+  events: {
+    title: 'Ereignisse am Himmel',
+    badge: 'im Browser berechnet',
+    intro: 'Was in den nächsten Tagen am Himmel passiert: Mondphasen, Finsternisse, Planeten vor oder hinter der Sonne, '
+      + 'und wenn sich der Mond oder zwei Planeten am Himmel nahe kommen. Alles hier in deinem Browser berechnet, in Echtzeit, nicht in der Zeit der Simulation.',
+    daysLabel: 'Wie weit voraus',
+    days7: 'Nächste 7 Tage',
+    days30: 'Nächste 30 Tage',
+    summary: (n, d) => `In den nächsten ${d} Tagen: ${n === 0 ? 'keine großen Ereignisse' : plural(n, 'Ereignis', 'Ereignisse')}.`,
+    tileMain: (n) => (n === 0 ? 'Keine großen Ereignisse in 30 Tagen' : `${plural(n, 'Ereignis', 'Ereignisse')} in 30 Tagen`),
+    next: (what, when) => `Als Nächstes: ${what}, ${when}`,
+    jump: 'Zu diesem Zeitpunkt',
+    jumpTitle: 'Hält die Zeit an und springt in der Ansicht zu diesem Moment',
+    jumpPick: (p) => `Hält die Zeit an, springt in der Ansicht zu diesem Moment und wählt ${p}`,
+    about: (x) => `etwa ${x}`,
+    note: (tz) => `Zeiten in deiner Zeitzone (${tz}). Alles vom Erdmittelpunkt aus: Je nach Ort kann der Mond bis zu etwa 1° woanders stehen. `
+      + 'Helligkeit in Größenklassen: je kleiner die Zahl, desto heller (Venus etwa −4). '
+      + 'Die Zeiten liegen wenige Minuten neben den Tabellen von NAOJ, USNO und NASA. Asteroiden von CNEOS (Karte der Vorbeiflüge). Berechnet mit',
+    moonName: 'Mond',
+    moon: { new: 'Neumond', firstQuarter: 'Erstes Viertel', full: 'Vollmond', lastQuarter: 'Letztes Viertel' },
+    moonNotes: {
+      new: 'Der Mond steht zwischen Erde und Sonne und ist nicht zu sehen. Zwei Tage später zeigt sich abends eine schmale Sichel.',
+      firstQuarter: 'Zunehmender Halbmond: am Nachmittag und am Abend zu sehen.',
+      full: 'Der ganze Mond ist beleuchtet: Er geht bei Sonnenuntergang auf und ist die ganze Nacht zu sehen.',
+      lastQuarter: 'Abnehmender Halbmond: in der zweiten Nachthälfte und am Morgen zu sehen.',
+    },
+    conjunction: {
+      superior: (p) => `${p} hinter der Sonne`,
+      inferior: (p) => `${p} zwischen Erde und Sonne`,
+      plain: (p) => `${p} hinter der Sonne`,
+    },
+    conjunctionNotes: {
+      superior: 'Obere Konjunktion: in diesen Tagen im Sonnenlicht verloren, danach wieder am Abendhimmel.',
+      inferior: 'Untere Konjunktion: in diesen Tagen im Sonnenlicht verloren, danach am Morgenhimmel.',
+      plain: 'Konjunktion: in diesen Tagen im Sonnenlicht verloren, danach wieder am Morgenhimmel.',
+    },
+    opposition: (p) => `${p} in Opposition`,
+    oppositionNote: 'Die Erde steht zwischen Sonne und Planet. Beste Zeit zum Beobachten: Er geht bei Sonnenuntergang auf, ist die ganze Nacht zu sehen und so nah und hell wie sonst kaum.',
+    brightDistance: (m, d) => `Helligkeit\u00a0${m}, Entfernung ${d}.`,
+    optics: 'Dafür braucht man ein Fernglas.',
+    elongation: (p, sky) => `${p} am weitesten von der Sonne (${sky === 'evening' ? 'Abendhimmel' : 'Morgenhimmel'})`,
+    elongationNote: (d, sky) => `Größte Elongation: ${d} von der Sonne. Am besten ${sky === 'evening' ? 'nach Sonnenuntergang tief im Westen' : 'vor Sonnenaufgang tief im Osten'}.`,
+    brightness: (m) => `Helligkeit\u00a0${m}.`,
+    solar: { total: 'Totale Sonnenfinsternis', annular: 'Ringförmige Sonnenfinsternis', partial: 'Partielle Sonnenfinsternis' },
+    solarWhere: (where) => `Nur in einem schmalen Streifen auf der Erde zu sehen; zum Höhepunkt liegt die Schattenmitte bei ${where}. Ringsum partiell.`,
+    solarPartial: 'Nur von einem Teil der Erde aus als partielle Finsternis zu sehen.',
+    solarSafety: 'Nie ohne Finsternisbrille in die Sonne schauen.',
+    lunar: { total: 'Totale Mondfinsternis', partial: 'Partielle Mondfinsternis', penumbral: 'Halbschatten-Mondfinsternis' },
+    lunarNotes: {
+      total: (d) => `Der ganze Mond ist ${d} lang im Erdschatten und färbt sich rot. Überall zu sehen, wo dann Nacht ist.`,
+      partial: (d) => `Ein Teil des Mondes ist ${d} lang im Erdschatten. Überall zu sehen, wo dann Nacht ist.`,
+      penumbral: (d) => `Der Mond zieht ${d} lang durch den Halbschatten der Erde: Er wird nur etwas dunkler, kaum zu bemerken.`,
+    },
+    seasons: { marchEquinox: 'Tagundnachtgleiche im März', juneSolstice: 'Sonnenwende im Juni', septemberEquinox: 'Tagundnachtgleiche im September', decemberSolstice: 'Sonnenwende im Dezember' },
+    seasonNotes: {
+      marchEquinox: 'Tag und Nacht sind überall fast gleich lang: Frühlingsanfang auf der Nordhalbkugel, Herbstanfang auf der Südhalbkugel.',
+      juneSolstice: 'Längster Tag auf der Nordhalbkugel, kürzester auf der Südhalbkugel: Sommeranfang im Norden.',
+      septemberEquinox: 'Tag und Nacht sind überall fast gleich lang: Herbstanfang auf der Nordhalbkugel, Frühlingsanfang auf der Südhalbkugel.',
+      decemberSolstice: 'Kürzester Tag auf der Nordhalbkugel, längster auf der Südhalbkugel: Winteranfang im Norden.',
+    },
+    perihelion: 'Erde am sonnennächsten Punkt (Perihel)',
+    aphelion: 'Erde am sonnenfernsten Punkt (Aphel)',
+    perihelionNote: (d) => `Entfernung ${d}. Mit den Jahreszeiten hat das nichts zu tun: Im Norden ist dann Winter. Sie kommen von der Neigung der Erdachse.`,
+    aphelionNote: (d) => `Entfernung ${d}, und trotzdem ist im Norden Sommer: Die Jahreszeiten kommen von der Neigung der Erdachse, nicht vom Abstand.`,
+    pair: (a, b) => `${a} bei ${b}`,
+    pairNote: (d) => `${d} Abstand am Himmel (der Mond ist ein halbes Grad breit).`,
+    glare: 'Aber nah an der Sonne, also schwer zu sehen.',
+    neo: (name) => `${name} fliegt an der Erde vorbei`,
+    neoNote: (d) => `Abstand ${d}.`,
+    neoCloser: 'Näher als der Mond!',
+    neoClosest: 'Der nächste in den kommenden 30 Tagen.',
+    north: 'N', south: 'S', east: 'O', west: 'W',
+  },
   branch: {
     title: 'Wirklichkeit verzweigen',
     badge: 'Experimentell',
@@ -1640,8 +1844,8 @@ const EN: Strings = {
   dsnNone: 'No data from NASA right now. We will try again in a minute.',
   dsnLocal: 'No live data here. On the published site it comes fresh from NASA every minute.',
   nowTitle: 'Now in space',
-  nowIntro: 'What is happening in space right now, from NASA and NOAA. Pick one for the details.',
-  nowTabs: { dsn: 'Deep Space Network', weather: 'Space weather', approaches: 'Close approaches' },
+  nowIntro: 'What is happening in space right now, from NASA and NOAA, and what is coming up in the sky. Pick one for the details.',
+  nowTabs: { dsn: 'Deep Space Network', weather: 'Space weather', approaches: 'Close approaches', events: 'Sky events' },
   nowUpdated: (ago) => `Updated ${ago}`,
   nowNoData: 'No data right now',
   nowDsn: (n) => (n === 0 ? 'No spacecraft in contact' : `${n} spacecraft in contact`),
@@ -1651,6 +1855,79 @@ const EN: Strings = {
   nowWeatherAheadCalm: 'The next days look quiet too',
   nowCme: (when) => `Cloud from the Sun expected ${when}`,
   nowApproaches: (n, until) => (n === 0 ? `No close approaches until ${until}` : `${plural(n, 'close approach', 'close approaches')} until ${until}`),
+  events: {
+    title: 'Sky events',
+    badge: 'worked out in your browser',
+    intro: 'What happens in the sky in the next days: phases of the Moon, eclipses, planets in front of or behind the Sun, '
+      + 'and when the Moon or two planets come close together in the sky. All worked out here in your browser, in real time, not in the simulation’s time.',
+    daysLabel: 'How far ahead',
+    days7: 'Next 7 days',
+    days30: 'Next 30 days',
+    summary: (n, d) => `In the next ${d} days: ${n === 0 ? 'no major events' : plural(n, 'event', 'events')}.`,
+    tileMain: (n) => (n === 0 ? 'No major events in 30 days' : `${plural(n, 'event', 'events')} in 30 days`),
+    next: (what, when) => `Next: ${what}, ${when}`,
+    jump: 'Go to this time',
+    jumpTitle: 'Stops the clock and takes the views to this moment',
+    jumpPick: (p) => `Stops the clock, takes the views to this moment and picks ${p}`,
+    about: (x) => `about ${x}`,
+    note: (tz) => `Times in your time zone (${tz}). All seen from the Earth’s centre: from where you are, the Moon can sit up to about 1° elsewhere. `
+      + 'Brightness in magnitudes: the smaller the number, the brighter (Venus about −4). '
+      + 'The times are within a few minutes of the tables of NAOJ, USNO and NASA. Asteroids from CNEOS (the close-approaches card). Worked out with',
+    moonName: 'Moon',
+    moon: { new: 'New Moon', firstQuarter: 'First quarter', full: 'Full Moon', lastQuarter: 'Last quarter' },
+    moonNotes: {
+      new: 'The Moon is between the Earth and the Sun, so it cannot be seen. Two days later a thin crescent shows in the evening.',
+      firstQuarter: 'Half of the Moon is lit. Seen in the afternoon and the evening.',
+      full: 'All of the Moon is lit: it rises at sunset and is up all night.',
+      lastQuarter: 'Half of the Moon is lit. Seen late at night and in the morning.',
+    },
+    conjunction: {
+      superior: (p) => `${p} behind the Sun`,
+      inferior: (p) => `${p} between us and the Sun`,
+      plain: (p) => `${p} behind the Sun`,
+    },
+    conjunctionNotes: {
+      superior: 'Superior conjunction: lost in the Sun’s glare these days, then back in the evening sky.',
+      inferior: 'Inferior conjunction: lost in the Sun’s glare these days, then in the morning sky.',
+      plain: 'Conjunction: lost in the Sun’s glare these days, then back in the morning sky.',
+    },
+    opposition: (p) => `${p} at opposition`,
+    oppositionNote: 'The Earth is between the Sun and the planet. The best time to see it: it rises at sunset, is up all night, and is at its closest and brightest.',
+    brightDistance: (m, d) => `Brightness\u00a0${m}, distance ${d}.`,
+    optics: 'You need binoculars to see it.',
+    elongation: (p, sky) => `${p} farthest from the Sun (${sky === 'evening' ? 'evening sky' : 'morning sky'})`,
+    elongationNote: (d, sky) => `Greatest elongation: ${d} from the Sun. Best seen ${sky === 'evening' ? 'after sunset, low in the west' : 'before sunrise, low in the east'}.`,
+    brightness: (m) => `Brightness\u00a0${m}.`,
+    solar: { total: 'Total solar eclipse', annular: 'Annular solar eclipse', partial: 'Partial solar eclipse' },
+    solarWhere: (where) => `Seen only from a narrow strip of the Earth; at the peak the shadow’s centre is at ${where}. Partial around it.`,
+    solarPartial: 'Seen as a partial eclipse from part of the Earth only.',
+    solarSafety: 'Never look at the Sun without eclipse glasses.',
+    lunar: { total: 'Total lunar eclipse', partial: 'Partial lunar eclipse', penumbral: 'Penumbral lunar eclipse' },
+    lunarNotes: {
+      total: (d) => `All of the Moon is in the Earth’s shadow for ${d} and turns red. Seen from everywhere it is night then.`,
+      partial: (d) => `Part of the Moon is in the Earth’s shadow for ${d}. Seen from everywhere it is night then.`,
+      penumbral: (d) => `The Moon passes through the Earth’s faint outer shadow for ${d}: it only dims a little, hard to notice.`,
+    },
+    seasons: { marchEquinox: 'March equinox', juneSolstice: 'June solstice', septemberEquinox: 'September equinox', decemberSolstice: 'December solstice' },
+    seasonNotes: {
+      marchEquinox: 'Day and night are about equally long everywhere: spring begins in the northern half of the Earth, autumn in the southern.',
+      juneSolstice: 'The longest day in the northern half of the Earth and the shortest in the southern: summer begins in the north.',
+      septemberEquinox: 'Day and night are about equally long everywhere: autumn begins in the northern half of the Earth, spring in the southern.',
+      decemberSolstice: 'The shortest day in the northern half of the Earth and the longest in the southern: winter begins in the north.',
+    },
+    perihelion: 'Earth closest to the Sun (perihelion)',
+    aphelion: 'Earth farthest from the Sun (aphelion)',
+    perihelionNote: (d) => `Distance ${d}. This has nothing to do with the seasons: it is winter in the north then. They come from the Earth’s tilt.`,
+    aphelionNote: (d) => `Distance ${d}, and yet it is summer in the north: the seasons come from the Earth’s tilt, not its distance.`,
+    pair: (a, b) => `${a} near ${b}`,
+    pairNote: (d) => `${d} apart in the sky (the Moon is half a degree wide).`,
+    glare: 'But close to the Sun, so hard to see.',
+    neo: (name) => `${name} passes the Earth`,
+    neoNote: (d) => `At ${d}.`,
+    neoCloser: 'Closer than the Moon!',
+    neoClosest: 'The closest in the next 30 days.',
+    north: 'N', south: 'S', east: 'E', west: 'W',
+  },
   branch: {
     title: 'Branch reality',
     badge: 'Experimental',

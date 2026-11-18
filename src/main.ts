@@ -18,6 +18,7 @@ import { SpaceWeatherCard } from './view/spaceWeather';
 import { DsnCard } from './view/dsn';
 import { DSN_WORKER_URL } from './live/dsn';
 import { NowScreen } from './view/now';
+import { SkyEventsCard } from './view/skyEvents';
 import { BranchCard } from './view/branch';
 import { TripCard } from './view/trip';
 
@@ -141,6 +142,12 @@ app.innerHTML = `
     <div class="dsn-body"></div>
   </section>
 
+  <section class="card" id="skyEvents" aria-labelledby="evTitle">
+    <h2 class="card-title"><span id="evTitle"></span> <span class="badge live-data" id="evBadge"></span></h2>
+    <p class="sub ev-intro"></p>
+    <div class="ev-body"></div>
+  </section>
+
   <div class="grid">
     <div class="card">
       <div class="label"><span data-t="simTime"></span> <span id="live" class="badge" data-t="live"></span></div>
@@ -230,10 +237,14 @@ const spaceWeather = new SpaceWeatherCard($('spaceWeather'));
 spaceWeather.load(`${import.meta.env.BASE_URL}data/live/space-weather.json`);
 // Deep Space Network: live from our server on Cloudflare (workers/dsn/), once a minute while the tab is visible
 const dsn = new DsnCard($('dsn'));
-// "Now in space": a tile for each live source; one card shows at a time
-const nowScreen = new NowScreen($('now'), { dsn: $('dsn'), weather: $('spaceWeather'), approaches: $('approaches') },
-  { dsn, weather: spaceWeather, approaches });
+// Sky events of the next days, worked out in the browser; with the asteroids passing the Earth from the live file
+const skyEvents = new SkyEventsCard($('skyEvents'));
+skyEvents.neos = () => approaches.list();
+// "Now in space": a tile for each live source, and the sky events; one card shows at a time
+const nowScreen = new NowScreen($('now'), { dsn: $('dsn'), weather: $('spaceWeather'), approaches: $('approaches'), events: $('skyEvents') },
+  { dsn, weather: spaceWeather, approaches, events: skyEvents });
 for (const card of [approaches, spaceWeather, dsn]) card.onData = () => nowScreen.render();
+approaches.onData = () => { nowScreen.render(); if (nowScreen.selected === 'events') skyEvents.render(); };
 nowScreen.render();
 dsn.load(DSN_WORKER_URL);
 let scene3d: Scene3D | null = null; // loaded on first use (Three.js is a separate file)
@@ -336,6 +347,13 @@ trip.onPlay = (departMs, tofDays, target, fits) => {
   document.querySelector('.card.sky')!.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 trip.onArrive = (ms) => { setPlaying(false); jumpTo(ms); };
+// A sky event: stop at its moment, pick its planet (if it has one), and up to the views
+skyEvents.onJump = (ms, planet) => {
+  setPlaying(false);
+  jumpTo(ms);
+  if (planet) select(planet);
+  document.querySelector('.card.sky')!.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
 branch.onPlay = (speed) => {
   speedSel.value = String(speed);
   clock.speed = SPEED_DAYS[speed];
@@ -535,6 +553,7 @@ function applyLanguage(l: Lang) {
   approaches.render();
   spaceWeather.render();
   dsn.render();
+  skyEvents.render();
   nowScreen.render();
   branch.render();
   trip.render();

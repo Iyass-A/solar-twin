@@ -96,6 +96,11 @@ export class ApproachesCard {
     this.onData();
   }
 
+  /** All approaches in the file (the last week and the next two months), or none while there is no data. */
+  list(): CloseApproach[] {
+    return this.state === 'ok' && this.file ? this.file.approaches : [];
+  }
+
   /** For the "Now in space" screen: how many are coming, and the closest of them. */
   tile(): Tile {
     const s = t();

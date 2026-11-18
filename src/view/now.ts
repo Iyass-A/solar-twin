@@ -1,7 +1,8 @@
 // The "Now in space" screen: one tile per live source (Deep Space Network, space weather, close
-// approaches), each with its headline and when it was last updated. A tile opens its card below, so
-// only one card is shown at a time. #now, #now-dsn, #now-weather and #now-approaches in the address
-// open the screen (and a card) directly, so a link can point there.
+// approaches) with its headline and when it was last updated, and one for the sky events of the next days
+// (worked out in the browser). A tile opens its card below, so only one card is shown at a time.
+// #now, #now-dsn, #now-weather, #now-approaches and #now-events in the address open the screen (and a card)
+// directly, so a link can point there.
 // The tiles' texts come from the cards (tile()); they contain no markup of their own beyond what the
 // cards already escape.
 
@@ -14,8 +15,8 @@ export interface Tile {
   updatedMs: number | null;
 }
 
-export type NowTab = 'dsn' | 'weather' | 'approaches';
-export const NOW_TABS: NowTab[] = ['dsn', 'weather', 'approaches'];
+export type NowTab = 'dsn' | 'weather' | 'approaches' | 'events';
+export const NOW_TABS: NowTab[] = ['dsn', 'weather', 'approaches', 'events'];
 
 const HOUR_MS = 3_600_000;
 
@@ -59,7 +60,7 @@ export class NowScreen {
   }
 
   private fromHash(): NowTab | null {
-    const m = /^#now-(dsn|weather|approaches)$/.exec(location.hash);
+    const m = /^#now-(dsn|weather|approaches|events)$/.exec(location.hash);
     return m ? (m[1] as NowTab) : null;
   }
 

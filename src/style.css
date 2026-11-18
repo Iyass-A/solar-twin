@@ -599,6 +599,34 @@ button.now-tile[aria-selected="true"] { border-color: #4f9dff; box-shadow: inset
 .now-sub { font-size: 0.85rem; }
 .now-updated { margin-top: auto; padding-top: 4px; color: #9aa0b4; font-size: 0.75rem; }
 
+/* ---------- Phase 8: sky events of the next days ---------- */
+#skyEvents p { margin: 8px 0; line-height: 1.6; }
+#skyEvents .ev-summary { font-size: 1rem; }
+#skyEvents .ca-note a { color: #8f9bd0; }
+.ev-list { list-style: none; margin: 6px 0 0; padding: 0; }
+.ev-list li {
+  display: grid;
+  grid-template-columns: 10em 1fr auto;
+  grid-template-areas: "when what go";
+  gap: 4px 14px;
+  align-items: start;
+  padding: 9px 0;
+  border-top: 1px solid #1d2236;
+}
+.ev-list li:first-child { border-top: 0; }
+.ev-when { grid-area: when; font-size: 0.9rem; }
+.ev-what { grid-area: what; min-width: 0; }
+.ev-go { grid-area: go; }
+.ev-title { font-weight: 600; }
+.ev-line { display: block; color: #9aa0b4; font-size: 0.8rem; margin-top: 2px; line-height: 1.5; }
+.ev-go button { font-size: 0.8rem; padding: 3px 9px; white-space: nowrap; }
+/* Eclipses, and asteroids closer than the Moon: a bar by the time (the texts stay aligned) */
+.ev-list li.eclipse .ev-when, .ev-list li.moon .ev-when { border-inline-start: 3px solid #d9a441; padding-inline-start: 7px; }
+.ev-list li.moon .ev-when { border-color: #7a4fd0; }
+@media (max-width: 560px) {
+  .ev-list li { grid-template-columns: 1fr auto; grid-template-areas: "when go" "what what"; }
+}
+
 /* ---------- Phase 5: "branch reality" ---------- */
 
 .branch .br-intro { margin: 4px 0 12px; line-height: 1.6; }
