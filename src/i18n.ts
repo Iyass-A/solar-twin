@@ -286,7 +286,11 @@ export interface Strings {
   // The weekly video (phase 8): its own texts, on top of the sky events'
   video: {
     weekTitle: string;
+    /** For a stretch that is not a week */
+    daysTitle: string;
     weekCount: (count: number) => string;
+    /** "Event 2 of 6" */
+    eventNo: (i: number, n: number) => string;
     outroLine: string;
     sources: string;
     /** A time and its time zone */
@@ -924,7 +928,9 @@ const AR: Strings = {
   },
   video: {
     weekTitle: 'السما هالأسبوع',
+    daysTitle: 'السما بهالأيام',
     weekCount: (n) => eventsAr(n),
+    eventNo: (i, n) => `الحدث ${i} من ${n}`,
     outroLine: 'شوف السما بأي يوم، والكواكب بثلاثي الأبعاد، ببلاش وبمتصفحك:',
     sources: 'الحساب: Astronomy Engine · الكويكبات: CNEOS (ناسا/JPL)',
     when: (x, zone) => `${x} (${zone})`,
@@ -1450,7 +1456,9 @@ const DE: Strings = {
   },
   video: {
     weekTitle: 'Der Himmel diese Woche',
+    daysTitle: 'Der Himmel in diesen Tagen',
     weekCount: (n) => (n === 0 ? 'keine großen Ereignisse' : plural(n, 'Ereignis', 'Ereignisse')),
+    eventNo: (i, n) => `Ereignis ${i} von ${n}`,
     outroLine: 'Den Himmel an jedem Tag und die Planeten in 3D, kostenlos in deinem Browser:',
     sources: 'Berechnet mit Astronomy Engine · Asteroiden: CNEOS (NASA/JPL)',
     when: (x, zone) => `${x} (${zone})`,
@@ -1978,7 +1986,9 @@ const EN: Strings = {
   },
   video: {
     weekTitle: 'The sky this week',
+    daysTitle: 'The sky in these days',
     weekCount: (n) => (n === 0 ? 'no major events' : plural(n, 'event', 'events')),
+    eventNo: (i, n) => `Event ${i} of ${n}`,
     outroLine: 'The sky on any day, and the planets in 3D, free in your browser:',
     sources: 'Worked out with Astronomy Engine · Asteroids: CNEOS (NASA/JPL)',
     when: (x, zone) => `${x} (${zone})`,

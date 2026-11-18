@@ -24,7 +24,7 @@ import { heliocentricPosition, orbitPath } from '../astro/kepler';
 import { centuriesSinceJ2000, toJulianDate } from '../astro/julian';
 import { findEvents, type SkyEvent } from '../events/events';
 import { fileProblems, type CloseApproach } from '../live/closeApproaches';
-import { LANGS, dateTime, dayMonthYearRange, lang, setLang, t, type Lang } from '../i18n';
+import { LANGS, dateTime, dayMonth, dayMonthYearRange, lang, setLang, t, type Lang } from '../i18n';
 import { Scene3D } from '../view/scene3d';
 import { SkyChart } from '../view/skyChart';
 import { approximate, eventNote, eventTitle, latLon } from '../view/skyEvents';
@@ -67,12 +67,15 @@ stage.innerHTML = `
   <div class="shade"></div>
   <div class="brand">Solar Twin<span>${SITE}</span></div>
   <div class="clock"><div class="clock-time"></div><div class="clock-speed"></div><div class="clock-from"></div></div>
-  <div class="caption"><h1 class="cap-title"></h1><p class="cap-when"></p><p class="cap-note"></p></div>`;
+  <div class="caption"></div>
+  <div class="progress"><i></i></div>`;
 const $ = <T extends HTMLElement>(sel: string) => stage.querySelector(sel) as T;
 const spaceLayer = $<HTMLDivElement>('.space');
 const skyCanvas = $<HTMLCanvasElement>('canvas.sky');
 const caption = $<HTMLDivElement>('.caption');
 const clock = $<HTMLDivElement>('.clock');
+const progress = $<HTMLElement>('.progress i');
+const rtl = LANGS.find((x) => x.id === l)!.dir === 'rtl';
 
 const cssW = format === '9x16' ? 540 : 960, cssH = format === '9x16' ? 960 : 540;
 const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -108,24 +111,33 @@ function bodiesAt(ms: number): BodyFrame[] {
 
 let lastCaption = '';
 
-function captionFor(scene: Scene): { html: string; cls: string } {
+/** A week's video (opening, events, closing), or a single event's scene. */
+const isWeek = () => scenes.length > 1 && scenes[0].kind === 'intro';
+const eventScenes = () => scenes.filter((x) => x.kind === 'event');
+
+function captionFor(scene: Scene, index: number): { html: string; cls: string } {
   const s = t();
-  const card = (title: string, when: string, note: string) =>
-    `<h1 class="cap-title">${title}</h1><p class="cap-when">${when}</p><p class="cap-note">${note}</p>`;
+  const card = (title: string, when: string, note: string, kicker = '') =>
+    `${kicker ? `<p class="cap-kicker">${kicker}</p>` : ''}<h1 class="cap-title">${title}</h1><p class="cap-when">${when}</p><p class="cap-note">${note}</p>`;
   if (scene.kind === 'intro') {
-    return { cls: 'caption card', html: card(s.video.weekTitle, dayMonthYearRange(scene.week!.from, scene.week!.to - 1, l, tz), s.video.weekCount(scenes.length - 2)) };
+    // The week's events, numbered as their scenes are, with their day
+    const list = eventScenes().map((x, i) => `<li><span class="n">${i + 1}</span><span class="what">${eventTitle(x.event!)}</span>`
+      + `<span class="day">${dayMonth(x.event!.ms, l, tz)}</span></li>`).join('');
+    const title = days === 7 ? s.video.weekTitle : s.video.daysTitle;
+    return { cls: 'caption side', html: `${card(title, dayMonthYearRange(scene.week!.from, scene.week!.to - 1, l, tz), s.video.weekCount(eventScenes().length))}<ol class="agenda">${list}</ol>` };
   }
   if (scene.kind === 'outro') {
-    return { cls: 'caption card', html: card('Solar Twin', s.video.outroLine, `<span class="url">${SITE}</span>${s.video.sources}`) };
+    return { cls: 'caption side', html: card('Solar Twin', s.video.outroLine, `<span class="url">${SITE}</span>${s.video.sources}`) };
   }
   const e = scene.event!;
   const ms = approximate(e) ? Math.round(e.ms / HOUR_MS) * HOUR_MS : e.ms;
   const when = s.video.when(approximate(e) ? s.events.about(dateTime(ms, l, tz)) : dateTime(ms, l, tz), zoneName());
   const eclipse = e.kind === 'solarEclipse' || e.kind === 'lunarEclipse';
-  return { cls: `caption${eclipse ? ' eclipse' : ''}`, html: card(eventTitle(e), when, eventNote(e)) };
+  const kicker = isWeek() ? s.video.eventNo(index, eventScenes().length) : '';
+  return { cls: `caption${eclipse ? ' eclipse' : ''}`, html: card(eventTitle(e), when, eventNote(e), kicker) };
 }
 
-function drawShot(shot: Shot, local: number) {
+function drawShot(shot: Shot, local: number, scene: Scene) {
   const ms = simTime(shot, local);
   const op = shotOpacity(shot, local);
   spaceLayer.style.opacity = shot.kind === 'space' ? String(op) : '0';
@@ -133,7 +145,15 @@ function drawShot(shot: Shot, local: number) {
   if (shot.kind === 'space') {
     scene3d.mode = shot.mode;
     scene3d.selected = shot.select;
-    scene3d.direct({ az: along(shot.az, shot, local), el: along(shot.el, shot, local), zoom: along(shot.zoom, shot, local) * (format === '9x16' ? 1.12 : 1), focus: null, lift: format === '9x16' ? 0.22 : 0.16 });
+    // The opening and closing cards sit beside the solar system (wide) or under it (upright): move the picture away
+    const side = scene.kind !== 'event';
+    const tall = format === '9x16';
+    scene3d.direct({
+      az: along(shot.az, shot, local), el: along(shot.el, shot, local),
+      zoom: along(shot.zoom, shot, local) * (tall ? (side ? 1.25 : 1.12) : side ? 1.2 : 1), focus: null,
+      lift: tall ? (side ? 0.32 : 0.22) : side ? 0.04 : 0.16,
+      shift: side && !tall ? (rtl ? -0.42 : 0.42) : 0,
+    });
     scene3d.draw(bodiesAt(ms));
   } else if (shot.kind === 'sky') {
     sky.draw(shot, ms, along(shot.fov, shot, local));
@@ -147,13 +167,21 @@ function drawShot(shot: Shot, local: number) {
 function render(time: number) {
   const { scene, local } = sceneAt(scenes, time);
   const shot = shotAt(scene, local);
-  const ms = drawShot(shot, local);
+  const { index } = sceneAt(scenes, time);
+  const ms = drawShot(shot, local, scene);
   const s = t();
 
-  // Caption: in after 0.4 s, out before the scene ends
-  const c = captionFor(scene);
+  // Caption: in after 0.4 s, out before the scene ends; the opening's list one line after another
+  const c = captionFor(scene, index);
   if (c.html + c.cls !== lastCaption) { caption.className = c.cls; caption.innerHTML = c.html; lastCaption = c.html + c.cls; }
   caption.style.opacity = String(Math.max(0, Math.min(1, (local - 0.4) / 0.4, (scene.duration - 0.25 - local) / 0.3)));
+  caption.querySelectorAll<HTMLElement>('.agenda li').forEach((li, i) => {
+    const a = Math.max(0, Math.min(1, (local - 0.9 - 0.22 * i) / 0.3));
+    li.style.opacity = String(a);
+    li.style.transform = `translateY(${(1 - a) * 6}px)`;
+  });
+  // How far the video is
+  progress.style.width = `${(100 * Math.min(1, time / duration)).toFixed(3)}%`;
 
   // The clock, when time runs during an event's shot
   const running = scene.kind === 'event' && shot.kind !== 'distance';

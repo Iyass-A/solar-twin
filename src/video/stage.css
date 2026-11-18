@@ -71,29 +71,58 @@ body {
 #stage .cap-note { margin: 0; font-size: 14px; line-height: 1.55; color: #d0d4e4; }
 #stage .cap-note .nowrap { white-space: nowrap; }
 
-/* Opening and closing scenes: the title in the middle */
-#stage .caption.card {
-  left: 0;
-  right: 0;
-  margin-inline: auto;
-  width: fit-content;
+/* A small line above an event's title: its number in the week */
+#stage .cap-kicker {
+  display: inline-block;
+  margin: 0 0 8px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(79, 157, 255, 0.16);
+  color: #cfe0ff;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+#stage .caption.eclipse .cap-kicker { background: rgba(217, 164, 65, 0.18); color: #f3dfb4; }
+
+/* Opening and closing scenes: a card beside the solar system (the picture is moved to the other side) */
+#stage .caption.side {
   bottom: auto;
   top: 50%;
   transform: translateY(-50%);
-  max-width: 76%;
-  text-align: center;
-  border-inline-start: 0;
-  border-bottom: 3px solid #4f9dff;
-  padding: 22px 34px;
-  background: rgba(7, 9, 18, 0.88);
+  max-width: 40%;
+  padding: 20px 24px 20px;
+  background: rgba(7, 9, 18, 0.82);
 }
-#stage .caption.card .cap-title { font-size: 40px; }
-#stage .caption.card .cap-when { font-size: 18px; }
-#stage .caption.card .cap-note { font-size: 15px; }
-#stage .caption.card .url { direction: ltr; display: block; margin-top: 8px; font-size: 18px; color: #9fc3ff; font-weight: 600; }
+#stage .caption.side .cap-title { font-size: 34px; }
+#stage .caption.side .cap-when { font-size: 16px; }
+#stage .caption.side .cap-note { font-size: 14px; }
+#stage .caption.side .url { unicode-bidi: isolate; display: block; margin: 10px 0 6px; font-size: 18px; color: #9fc3ff; font-weight: 600; }
+#stage .agenda { list-style: none; margin: 12px 0 0; padding: 0; }
+#stage .agenda li {
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 5px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+#stage .agenda .n {
+  width: 20px; height: 20px; border-radius: 50%;
+  background: rgba(79, 157, 255, 0.22); color: #e6efff;
+  font-size: 11px; font-weight: 700; line-height: 20px; text-align: center;
+}
+#stage .agenda .day { color: #9aa0b4; white-space: nowrap; font-size: 11.5px; }
+
+/* How far the video is: a thin line along the bottom */
+#stage .progress { position: absolute; inset-inline: 0; bottom: 0; height: 3px; background: rgba(255, 255, 255, 0.06); }
+#stage .progress i { position: absolute; inset-block: 0; inset-inline-start: 0; width: 0; background: #4f9dff; }
 
 /* Upright: the caption across the bottom, larger */
-#stage.f9x16 .caption:not(.card) { inset-inline: 22px; bottom: 60px; max-width: none; }
+#stage.f9x16 .caption { inset-inline: 22px; bottom: 60px; max-width: none; }
+#stage.f9x16 .caption.side { top: auto; bottom: 70px; transform: none; }
 #stage.f9x16 .cap-title { font-size: 28px; }
 #stage.f9x16 .cap-when, #stage.f9x16 .cap-note { font-size: 15px; }
 #stage.f9x16 .brand { top: 40px; inset-inline-start: 22px; }

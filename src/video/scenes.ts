@@ -173,7 +173,9 @@ export function weekScenes(events: SkyEvent[], fromMs: number, toMs: number): Sc
     .sort((a, b) => a.ms - b.ms);
   const week = { from: fromMs, to: toMs };
   const mid = (fromMs + toMs) / 2;
-  const intro: Scene = { kind: 'intro', event: null, duration: 5, week, shots: [{ ...spaceShot(0, 5, mid, toMs - fromMs, 'compressed', null, 48), zoom: [1.15, 1] }] };
+  // Long enough to read the list of the week's events on it: 5 s, and half a second more for each event past two
+  const introS = Math.min(8, Math.max(5, Math.round((4 + 0.5 * kept.length) * 2) / 2));
+  const intro: Scene = { kind: 'intro', event: null, duration: introS, week, shots: [{ ...spaceShot(0, introS, mid, toMs - fromMs, 'compressed', null, 48), zoom: [1.15, 1] }] };
   const outro: Scene = { kind: 'outro', event: null, duration: 5, week, shots: [{ ...spaceShot(0, 5, toMs, 10 * DAY_MS, 'compressed', null, 48), zoom: [1, 1.1] }] };
   return [intro, ...kept.map(eventScene), outro];
 }

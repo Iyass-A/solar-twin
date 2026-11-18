@@ -246,7 +246,12 @@ export class SkyChart {
     const dir = screenDirection(p, v, sun) ?? { x: 1, y: 0 };
     ctx.translate(q.x, q.y);
     ctx.rotate(Math.atan2(dir.y, dir.x));
-    ctx.fillStyle = MOON_LIT;
+    // A little darker towards the edge, as the real Moon (and a touch of grey "seas")
+    const shade = ctx.createRadialGradient(-r * 0.15, -r * 0.1, r * 0.1, 0, 0, r);
+    shade.addColorStop(0, MOON_LIT);
+    shade.addColorStop(0.75, '#e4e0d4');
+    shade.addColorStop(1, '#bdb8aa');
+    ctx.fillStyle = shade;
     ctx.beginPath();
     // Lit half towards +x (the Sun), from the top round the right to the bottom, back along the terminator
     ctx.arc(0, 0, r, -Math.PI / 2, Math.PI / 2, false);

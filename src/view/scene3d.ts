@@ -74,7 +74,11 @@ interface Planet {
 interface Label { el: HTMLSpanElement; w: number; h: number; }
 
 /** A video shot's camera (src/video/scenes.ts): direction from the Sun [deg, ecliptic], distance (1 = the starting one), the body drawn bigger. */
-export interface CameraShot { az: number; el: number; zoom: number; focus: string | null; lift?: number }
+export interface CameraShot {
+  az: number; el: number; zoom: number; focus: string | null;
+  /** Move the picture up (lift) or sideways (shift, + to the right), as a fraction of half the field of view */
+  lift?: number; shift?: number;
+}
 
 export class Scene3D {
   mode: ViewMode = 'compressed';
@@ -310,10 +314,12 @@ export class Scene3D {
     this.controls.target.copy(ORIGIN);
     this.camera.position.set(x * dist, y * dist, z * dist);
     this.camera.lookAt(ORIGIN);
-    // Lift the picture: look a little below the Sun, so it sits above the middle (room for a caption)
-    if (shot.lift) {
-      const down = this.tmp.set(0, 1, 0).applyQuaternion(this.camera.quaternion).multiplyScalar(-dist * Math.tan(shot.lift * (FOV / 2) * DEG));
-      this.camera.lookAt(down);
+    // Lift the picture or move it sideways: look a little below or beside the Sun (room for a caption)
+    if (shot.lift || shot.shift) {
+      const halfH = Math.atan(Math.tan((FOV / 2) * DEG) * this.camera.aspect);
+      const up = this.tmp.set(0, 1, 0).applyQuaternion(this.camera.quaternion).multiplyScalar(-dist * Math.tan((shot.lift ?? 0) * (FOV / 2) * DEG));
+      const right = this.tmp2.set(1, 0, 0).applyQuaternion(this.camera.quaternion).multiplyScalar(-dist * Math.tan((shot.shift ?? 0) * halfH));
+      this.camera.lookAt(up.add(right));
     }
     this.camera.updateMatrixWorld();
   }
