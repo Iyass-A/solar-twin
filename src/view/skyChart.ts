@@ -80,6 +80,8 @@ export class SkyChart {
   private readonly ctx: CanvasRenderingContext2D;
   private readonly canvas: HTMLCanvasElement;
   private stars: Star[] = [];
+  /** Only the sky itself: no ecliptic, names or scale bar (for a still picture such as a link preview). */
+  clean = false;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -136,7 +138,7 @@ export class SkyChart {
     }
     ctx.globalAlpha = 1;
 
-    this.drawEcliptic(p);
+    if (!this.clean) this.drawEcliptic(p);
 
     if (shot.shadow) this.drawShadow(p, opposite(skyVector('sun', ms).dir), shadowRadii(skyVector('moon', ms).au, sun.au));
     if (shot.arc) this.drawArc(p, skyVector(shot.arc[0], ms, place).dir, skyVector(shot.arc[1], ms, place).dir);
@@ -154,7 +156,7 @@ export class SkyChart {
     if (lit > 0 && lit < 0.012 && rm > rs) this.drawBead(p, sun.dir, moon.dir, rs, 1 - lit / 0.012);
 
     // Names: the bodies in focus, and (dimmer) the other bright planets in the picture
-    const named: SkyBody[] = [...shot.focus, ...BRIGHT_PLANETS.filter((x) => !shot.focus.includes(x))];
+    const named: SkyBody[] = this.clean ? [] : [...shot.focus, ...BRIGHT_PLANETS.filter((x) => !shot.focus.includes(x))];
     for (const b of named) {
       const v = b === 'sun' ? sun.dir : b === 'moon' ? moon.dir : skyVector(b, ms, place).dir;
       const q = project(p, v);
@@ -164,7 +166,7 @@ export class SkyChart {
       const focus = shot.focus.includes(b);
       this.label(q, r, bodyName(b), (focus ? 30 : 24) * k, focus ? LABEL_COLOR : DIM_COLOR);
     }
-    this.drawScale(p);
+    if (!this.clean) this.drawScale(p);
     ctx.restore();
   }
 
@@ -266,11 +268,13 @@ export class SkyChart {
       ctx.arc(q.x, q.y, r * 4.2, 0, 2 * Math.PI);
       ctx.fill();
       ctx.translate(q.x, q.y);
+      // soft streamers: blurred, so they fade into the glow instead of showing edges
+      ctx.filter = `blur(${(r * 0.18).toFixed(1)}px)`;
       for (const [a, len, w] of [[0.25, 2.9, 0.75], [1.2, 2.1, 0.55], [2.05, 2.5, 0.7], [2.95, 1.9, 0.5], [3.55, 3.0, 0.8], [4.5, 2.2, 0.55], [5.35, 2.6, 0.65]]) {
         ctx.save();
         ctx.rotate(a);
         const s = ctx.createLinearGradient(r, 0, r * len, 0);
-        s.addColorStop(0, 'rgba(225, 235, 255, 0.2)');
+        s.addColorStop(0, 'rgba(225, 235, 255, 0.26)');
         s.addColorStop(1, 'rgba(225, 235, 255, 0)');
         ctx.fillStyle = s;
         ctx.beginPath();

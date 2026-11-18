@@ -5,7 +5,8 @@
 // - from and days: the stretch whose events are shown (default: from this hour, 7 days);
 // - event: only that event's scene (its number in the stretch, from 0); without it, the whole week with opening and closing;
 // - tz: the time zone for the times shown (default UTC);
-// - record: no controls and no playing; a recorder calls window.stage.seek(t) and takes a picture after each.
+// - record: no controls and no playing; a recorder calls window.stage.seek(t) and takes a picture after each;
+// - clean: the sky chart without its ecliptic, names and scale bar (for still pictures).
 // Each frame depends only on t: the camera, the clock and the captions come from the scene, nothing from the
 // time it takes to draw.
 
@@ -87,6 +88,8 @@ skyCanvas.height = Math.round(cssH * dpr);
 
 const scene3d = new Scene3D($('#space3d'));
 const sky = new SkyChart(skyCanvas);
+// &clean: only the sky (no ecliptic, names or scale bar), for still pictures
+sky.clean = params.has('clean');
 
 // ---------- What to show ----------
 

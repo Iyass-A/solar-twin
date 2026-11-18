@@ -5,9 +5,9 @@
 
 **Open it:** https://iyass-a.github.io/solar-twin/ (Arabic, German, English)
 
-![The inner planets around the Sun in 3D, with a spacecraft half way along its path from Earth to Mars](public/og.jpg)
+![The total solar eclipse of 2 August 2027 as the weekly sky video shows it, beside the name Solar Twin](public/og.jpg)
 
-Version 0.6, public beta.
+Version 0.7, public beta.
 
 ## What you can do
 
