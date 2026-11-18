@@ -5,9 +5,9 @@
 
 **Open it:** https://iyass-a.github.io/solar-twin/ (Arabic, German, English)
 
-![The planets around the Sun in 3D; empty circles show where they would be if the Sun were twice as heavy](public/og.jpg)
+![The inner planets around the Sun in 3D, with a spacecraft half way along its path from Earth to Mars](public/og.jpg)
 
-Version 0.5, public beta.
+Version 0.6, public beta.
 
 ## What you can do
 
