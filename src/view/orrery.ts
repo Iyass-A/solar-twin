@@ -7,7 +7,7 @@
 
 import type { PlanetId } from '../astro/elements';
 import type { Vec3 } from '../astro/kepler';
-import { VIEWS, COLORS, radialScale, type BodyFrame, type ViewMode } from './views';
+import { VIEWS, COLORS, TRIP_COLOR, radialScale, type BodyFrame, type TripPathFrame, type ViewMode } from './views';
 import { langInfo, numGrouped, t } from '../i18n';
 import { SMALL_COLORS, cloudZoom, type SmallFrame } from './smallbodies';
 import type { Ghost } from './branch';
@@ -76,7 +76,7 @@ export class Orrery {
   }
 
   draw(bodies: BodyFrame[], smalls: SmallFrame[] = [], selectedOrbit: { path: Vec3[]; color: string } | null = null,
-    cloud: { offsets: Vec3[]; color: string } | null = null, ghosts: Ghost[] | null = null) {
+    cloud: { offsets: Vec3[]; color: string } | null = null, ghosts: Ghost[] | null = null, trip: TripPathFrame | null = null) {
     // Hidden (3D tab), or just shown and not measured yet: the ResizeObserver catches up next frame
     if (this.w < 60 || this.h < 60) return;
     const { ctx, w, h } = this;
@@ -308,6 +308,56 @@ export class Orrery {
       ctx.lineWidth = 1;
     }
 
+    // Trip planner: the path behind the craft solid, the rest dashed, rings where it leaves and arrives,
+    // and the craft (a small diamond, named) while it is on the way
+    let craftAt: [number, number] | null = null;
+    if (trip && trip.path.length > 1) {
+      const n = trip.path.length - 1, k = Math.min(n, Math.floor(trip.done * n));
+      const pts = trip.path.map(project);
+      const craft = trip.craft ? project(trip.craft) : null;
+      ctx.strokeStyle = TRIP_COLOR;
+      ctx.lineWidth = 2;
+      if (k > 0 || craft) {
+        ctx.globalAlpha = 0.95;
+        ctx.beginPath();
+        for (let i = 0; i <= k; i++) { if (i === 0) ctx.moveTo(pts[i][0], pts[i][1]); else ctx.lineTo(pts[i][0], pts[i][1]); }
+        if (craft) ctx.lineTo(craft[0], craft[1]);
+        ctx.stroke();
+      }
+      if (k < n) {
+        ctx.globalAlpha = 0.75;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        const [sx, sy] = craft ?? pts[k];
+        ctx.moveTo(sx, sy);
+        for (let i = k + 1; i <= n; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 1.5;
+      for (const [v, color] of [[trip.depart, trip.departColor], [trip.arrive, trip.arriveColor]] as const) {
+        const [x, y] = project(v);
+        ctx.strokeStyle = color;
+        ctx.beginPath();
+        ctx.arc(x, y, 7, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      if (craft) {
+        const [x, y] = craft;
+        ctx.fillStyle = TRIP_COLOR;
+        ctx.strokeStyle = '#0b0d17';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x, y - 5); ctx.lineTo(x + 5, y); ctx.lineTo(x, y + 5); ctx.lineTo(x - 5, y); ctx.closePath();
+        ctx.stroke();
+        ctx.fill();
+        taken.push({ x0: x - 6, y0: y - 6, x1: x + 6, y1: y + 6, id: 'craft' });
+        craftAt = craft;
+      }
+      ctx.lineWidth = 1;
+    }
+
     // Arabic names: try a few spots around each planet, skip the label if all are taken.
     // (Crowded labels show up again in the inner view or when zooming in.)
     ctx.font = '13px system-ui, "Segoe UI", Tahoma, sans-serif';
@@ -332,6 +382,7 @@ export class Orrery {
     // The selected asteroid or comet first, so its name always shows
     const sel = selectedSmall as { b: SmallFrame; x: number; y: number } | null;
     if (sel) label(sel.b.id, sel.b.label, sel.x, sel.y, SMALL_COLORS[sel.b.group]);
+    if (trip && craftAt) label('craft', trip.label, craftAt[0], craftAt[1], TRIP_COLOR);
     bodies.forEach((b, i) => label(b.id, b.name, screen[i][0], screen[i][1], '#e8e8f0'));
 
     // How much the cloud is enlarged, under or above it

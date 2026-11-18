@@ -6,6 +6,7 @@
 // flown first, then found again from their two ends), and against NASA's Mars mission design handbook for 2026.
 // Step 3, the porkchop map: the cheapest launch energy of every Mars opportunity from 2026 to 2045 against the
 // same handbook's table 1, and the map's own bookkeeping.
+// Step 4, the trip in the views: its path, flown from its start, ends at the target; the speed it is run at.
 
 import { hohmann, hyperbolicBurn, leadAngle, tripTo, windows, TARGETS, PARKING_ALT_KM, RADIUS_KM } from '../src/transfer/hohmann';
 import { lambert, planetState, realTrip, type Vec } from '../src/transfer/lambert';
@@ -20,6 +21,7 @@ import { toJulianDate } from '../src/astro/julian';
 import { VALID_FROM_MS, VALID_TO_MS } from '../src/astro/elements';
 import { wrap180 } from '../src/astro/kepler';
 import { STRINGS, LANGS, num, numGrouped } from '../src/i18n';
+import { playSpeed } from '../src/view/views';
 
 const DAY_S = 86400;
 const DEG = Math.PI / 180;
@@ -329,5 +331,40 @@ export function checkPorkchop(): boolean {
   }
 
   console.log(`Porkchop map: ${ok ? 'OK' : 'FAIL'}`);
+  return ok;
+}
+
+export function checkTripPath(): boolean {
+  let ok = true;
+  const fail = (msg: string) => { ok = false; console.log(`  FAIL ${msg}`); };
+  console.log('\nTrip planner: the trip in the views');
+  // The path the views draw: the craft's orbit round the Sun flown from its start (as src/view/trip.ts does).
+  // It must start at the Earth on launch day and end at the target on arrival day, for trips of every kind.
+  let worst = 0;
+  const cases: [string, number[], number[]][] = [
+    ['mars', [2026, 10, 31], [2027, 8, 20]], ['mars', [2026, 11, 13], [2027, 8, 11]], ['venus', [2028, 3, 26], [2028, 9, 14]],
+    ['mercury', [2026, 11, 20], [2027, 3, 1]], ['jupiter', [2027, 12, 6], [2031, 7, 21]], ['neptune', [2027, 5, 22], [2044, 1, 18]],
+  ];
+  for (const [id, d, a] of cases) {
+    const tr = realTrip(id as never, jdOf(d[0], d[1], d[2]), jdOf(a[0], a[1], a[2]));
+    if (!tr) { fail(`${id}: no trip`); continue; }
+    const e = planetState('earth', tr.departJd), p = planetState(tr.target, tr.arriveJd);
+    const end = propagate(SUN_GM, tr.r1, tr.v1, tr.tofDays * DAY_S);
+    const startOff = Math.hypot(tr.r1[0] - e.r[0], tr.r1[1] - e.r[1], tr.r1[2] - e.r[2]);
+    const endOff = Math.hypot(end.r[0] - p.r[0], end.r[1] - p.r[1], end.r[2] - p.r[2]);
+    worst = Math.max(worst, startOff, endOff);
+  }
+  if (!(worst < 10)) fail(`a trip's path misses the Earth or its target by ${worst} km`);
+  console.log(`  6 trips (Mercury to Neptune): each path starts at the Earth and ends at its target within ${worst.toFixed(3)} km`);
+  // The speed a trip is run at: the one that takes closest to 15 seconds (days per second: day, week, month, year)
+  const speeds = [1, 7, 30.44, 365.25];
+  const want: [number, number][] = [[105.5, 1], [146, 1], [292, 2], [997, 2], [2208, 3], [11182, 3]];
+  for (const [days, i] of want) if (playSpeed(days, speeds) !== i) fail(`a trip of ${days} days runs at speed ${playSpeed(days, speeds)}, not ${i}`);
+  console.log('  run speeds: Mercury and Venus a week per second, Mars and Jupiter a month, Saturn and Neptune a year');
+  for (const l of LANGS) {
+    const s = STRINGS[l.id].trip;
+    for (const k of ['playTrip', 'showPath', 'craft', 'playNote'] as const) if (!s[k].trim()) fail(`${l.id}: no text for ${k}`);
+  }
+  console.log(`The trip in the views: ${ok ? 'OK' : 'FAIL'}`);
   return ok;
 }

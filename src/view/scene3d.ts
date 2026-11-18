@@ -21,7 +21,7 @@ import { SMALL_COLORS, cloudZoom, type SmallFrame, type SmallGroup } from './sma
 import type { Ghost } from './branch';
 
 const CLOUD_PX = 14; // the cloud's 1-sigma size on screen when it has to be enlarged (at least)
-import { VIEWS, COLORS, radialScale, sceneAxes, toScene, type BodyFrame, type ViewInfo, type ViewMode } from './views';
+import { VIEWS, COLORS, TRIP_COLOR, radialScale, sceneAxes, toScene, type BodyFrame, type TripPathFrame, type ViewInfo, type ViewMode } from './views';
 
 const R = 100;           // scene units at the edge of the view (view.rMax)
 const FOV = 40;          // vertical field of view [deg]
@@ -38,6 +38,9 @@ const SUN_PX = 6;
 const GLOW_PX = 22;
 const GHOST_PX = 4; // a branch body's empty circle is this much wider than the planet [px]
 const TRAIL_MAX = 1200;
+const TRIP_RING_PX = 7;  // rings where a trip leaves and arrives [px, radius]
+const TRIP_CRAFT_PX = 6; // the craft's diamond [px, half width]
+const TRIP_POINTS_MAX = 512; // points of a trip's path (the trip card sends 241)
 
 const HIT_RADIUS = 18;   // how close a tap must be to a planet to select it [px]
 const DRAG_PX = 6;       // a pointer that moved more than this was a drag, not a tap
@@ -117,6 +120,9 @@ export class Scene3D {
   private ghostTexture: THREE.Texture | null = null;
   // A branch body with no real twin (a passing star) that is off the screen: an arrow at the edge
   private farBody: { pos: THREE.Vector3; dist: number; color: string } | null = null;
+  // Trip planner: the path behind the craft (solid) and ahead (dashed), rings where it leaves and arrives, the craft
+  private tripObj: { done: THREE.Line; rest: THREE.Line; depart: THREE.Sprite; arrive: THREE.Sprite; craft: THREE.Sprite; label: Label } | null = null;
+  private tripCraft: THREE.Vector3 | null = null;
   private edgeMarker!: HTMLSpanElement;
 
   get selected(): string | null { return this.sel; }
@@ -354,7 +360,7 @@ export class Scene3D {
   }
 
   draw(bodies: BodyFrame[], smalls: SmallFrame[] = [], selectedOrbit: { path: Vec3[]; color: string } | null = null,
-    cloud: { offsets: Vec3[]; color: string } | null = null, ghosts: Ghost[] | null = null) {
+    cloud: { offsets: Vec3[]; color: string } | null = null, ghosts: Ghost[] | null = null, trip: TripPathFrame | null = null) {
     const now = performance.now();
     const dt = Math.min((now - this.lastDraw) / 1000, 0.1);
     this.lastDraw = now;
@@ -411,6 +417,7 @@ export class Scene3D {
     }
     this.updateCloud(cloud, smalls, view3);
     this.updateGhosts(ghosts, view3);
+    this.updateTrip(trip, view3);
     const wpp = this.worldPerPixel(this.sun.position);
     this.sun.scale.setScalar(SUN_PX * wpp);
     this.glow.scale.setScalar(GLOW_PX * 2 * wpp);
@@ -463,6 +470,67 @@ export class Scene3D {
       o.link.visible = !!real;
       if (real) { lp.setXYZ(0, real.x, real.y, real.z); lp.setXYZ(1, x, y, z); lp.needsUpdate = true; }
     }
+  }
+
+  /** A trip of the trip planner: its path, solid behind the craft and dashed ahead, rings where it leaves and arrives, and the craft. */
+  private updateTrip(trip: TripPathFrame | null, view3: (v: Vec3) => [number, number, number]) {
+    this.tripCraft = null;
+    if (!trip) {
+      if (this.tripObj) {
+        const o = this.tripObj;
+        for (const m of [o.done, o.rest, o.depart, o.arrive, o.craft]) m.visible = false;
+        o.label.el.style.visibility = 'hidden';
+      }
+      return;
+    }
+    if (!this.tripObj) {
+      this.ghostTexture ??= ringTexture();
+      // Fixed buffers, drawn up to how far each part goes (setFromPoints would keep its first size)
+      const line = (material: THREE.LineBasicMaterial | THREE.LineDashedMaterial) => {
+        const l = new THREE.Line(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(TRIP_POINTS_MAX * 3), 3)), material);
+        l.frustumCulled = false;
+        return l;
+      };
+      const done = line(new THREE.LineBasicMaterial({ color: TRIP_COLOR, transparent: true, opacity: 0.9, depthWrite: false }));
+      const rest = line(new THREE.LineDashedMaterial({ color: TRIP_COLOR, dashSize: 1.6, gapSize: 1.1, transparent: true, opacity: 0.75, depthWrite: false }));
+      const ring = () => new THREE.Sprite(new THREE.SpriteMaterial({ map: this.ghostTexture, transparent: true, depthWrite: false }));
+      const craft = new THREE.Sprite(new THREE.SpriteMaterial({ map: diamondTexture(), transparent: true, depthWrite: false, depthTest: false }));
+      const depart = ring(), arrive = ring();
+      this.scene.add(done, rest, depart, arrive, craft);
+      this.tripObj = { done, rest, depart, arrive, craft, label: this.label('') };
+    }
+    const o = this.tripObj;
+    const v = (p: Vec3) => new THREE.Vector3(...view3(p));
+    const pts = trip.path.map(v);
+    const n = pts.length - 1, k = Math.min(n, Math.floor(trip.done * n));
+    const craft = trip.craft ? v(trip.craft) : null;
+    const behind = pts.slice(0, k + 1);
+    if (craft) behind.push(craft);
+    const ahead = k < n ? [craft ?? pts[k], ...pts.slice(k + 1)] : [];
+    const fill = (l: THREE.Line, points: THREE.Vector3[]) => {
+      const pos = l.geometry.getAttribute('position') as THREE.BufferAttribute;
+      const m = Math.min(points.length, pos.count);
+      for (let i = 0; i < m; i++) pos.setXYZ(i, points[i].x, points[i].y, points[i].z);
+      pos.needsUpdate = true;
+      l.geometry.setDrawRange(0, m);
+      l.visible = m > 1;
+    };
+    fill(o.done, behind);
+    fill(o.rest, ahead);
+    o.rest.computeLineDistances();
+    for (const [sprite, at, color] of [[o.depart, trip.depart, trip.departColor], [o.arrive, trip.arrive, trip.arriveColor]] as const) {
+      sprite.position.copy(v(at));
+      (sprite.material as THREE.SpriteMaterial).color.set(color);
+      sprite.scale.setScalar(2 * TRIP_RING_PX * this.worldPerPixel(sprite.position));
+      sprite.visible = true;
+    }
+    o.craft.visible = !!craft;
+    if (craft) {
+      o.craft.position.copy(craft);
+      o.craft.scale.setScalar(2 * TRIP_CRAFT_PX * this.worldPerPixel(craft));
+      this.tripCraft = craft;
+    }
+    if (o.label.el.textContent !== trip.label) this.setText(o.label, trip.label);
   }
 
   /** The uncertainty cloud around the selected asteroid or comet, enlarged if it would be too small to see. */
@@ -723,6 +791,15 @@ export class Scene3D {
       this.cloudLabel.el.style.visibility = 'hidden';
     }
 
+    // The trip planner's craft, named next to it
+    if (this.tripObj) {
+      const s = this.tripCraft ? this.toScreen(this.tripCraft) : null;
+      if (s) {
+        const { w, h } = measure(this.tripObj.label);
+        place(this.tripObj.label, s.x, s.y, [[TRIP_CRAFT_PX + 3, -h - 1], [TRIP_CRAFT_PX + 3, 1], [-TRIP_CRAFT_PX - 3 - w, -h - 1], [-TRIP_CRAFT_PX - 3 - w, 1]]);
+      } else this.tripObj.label.el.style.visibility = 'hidden';
+    }
+
     // A passing star off the screen (or behind the camera): an arrow at the edge towards it, with its distance in au
     this.placeEdgeMarker();
 
@@ -746,6 +823,23 @@ function ringTexture(): THREE.Texture {
   ctx.beginPath();
   ctx.arc(32, 32, 27, 0, Math.PI * 2);
   ctx.stroke();
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/** A small white diamond with a dark edge: the trip planner's craft. */
+function diamondTexture(): THREE.Texture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 32;
+  const ctx = c.getContext('2d')!;
+  ctx.beginPath();
+  ctx.moveTo(16, 3); ctx.lineTo(29, 16); ctx.lineTo(16, 29); ctx.lineTo(3, 16); ctx.closePath();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#0b0d17';
+  ctx.stroke();
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;

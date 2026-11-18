@@ -43,6 +43,33 @@ export const COLORS: Record<PlanetId, string> = {
   neptune: '#6b85ff',
 };
 
+/**
+ * A trip of the trip planner as the views draw it (phase 6, step 4): its path round the Sun from leaving to
+ * arriving [au], how much of it lies behind (0 before launch, 1 after arrival), the Earth where it leaves and the
+ * target where it arrives, and the craft at the time on screen while it is on the way, with its name.
+ */
+export interface TripPathFrame {
+  path: Vec3[];
+  done: number;
+  depart: Vec3;
+  arrive: Vec3;
+  craft: Vec3 | null;
+  label: string;
+  departColor: string;
+  arriveColor: string;
+}
+
+/** The trip's path and craft. */
+export const TRIP_COLOR = '#ffffff';
+
+/** The speed (an index into the page's days per second) at which a trip of tofDays takes closest to 15 seconds to watch. */
+export function playSpeed(tofDays: number, speeds: readonly number[]): number {
+  const off = (i: number) => Math.abs(Math.log(tofDays / speeds[i] / 15));
+  let best = 0;
+  for (let i = 1; i < speeds.length; i++) if (off(i) < off(best)) best = i;
+  return best;
+}
+
 /** Distance from the Sun [au] -> fraction of the view radius (1 at view.rMax). */
 export function radialScale(view: ViewInfo, r: number): number {
   return view.compressed ? Math.sqrt(r / view.rMax) : r / view.rMax;

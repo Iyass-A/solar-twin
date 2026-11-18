@@ -5,9 +5,16 @@
 // Step 3: the porkchop map of launch dates round that window (src/transfer/porkchop.ts, drawn by
 // src/view/porkchopMap.ts), worked out a few rows at a time once the card is in view; once it is done, the
 // exact trip moves to the cheapest one, unless the visitor has already picked dates.
+// Step 4: the exact trip in the views (frame(), drawn by src/view/orrery.ts and scene3d.ts): its path round the
+// Sun, flown from its start with the universal-variable propagator, and a button that runs time from launch to
+// arrival, so the craft can be watched on its way; time stops when it arrives.
 
 import { PARKING_ALT_KM, TARGETS, leadAngle, tripTo, windows, type Trip } from '../transfer/hohmann';
-import { realTrip, type RealTrip } from '../transfer/lambert';
+import { planetState, realTrip, type RealTrip, type Vec } from '../transfer/lambert';
+import { propagate } from '../physics/orbit';
+import { AU_KM, SUN_GM } from '../physics/bodies';
+import { COLORS, type TripPathFrame } from './views';
+import type { Vec3 } from '../astro/kepler';
 import { cheapest, nearHalfTurn, onEdge, porkchopRange, porkchopStepper, type Measure, type Porkchop } from '../transfer/porkchop';
 import { BAND_COLORS, PorkchopMap, type Pick } from './porkchopMap';
 import { toJulianDate } from '../astro/julian';
@@ -18,6 +25,10 @@ const DAY_MS = 86_400_000;
 const UNIX_EPOCH_JD = 2440587.5;
 const jdToMs = (jd: number) => (jd - UNIX_EPOCH_JD) * DAY_MS;
 const GIANTS: PlanetId[] = ['jupiter', 'saturn', 'uranus', 'neptune'];
+const DAY_S = 86400;
+/** Points along a trip's path in the views. */
+const PATH_POINTS = 240;
+const au = (r: readonly number[]): Vec3 => ({ x: r[0] / AU_KM, y: r[1] / AU_KM, z: r[2] / AU_KM });
 /** A window this recent is still shown next to the coming one. */
 const RECENT_DAYS = 60;
 /** The first and last day a date field takes (the time bar's range). */
@@ -33,6 +44,10 @@ const nw = (s: string) => `<span class="nw">${s}</span>`;
 export class TripCard {
   /** Called to move the time on screen to a launch date and pick the target planet. */
   onJump: ((ms: number, target: PlanetId) => void) | null = null;
+  /** Called to run a trip in the views: from its launch date, at a speed fitting its length, the target picked. */
+  onPlay: ((departMs: number, tofDays: number, target: PlanetId) => void) | null = null;
+  /** Called when a trip being run reaches its arrival (the page stops time there). */
+  onArrive: ((ms: number) => void) | null = null;
 
   private target: PlanetId = 'mars';
   // The windows around the time on screen, kept while that time stays between them
@@ -52,6 +67,10 @@ export class TripCard {
   private picked = false;
   private visible = false;
   private readonly porkMap: PorkchopMap;
+  // The exact trip in the views: whether to show it, its path (for the trip it was worked out for), and a run in progress
+  private showPath = false;
+  private path: { trip: RealTrip; points: Vec3[]; arrive: Vec3 } | null = null;
+  private running = false;
 
   private readonly el: {
     title: HTMLElement; badge: HTMLElement; intro: HTMLElement; toLabel: HTMLElement; select: HTMLSelectElement;
@@ -60,6 +79,7 @@ export class TripCard {
     depart: HTMLInputElement; arrive: HTMLInputElement; exactFacts: HTMLElement; exactLines: HTMLElement;
     mapTitle: HTMLElement; mapIntro: HTMLElement; colorBy: HTMLElement; measure: HTMLSelectElement; axisY: HTMLElement;
     axisX: HTMLElement; legend: HTMLElement; marks: HTMLElement; status: HTMLElement; best: HTMLElement;
+    play: HTMLButtonElement; show: HTMLInputElement; showText: HTMLElement; playNote: HTMLElement;
   };
 
   constructor(root: HTMLElement, clock: () => { ms: number; min: number; max: number }) {
@@ -95,7 +115,12 @@ export class TripCard {
         <label><span class="tp-arrive-label"></span> <input class="tp-arrive" type="date" dir="ltr" min="${FIRST_DAY}" max="${LAST_DAY}"></label>
       </div>
       <dl class="tp-facts tp-exact-facts"></dl>
-      <div class="tp-when tp-exact-lines"></div>`;
+      <div class="tp-when tp-exact-lines"></div>
+      <div class="row tp-run">
+        <button type="button" class="tp-play"></button>
+        <label class="check"><input type="checkbox" class="tp-show"> <span class="tp-show-text"></span></label>
+      </div>
+      <p class="sub tp-play-note"></p>`;
     const q = <T extends HTMLElement>(c: string) => root.querySelector<T>(c)!;
     this.el = {
       title: q('.tp-title'), badge: q('.tp-badge'), intro: q('.tp-intro'), toLabel: q('.tp-to-label'), select: q('.tp-target'),
@@ -107,7 +132,17 @@ export class TripCard {
       mapTitle: q('.tp-map-title'), mapIntro: q('.tp-map-intro'), colorBy: q('.tp-colorby'), measure: q('.tp-measure'),
       axisY: q('.tp-axis-y span'), axisX: q('.tp-axis-x'), legend: q('.tp-legend'), marks: q('.tp-marks'),
       status: q('.tp-map-status'), best: q('.tp-best'),
+      play: q('.tp-play'), show: q('.tp-show'), showText: q('.tp-show-text'), playNote: q('.tp-play-note'),
     };
+    this.el.show.addEventListener('change', () => { this.showPath = this.el.show.checked; });
+    this.el.play.addEventListener('click', () => {
+      const tr = this.exact?.trip;
+      if (!tr) return;
+      this.picked = true; // the trip being run stays, whatever the map finds as time moves on
+      this.showPath = this.el.show.checked = true;
+      this.running = true;
+      this.onPlay?.(jdToMs(tr.departJd), tr.tofDays, tr.target);
+    });
     this.porkMap = new PorkchopMap(q('.tp-map'));
     this.porkMap.onPick = (p) => {
       this.picked = true;
@@ -248,6 +283,9 @@ export class TripCard {
       lines = [s.way(ltr(`${num(r.angleDeg, 0)}°`), r.type)];
       if (nearHalfTurn(r.angleDeg)) lines.push(s.nearHalf);
     }
+    // The trip can be run from its launch day if that day is on the time bar
+    const { min, max } = this.clock();
+    this.el.play.disabled = !(x.trip && x.depart >= min && x.depart <= max);
     this.porkMap.setSelected(this.selection());
     const html = facts + '\u0000' + lines.map((l) => `<p>${l}</p>`).join('');
     if (html === this.exactShown) return;
@@ -277,12 +315,45 @@ export class TripCard {
     this.el.colorBy.textContent = s.colorBy;
     this.el.measure.querySelectorAll('option').forEach((o) => { o.textContent = s.measures[o.value as Measure]; });
     this.el.marks.textContent = s.marks;
+    this.el.play.textContent = s.playTrip;
+    this.el.showText.textContent = s.showPath;
+    this.el.playNote.textContent = s.playNote;
     this.el.select.querySelectorAll('option').forEach((o) => { o.textContent = t().planets[o.value as PlanetId]; });
     this.shown = '';
     this.exactShown = '';
     this.update();
     this.renderExact();
     this.renderMap();
+  }
+
+  /**
+   * The exact trip as the views draw it at the time on screen, or null when it is not to be shown. While a trip
+   * is being run (playing is the page's clock), its arrival stops time there.
+   */
+  frame(ms: number, playing: boolean): TripPathFrame | null {
+    if (!playing) this.running = false;
+    const x = this.exact, tr = x?.trip;
+    if (!x || !tr || x.target !== this.target) return null;
+    const jd = toJulianDate(new Date(ms));
+    const done = (jd - tr.departJd) / tr.tofDays;
+    if (this.running && done >= 1) { // (even with the path hidden)
+      this.running = false;
+      this.onArrive?.(jdToMs(tr.arriveJd));
+    }
+    if (!this.showPath) return null;
+    if (this.path?.trip !== tr) {
+      // The path, flown from its start round the Sun (Lambert's orbit, so it ends at the target)
+      const points: Vec3[] = [];
+      for (let i = 0; i <= PATH_POINTS; i++) points.push(au(propagate(SUN_GM, tr.r1, tr.v1, (tr.tofDays * DAY_S * i) / PATH_POINTS).r));
+      this.path = { trip: tr, points, arrive: au(planetState(tr.target, tr.arriveJd).r) };
+    }
+    const on = done >= 0 && done <= 1;
+    return {
+      path: this.path.points, done: Math.min(1, Math.max(0, done)),
+      depart: au(tr.r1 as Vec), arrive: this.path.arrive,
+      craft: on ? au(propagate(SUN_GM, tr.r1, tr.v1, (jd - tr.departJd) * DAY_S).r) : null,
+      label: t().trip.craft, departColor: COLORS.earth, arriveColor: COLORS[tr.target],
+    };
   }
 
   /** The numbers for the time on screen (a few times a second). */

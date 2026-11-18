@@ -692,3 +692,9 @@ button.now-tile[aria-selected="true"] { border-color: #4f9dff; box-shadow: inset
 .trip .tp-marks[hidden] { display: none; }
 .trip .tp-pick { font-size: 0.85rem; padding: 3px 10px; margin-inline-start: 6px; }
 .trip .tp-tip { min-width: 150px; }
+/* Step 4: running the trip in the views */
+.trip .tp-run { margin-top: 10px; gap: 12px; align-items: center; }
+.trip .tp-play { background: #3a4fa0; border-color: #5368c0; }
+.trip .tp-play:hover { background: #4459b0; }
+.trip .tp-play:disabled { opacity: 0.5; cursor: not-allowed; }
+.trip .tp-play-note { margin: 6px 0 0; line-height: 1.6; }

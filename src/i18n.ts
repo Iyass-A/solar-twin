@@ -325,6 +325,11 @@ export interface Strings {
     nearHalf: string;
     /** After a cheapest trip that lies on the map's edge */
     edge: string;
+    // Step 4: the trip in the views
+    playTrip: string;
+    showPath: string;
+    craft: string;
+    playNote: string;
     mapAria: string;
   };
 }
@@ -825,6 +830,10 @@ const AR: Strings = {
     typeName: (type) => (type === 1 ? 'النوع الأول' : 'النوع التاني'),
     nearHalf: 'هالرحلة بتلف تقريباً نص لفّة بالظبط: مستوى المسار بالكاد محدد، والأرقام بتتغيّر كتير من يوم ليوم. المهمات الحقيقية بتتجنّب هالخط.',
     edge: '(على طرف الخريطة، فممكن تكون في رحلة أرخص برّاها)',
+    playTrip: 'شغّل الرحلة بالمشهد',
+    showPath: 'ورجيني المسار بالمشهد',
+    craft: 'المركبة',
+    playNote: 'الزر بيرجّع الوقت ليوم الانطلاق وبيشغّله، فبتشوف المركبة ماشية عالمسار لحد ما توصل للكوكب. الخط المليان: اللي قطعته، والمتقطّع: اللي باقي.',
     mapAria: 'خريطة مواعيد الانطلاق: يوم الانطلاق ومدة الرحلة، ملوّنة حسب الكلفة',
   },
 };
@@ -1213,6 +1222,10 @@ const DE: Strings = {
     typeName: (type) => (type === 1 ? 'Typ I' : 'Typ II'),
     nearHalf: 'Dieser Flug geht fast genau eine halbe Runde: Die Ebene der Bahn ist kaum bestimmt, und die Zahlen ändern sich von Tag zu Tag stark. Echte Missionen meiden diese Linie.',
     edge: '(am Rand der Karte, außerhalb gibt es vielleicht einen billigeren Flug)',
+    playTrip: 'Flug in der Ansicht abspielen',
+    showPath: 'Bahn in der Ansicht zeigen',
+    craft: 'Sonde',
+    playNote: 'Der Knopf stellt die Zeit auf den Starttag und lässt sie laufen: Du siehst die Sonde auf ihrer Bahn, bis sie den Planeten erreicht. Durchgezogen: der zurückgelegte Weg, gestrichelt: der Rest.',
     mapAria: 'Karte der Starttermine: Starttag und Flugdauer, gefärbt nach den Kosten',
   },
 };
@@ -1605,6 +1618,10 @@ const EN: Strings = {
     typeName: (type) => (type === 1 ? 'type I' : 'type II'),
     nearHalf: 'This trip goes almost exactly half way round: the plane of its path is barely defined, and the numbers change a lot from day to day. Real missions avoid this line.',
     edge: '(on the edge of the map, so there may be a cheaper trip beyond it)',
+    playTrip: 'Play the trip in the view',
+    showPath: 'Show the path in the view',
+    craft: 'Spacecraft',
+    playNote: 'The button sets the time to the launch day and runs it, so you see the spacecraft move along its path until it reaches the planet. Solid: the way behind it, dashed: the way ahead.',
     mapAria: 'Map of launch dates: launch day and time on the way, coloured by cost',
   },
 };

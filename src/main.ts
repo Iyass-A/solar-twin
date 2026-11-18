@@ -4,7 +4,7 @@ import { PLANETS, VALID_FROM_MS, VALID_TO_MS } from './astro/elements';
 import { heliocentricPosition, orbitPath, longitude, distance, wrap180 } from './astro/kepler';
 import { referencePosition } from './astro/reference';
 import { Orrery } from './view/orrery';
-import { VIEWS, type BodyFrame, type ViewMode } from './view/views';
+import { VIEWS, playSpeed, type BodyFrame, type ViewMode } from './view/views';
 import type { Scene3D } from './view/scene3d';
 import {
   SMALL_COLORS, SMALL_GROUPS, loadSmallBodies, smallLabel, smallFullName, isValidAt, smallPosition, smallOrbitPath,
@@ -320,6 +320,21 @@ function jumpTo(ms: number) {
 playBtn.addEventListener('click', () => setPlaying(!clock.playing));
 branch.onJump = (ms) => { setPlaying(false); jumpTo(ms); };
 trip.onJump = (ms, target) => { setPlaying(false); jumpTo(ms); select(target); };
+// Run a trip in the views: from its launch day, at the speed that takes closest to 15 seconds for it, and up to the views
+trip.onPlay = (departMs, tofDays, target) => {
+  // Out to Mars the trip fits the inner view, where it is large enough to follow
+  const inner = target === 'mercury' || target === 'venus' || target === 'mars';
+  const mode: ViewMode = inner ? 'inner' : orrery.mode === 'inner' ? 'compressed' : orrery.mode;
+  if (mode !== orrery.mode) { viewSel.value = mode; setView(mode); }
+  select(target);
+  jumpTo(departMs);
+  const best = playSpeed(tofDays, SPEED_DAYS);
+  speedSel.value = String(best);
+  clock.speed = SPEED_DAYS[best];
+  setPlaying(true);
+  document.querySelector('.card.sky')!.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+trip.onArrive = (ms) => { setPlaying(false); jumpTo(ms); };
 branch.onPlay = (speed) => {
   speedSel.value = String(speed);
   clock.speed = SPEED_DAYS[speed];
@@ -614,8 +629,9 @@ function frame(now: number) {
   }
 
   const ghosts = branch.frame(clock.ms);
-  if (kind === '2d') orrery.draw(bodies, smalls, selectedOrbit, cloud, ghosts);
-  else scene3d?.draw(bodies, smalls, selectedOrbit, cloud, ghosts);
+  const tripPath = trip.frame(clock.ms, clock.playing);
+  if (kind === '2d') orrery.draw(bodies, smalls, selectedOrbit, cloud, ghosts, tripPath);
+  else scene3d?.draw(bodies, smalls, selectedOrbit, cloud, ghosts, tripPath);
   if (!dragging) slider.valueAsNumber = (clock.ms - VALID_FROM_MS) / DAY_MS;
   if (now - lastPanels > 250) {
     lastPanels = now;
