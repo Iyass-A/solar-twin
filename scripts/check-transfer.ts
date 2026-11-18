@@ -10,9 +10,13 @@
 // Step 5, the signal delay: the Earth–Mars light time and the Sun's angle against JPL Horizons (DE441) for a year,
 // the 2° limit against NASA's Mars commanding pauses (2019, 2021, 2023), the instant-distance shortcut against
 // the true light time, and the profile's longest delay and stretches near the Sun against a plain scan.
+// Step 6, against JPL's Small-Body Mission Design tool: for eight asteroids and a comet, JPL's picked missions and
+// a map of launch dates and times of flight, worked out again here on JPL Horizons' states (so it tests the trip
+// calculation, revolutions included), and the site's own asteroid states against Horizons.
 
 import { hohmann, hyperbolicBurn, leadAngle, tripTo, windows, TARGETS, PARKING_ALT_KM, RADIUS_KM } from '../src/transfer/hohmann';
-import { lambert, planetState, realTrip, type Vec } from '../src/transfer/lambert';
+import { lambert, lambertRevs, lambertAll, flightBetween, planetState, realTrip, MAX_REVS, type Vec } from '../src/transfer/lambert';
+import { smallBodyState } from '../src/astro/smallbody';
 import { porkchopRange, porkchop, porkchopStepper, cheapest, bandEdges, mapMin, onEdge, nearHalfTurn, RIDGE_DEG } from '../src/transfer/porkchop';
 import { heliocentricPosition } from '../src/astro/kepler';
 import { PLANETS } from '../src/astro/elements';
@@ -194,6 +198,37 @@ export function checkLambert(): boolean {
   console.log(`  ${cases} orbits flown and found again (${longWay} the long way, ${open} hyperbolas): velocities within ${worst.toExponential(1)} of the speed`);
   if (lambert(SUN_GM, [AU_KM, 0, 0], [0, AU_KM, 0], 0) || lambert(SUN_GM, [AU_KM, 0, 0], [-1.5 * AU_KM, 0, 0], 2e7)) fail('a trip with no time, or exactly opposite ends, must have no answer');
 
+  // 2b. The same with one to four whole turns first (step 6): flown with the propagator for revs turns and a part
+  //     of one, then found again as one of the two answers for that many turns, and among all of them
+  let worstRev = 0, revCases = 0, missing = 0;
+  const perRev = [0, 0, 0, 0, 0];
+  for (let i = 0; i < 400; i++) {
+    const r = (0.4 + 5 * rnd()) * AU_KM, th = 2 * Math.PI * rnd(), inc = (rnd() - 0.5) * 0.6;
+    const r0: Vec = [r * Math.cos(th), r * Math.sin(th), r * Math.sin(inc) * 0.3];
+    const vc = Math.sqrt(SUN_GM / r) * (0.7 + 0.6 * rnd()); // bound orbits only: a turn must end
+    const ang = th + Math.PI / 2 + (rnd() - 0.5) * 0.8;
+    const v0: Vec = [vc * Math.cos(ang), vc * Math.sin(ang), vc * (rnd() - 0.5) * 0.2];
+    const energy = (v0[0] ** 2 + v0[1] ** 2 + v0[2] ** 2) / 2 - SUN_GM / Math.hypot(...r0);
+    if (!(energy < 0)) continue;
+    const period = 2 * Math.PI * Math.sqrt((-SUN_GM / (2 * energy)) ** 3 / SUN_GM);
+    const revs = 1 + (i % MAX_REVS), tof = period * (revs + 0.05 + 0.9 * rnd());
+    const end = propagate(SUN_GM, r0, v0, tof);
+    const sols = lambertRevs(SUN_GM, r0, end.r as Vec, tof, revs);
+    const zero = lambert(SUN_GM, r0, end.r as Vec, tof);
+    if (!zero || Math.abs(zero.angleDeg - 180) < 1 || zero.angleDeg < 1 || zero.angleDeg > 359) continue; // a barely defined plane
+    revCases++;
+    const hit = sols.map((l) => off(l.v1, v0) / vc).sort((a, b) => a - b)[0];
+    if (!(hit < 1e-6)) { missing++; continue; }
+    const l = sols.find((x) => off(x.v1, v0) / vc === hit)!;
+    worstRev = Math.max(worstRev, hit, off(l.v2, end.v) / vc);
+    if (l.revs !== revs || !lambertAll(SUN_GM, r0, end.r as Vec, tof).some((x) => x.revs === revs && off(x.v1, v0) / vc < 1e-6)) missing++;
+    perRev[revs]++;
+  }
+  if (missing || !(worstRev < 1e-7) || revCases < 300 || perRev.slice(1).some((n) => n < 60)) fail(`orbits with whole turns: ${missing} of ${revCases} not found again, velocities off by ${worstRev}, ${perRev.join('/')}`);
+  console.log(`  ${revCases} orbits with 1 to ${MAX_REVS} whole turns (${perRev.slice(1).join(', ')}) flown and found again among the two answers: velocities within ${worstRev.toExponential(1)} of the speed`);
+  // Too little time for the turns: no answer (no orbit through both ends is smaller than the minimum-energy ellipse)
+  if (lambertRevs(SUN_GM, [AU_KM, 0, 0], [0, 1.5 * AU_KM, 0], 200 * DAY_S, 1).length) fail('one whole turn in 200 days from 1 to 1.5 au must have no answer');
+
   // 3. The planets' states (Astronomy Engine): positions agree with the site's Kepler planets, velocities with
   //    how the positions change (units km and km/s)
   const jd0 = jdOf(2026, 11, 17);
@@ -237,8 +272,9 @@ export function checkLambert(): boolean {
   for (const l of LANGS) {
     const s = STRINGS[l.id].trip;
     const deg = `${num(196, 0, l.id)}°`;
-    const all = [s.way(deg, 1), s.way(deg, 2), s.badDates, s.noTrip, s.exactTitle, s.exactIntro, s.departDate, s.arriveDate].join(' ');
-    if (/undefined|NaN/.test(all) || !s.way(deg, 2).includes(deg) || s.way(deg, 1) === s.way(deg, 2)) fail(`${l.id}: "${all}"`);
+    const all = [s.way(deg, 1, 0), s.way(deg, 2, 0), s.way(deg, 1, 1), s.way(deg, 2, 3), s.badDates, s.noTrip, s.exactTitle, s.exactIntro, s.departDate, s.arriveDate].join(' ');
+    if (/undefined|NaN/.test(all) || !s.way(deg, 2, 0).includes(deg) || s.way(deg, 1, 0) === s.way(deg, 2, 0)) fail(`${l.id}: "${all}"`);
+    if (!s.way(deg, 2, 3).includes(deg) || !s.way(deg, 2, 3).includes('3') || s.way(deg, 1, 1) === s.way(deg, 1, 0) || s.way(deg, 1, 1) === s.way(deg, 1, 2)) fail(`${l.id}: the whole turns are not said: "${s.way(deg, 2, 3)}"`);
     for (const k of ['badDates', 'noTrip', 'exactTitle', 'exactIntro', 'departDate', 'arriveDate'] as const) if (!s[k].trim()) fail(`${l.id}: no text for ${k}`);
   }
 
@@ -349,9 +385,12 @@ export function checkTripPath(): boolean {
   const cases: [string, number[], number[]][] = [
     ['mars', [2026, 10, 31], [2027, 8, 20]], ['mars', [2026, 11, 13], [2027, 8, 11]], ['venus', [2028, 3, 26], [2028, 9, 14]],
     ['mercury', [2026, 11, 20], [2027, 3, 1]], ['jupiter', [2027, 12, 6], [2031, 7, 21]], ['neptune', [2027, 5, 22], [2044, 1, 18]],
+    ['venus', [2028, 3, 26], [2031, 2, 24]], // 1,065 days: three whole turns first (step 6), cheaper than the direct way
   ];
+  let turns = 0;
   for (const [id, d, a] of cases) {
     const tr = realTrip(id as never, jdOf(d[0], d[1], d[2]), jdOf(a[0], a[1], a[2]));
+    turns = Math.max(turns, tr?.revs ?? 0);
     if (!tr) { fail(`${id}: no trip`); continue; }
     const e = planetState('earth', tr.departJd), p = planetState(tr.target, tr.arriveJd);
     const end = propagate(SUN_GM, tr.r1, tr.v1, tr.tofDays * DAY_S);
@@ -360,7 +399,8 @@ export function checkTripPath(): boolean {
     worst = Math.max(worst, startOff, endOff);
   }
   if (!(worst < 10)) fail(`a trip's path misses the Earth or its target by ${worst} km`);
-  console.log(`  6 trips (Mercury to Neptune): each path starts at the Earth and ends at its target within ${worst.toFixed(3)} km`);
+  if (turns !== 3) fail(`the 1,065-day trip to Venus goes ${turns} whole turns, not 3`);
+  console.log(`  7 trips (Mercury to Neptune, and Venus with 3 whole turns): each path starts at the Earth and ends at its target within ${worst.toFixed(3)} km`);
   // The speed a trip is run at: the one that takes closest to 15 seconds (days per second: day, week, month, year)
   const speeds = [1, 7, 30.44, 365.25];
   const want: [number, number][] = [[105.5, 1], [146, 1], [292, 2], [997, 2], [2208, 3], [11182, 3]];
@@ -503,5 +543,127 @@ export function checkSignal(): boolean {
     if (!s.seconds(25).includes('25')) fail(`${l.id}: seconds drop their number`);
   }
   console.log(`The signal delay: ${ok ? 'OK' : 'FAIL'}`);
+  return ok;
+}
+
+export function checkMissionDesign(): boolean {
+  let ok = true;
+  const fail = (msg: string) => { ok = false; console.log(`  FAIL ${msg}`); };
+  console.log('\nTrip planner: against JPL\'s Small-Body Mission Design tool');
+  const ref = JSON.parse(readFileSync('scripts/reference/mission-design-jpl.json', 'utf8'));
+  const sb = JSON.parse(readFileSync('src/data/small-bodies.json', 'utf8'));
+  const H = ref.horizons;
+  const sub = (a: number[], b: number[]): Vec => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const len = (a: number[]) => Math.hypot(a[0], a[1], a[2]);
+  const angle = (a: number[], b: number[]) => Math.acos(Math.max(-1, Math.min(1, (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) / (len(a) * len(b))))) / DEG;
+  const state = (row: number[]) => ({ r: row.slice(0, 3) as Vec, v: row.slice(3, 6) as Vec });
+  const MJD = 2400000.5;
+  // JPL gives five significant digits (at least four decimals): within that rounding, plus a little for the
+  // ephemeris and constants (its Sun, our 69 s from TDB to UTC for the Earth at arrival)
+  const near = (ours: number, jpl: number, rel: number, abs: number) =>
+    Math.abs(ours - jpl) <= Math.max(0.5 * 10 ** (Math.floor(Math.log10(Math.abs(jpl) || 1)) - 4), 5e-5) * 1.01 + rel * Math.abs(jpl) + abs;
+  const LIMIT_KMS = 30; // above that (C3 over 900 km²/s², beyond any rocket) see below
+
+  let trips = 0, picked = 0, worstV = 0, worstAng = 0;
+  const byRevs = [0, 0, 0, 0, 0];
+  let fast = 0, fastOff = 0, fastOddOff = 0;
+  const lines: string[] = [];
+  for (const [des, b] of Object.entries<any>(ref.bodies)) {
+    const E = H.earth.states, B = H.bodies[des]?.states;
+    if (!B || b.error) { fail(`${des}: no reference`); continue; }
+    let n = 0, bad = 0;
+    const one = (dep: number, tof: number, jpl: Record<string, number | null>, fromQ: boolean) => {
+      if (!E[dep] || !B[dep + tof] || !E[dep + tof]) { fail(`${des}: no Horizons state for MJD ${dep} or ${dep + tof}`); return; }
+      const e = state(E[dep]), p = state(B[dep + tof]);
+      const f = flightBetween(dep + MJD, dep + tof + MJD, e, p);
+      if (!f) { fail(`${des}: no flight ${dep} + ${tof} days`); return; }
+      const jv = jpl.vinf_dep as number;
+      if (jv > LIMIT_KMS) {
+        fast++;
+        if (!near(f.vInfDepart, jv, 2e-4, 5e-4)) {
+          fastOff++;
+          const a = f.angleDeg; // where JPL and we differ, both ends must lie nearly in line with the Sun
+          if (!(Math.min(a, Math.abs(a - 180), 360 - a) < 15)) { fastOddOff++; console.log(`  ${des} ${dep}+${tof}: JPL ${jv}, ours ${f.vInfDepart.toFixed(3)} at ${a.toFixed(1)}°`); }
+        }
+        return;
+      }
+      n++; trips++; if (fromQ) picked++; byRevs[f.revs]++;
+      // At arrival, as the signal card would give it: distance from the Earth and angle from the Sun
+      const at = signalAt(f, f.arriveJd);
+      const ours: Record<string, number> = {
+        vinf_dep: f.vInfDepart, vinf_arr: f.vInfArrive, decl_dep: f.dla, earth_dist: at.km / AU_KM, elong_arr: at.sepDeg,
+        phase_ang: angle(f.inf2, p.r), approach_ang: angle(f.inf2, p.v),
+      };
+      let off = false;
+      for (const [k, v] of Object.entries(ours)) {
+        const want = jpl[k];
+        if (want === null || want === undefined) continue;
+        const speed = k === 'vinf_dep' || k === 'vinf_arr';
+        if (speed) worstV = Math.max(worstV, Math.abs(v - want));
+        else if (k !== 'earth_dist') worstAng = Math.max(worstAng, Math.abs(v - want));
+        const good = speed ? near(v, want, 2e-4, 5e-4) : k === 'earth_dist' ? near(v, want, 1e-5, 1e-5) : near(v, want, 0, 0.012);
+        if (!good) { off = true; if (bad < 3) console.log(`  ${des} ${dep}+${tof} (${f.revs} turns): ${k} ours ${v.toFixed(5)}, JPL ${want}`); }
+      }
+      if (off) bad++;
+    };
+    const g = b.map;
+    g.tof.forEach((tof: number, j: number) => g.dep.forEach((dep: number, i: number) => {
+      if (g.vinf_dep[j][i] === null) return;
+      one(dep, tof, { vinf_dep: g.vinf_dep[j][i], vinf_arr: g.vinf_arr[j][i], decl_dep: g.decl_dep[j][i], earth_dist: g.earth_dist[j][i], elong_arr: g.elong_arr[j][i] }, false);
+    }));
+    const fq: string[] = b.q.fields;
+    for (const r of b.q.missions) {
+      const row = Object.fromEntries(fq.map((k, i) => [k, r[i]]));
+      one(row.MJD0, row.MJDf - row.MJD0, row, true);
+    }
+    for (const [k, m] of Object.entries<any>(b.min)) {
+      if (!m) continue;
+      const e = state(E[m.dep]), p = state(B[m.dep + m.tof]);
+      const f = flightBetween(m.dep + MJD, m.dep + m.tof + MJD, e, p);
+      const v = k === 'vinf_dep' ? f?.vInfDepart : k === 'vinf_arr' ? f?.vInfArrive : f ? f.vInfDepart + f.vInfArrive : NaN;
+      if (!(v !== undefined && near(v, m.value, 2e-4, 1e-3))) fail(`${des}: the map's cheapest ${k} ${m.value}, ours ${v}`);
+    }
+    if (bad) fail(`${des}: ${bad} of ${n} trips differ from JPL`);
+    lines.push(`${b.object?.fullname ?? des} ${n}`);
+  }
+  if (trips < 3500 || picked < 500 || byRevs.slice(1).some((x) => x < 20)) fail(`too few trips: ${trips} (${picked} picked by JPL), by whole turns ${byRevs.join('/')}`);
+  if (fastOddOff || fastOff > 0.05 * fast) fail(`above ${LIMIT_KMS} km/s: ${fastOff} of ${fast} differ, ${fastOddOff} with the ends not in line`);
+  console.log(`  ${trips} trips up to ${LIMIT_KMS} km/s (${picked} of them JPL's picked missions) on Horizons' states: ${lines.join(', ')}`);
+  console.log(`  all match JPL to its rounding: both v∞ within ${worstV.toFixed(4)} km/s, launch declination, angle from the Sun, phase and approach angles within ${worstAng.toFixed(4)}°, distance from the Earth`);
+  console.log(`  JPL's rule, which ours follows: the lowest launch speed of all prograde orbits with none to ${MAX_REVS} whole turns (by turns: ${byRevs.join(', ')})`);
+  console.log(`  above ${LIMIT_KMS} km/s: ${fast - fastOff} of ${fast} match; the other ${fastOff} have their ends within 15° of in line with the Sun`);
+
+  // The site's own states: the Earth from Astronomy Engine and each body moved with the Sun alone (smallBodyState),
+  // against Horizons on the arrival dates that lie in the years the site shows the body
+  const F: string[] = sb.fields;
+  let posWorst = 0, velWorst = 0, tripWorst: number[] = [];
+  for (const [des] of Object.entries<any>(ref.bodies)) {
+    const row = sb.rows.find((x: unknown[]) => x[0] === des);
+    if (!row) { fail(`${des}: not among the site's bodies`); continue; }
+    const o = Object.fromEntries(F.map((k, i) => [k, row[i]]));
+    for (const [mjd, hz] of Object.entries<number[]>(H.bodies[des]?.states ?? {})) {
+      const jd = Number(mjd) + MJD;
+      if (jd < o.validFrom || jd > o.validTo) continue;
+      const st = smallBodyState(o as never, jd);
+      posWorst = Math.max(posWorst, angle(st.r, hz.slice(0, 3)));
+      velWorst = Math.max(velWorst, len(sub(st.v, hz.slice(3, 6))) / len(hz.slice(3, 6)));
+    }
+    // The map's trips with the site's states, where the body is shown: how far its speeds are from JPL's
+    const g = ref.bodies[des].map;
+    g.tof.forEach((tof: number, j: number) => g.dep.forEach((dep: number, i: number) => {
+      const jv = g.vinf_dep[j][i], jd0 = dep + MJD, jd1 = dep + tof + MJD;
+      if (jv === null || jv > 15 || jd1 < o.validFrom || jd1 > o.validTo) return;
+      const f = flightBetween(jd0, jd1, planetState('earth', jd0), smallBodyState(o as never, jd1));
+      if (f) tripWorst.push(Math.abs(f.vInfDepart - jv));
+    }));
+  }
+  tripWorst = tripWorst.sort((a, b) => a - b);
+  const median = tripWorst[tripWorst.length >> 1], p95 = tripWorst[Math.floor(tripWorst.length * 0.95)];
+  // (The site shows a body in the years its Sun-only position stays within 1° of Horizons, checked every 5 years.)
+  if (!(posWorst < 1.2) || !(velWorst < 0.05)) fail(`the site's asteroid states: ${posWorst}° and ${velWorst} of the speed from Horizons`);
+  if (!(median < 0.01) || !(p95 < 0.1)) fail(`with the site's own states, launch v∞ is ${median} km/s (median) and ${p95} (95%) from JPL`);
+  console.log(`  the site's asteroid states (Sun only) against Horizons where it shows them: within ${posWorst.toFixed(3)}°, velocities within ${(velWorst * 100).toFixed(2)}%;`
+    + ` trips on them: launch v∞ ${median.toFixed(4)} km/s from JPL (median), ${p95.toFixed(3)} (95%), ${tripWorst.length} trips up to 15 km/s`);
+  console.log(`Against JPL's mission design tool: ${ok ? 'OK' : 'FAIL'}`);
   return ok;
 }

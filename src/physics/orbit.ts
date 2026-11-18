@@ -52,17 +52,33 @@ export function propagate(mu: number, r0: readonly number[], v0: readonly number
   const rn = Math.hypot(r0[0], r0[1], r0[2]);
   const vr = (r0[0] * v0[0] + r0[1] * v0[1] + r0[2] * v0[2]) / rn;
   const alpha = 2 / rn - (v0[0] ** 2 + v0[1] ** 2 + v0[2] ** 2) / mu; // 1/a
-  // Newton on the universal Kepler equation; its slope is the distance, always positive
+  // Newton on the universal Kepler equation. Its slope is the distance, always positive, so the time grows
+  // steadily with chi: a bracket round the answer is kept, and a Newton step that would leave it is a
+  // bisection instead. (Plain Newton from a poor first guess can crawl for dozens of steps, as on a fast,
+  // nearly open trip of more than a year: step 6 found one.)
+  const kepler = (x: number) => {
+    const [c, s] = stumpff(alpha * x * x);
+    return {
+      F: rn * vr / sq * x * x * c + (1 - alpha * rn) * x ** 3 * s + rn * x - sq * dt,
+      dF: rn * vr / sq * x * (1 - alpha * x * x * s) + (1 - alpha * rn) * x * x * c + rn,
+    };
+  };
   let chi = sq * Math.abs(alpha) * dt || sq * dt / rn;
+  // The bracket: chi = 0 is the start (F = −√μ·dt), and the other end is pushed out until the sign changes
+  let lo = Math.min(0, chi), hi = Math.max(0, chi);
+  const step = Math.abs(chi) || sq * Math.abs(dt) / rn;
+  for (let k = 0; k < 200 && kepler(lo).F > 0; k++) lo -= step * 2 ** k;
+  for (let k = 0; k < 200 && kepler(hi).F < 0; k++) hi += step * 2 ** k;
   let C = 0.5, S = 1 / 6, converged = false;
-  for (let k = 0; k < 60; k++) {
-    [C, S] = stumpff(alpha * chi * chi);
-    const F = rn * vr / sq * chi * chi * C + (1 - alpha * rn) * chi ** 3 * S + rn * chi - sq * dt;
-    const dF = rn * vr / sq * chi * (1 - alpha * chi * chi * S) + (1 - alpha * rn) * chi * chi * C + rn;
-    const d = F / dF;
-    chi -= d;
+  for (let k = 0; k < 200; k++) {
+    const { F, dF } = kepler(chi);
+    if (F < 0) lo = chi; else hi = chi;
+    let next = chi - F / dF;
+    if (!(next > lo && next < hi)) next = (lo + hi) / 2;
+    const d = chi - next;
+    chi = next;
     if (!Number.isFinite(chi)) break;
-    if (Math.abs(d) <= 1e-13 * Math.max(1, Math.abs(chi))) { converged = true; [C, S] = stumpff(alpha * chi * chi); break; }
+    if (Math.abs(d) <= 1e-13 * Math.max(1, Math.abs(chi)) || hi - lo <= 1e-15 * Math.max(1, Math.abs(chi))) { converged = true; [C, S] = stumpff(alpha * chi * chi); break; }
   }
   if (!converged) return line();
   const f = 1 - chi * chi / rn * C, g = dt - chi ** 3 / sq * S;

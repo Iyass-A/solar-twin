@@ -302,7 +302,8 @@ export interface Strings {
     departDate: string;
     arriveDate: string;
     /** How far round the Sun the path goes (angle comes formatted, with °), and its type */
-    way: (deg: string, type: 1 | 2) => string;
+    /** After `revs` whole turns (0: none), the angle comes formatted, with ° */
+    way: (deg: string, type: 1 | 2, revs: number) => string;
     badDates: string;
     noTrip: string;
     // Step 3: the porkchop map of launch dates
@@ -845,7 +846,11 @@ const AR: Strings = {
     exactIntro: 'هون الحساب بالمدارات الحقيقية (ممطوطة ومايلة): بتختار يوم الانطلاق ويوم الوصول، ومنلاقي المسار حوالين الشمس اللي بيوصل من مكان الأرض بأول يوم لمكان الكوكب بتاني يوم (مسألة لامبرت).',
     departDate: 'يوم الانطلاق',
     arriveDate: 'يوم الوصول',
-    way: (deg, type) => `المسار بيلف ${deg} حوالين الشمس: ${type === 1 ? 'النوع الأول (أقل من نص لفّة)' : 'النوع التاني (أكتر من نص لفّة)'}.`,
+    way: (deg, type, revs) => (revs
+      ? `المسار بيلف حوالين الشمس ${revs === 1 ? 'لفّة كاملة' : revs === 2 ? 'لفّتين كاملين' : `${revs} لفّات كاملة`} وبعدين ${deg} كمان، `
+        + 'لأنو هيك أوفر للإطلاق من الطريق المباشر. '
+      : `المسار بيلف ${deg} حوالين الشمس: `)
+      + `${type === 1 ? 'النوع الأول (أقل من نص لفّة)' : 'النوع التاني (أكتر من نص لفّة)'}${revs ? ' بآخر لفّة' : ''}.`,
     badDates: 'لازم يكون يوم الوصول بعد يوم الانطلاق.',
     noTrip: 'ما في مسار واحد لهالتاريخين (الأرض والكوكب بجهتين متعاكستين بالظبط). جرّب يوم تاني.',
     mapTitle: 'خريطة مواعيد الانطلاق',
@@ -1262,7 +1267,10 @@ const DE: Strings = {
     exactIntro: 'Hier wird mit den echten Bahnen gerechnet (gestreckt und geneigt): Du wählst den Start- und den Ankunftstag, und wir suchen die Bahn um die Sonne, die die Erde am ersten Tag mit dem Planeten am zweiten verbindet (das Lambert-Problem).',
     departDate: 'Start',
     arriveDate: 'Ankunft',
-    way: (deg, type) => `Die Bahn führt ${deg} um die Sonne: ${type === 1 ? 'Typ I (weniger als eine halbe Runde)' : 'Typ II (mehr als eine halbe Runde)'}.`,
+    way: (deg, type, revs) => (revs
+      ? `Die Bahn läuft ${revs === 1 ? 'einmal' : `${revs}-mal`} ganz um die Sonne und dann noch ${deg}, weil das beim Start sparsamer ist als der direkte Weg. `
+      : `Die Bahn führt ${deg} um die Sonne: `)
+      + `${type === 1 ? 'Typ I (weniger als eine halbe Runde)' : 'Typ II (mehr als eine halbe Runde)'}${revs ? ' in der letzten Runde' : ''}.`,
     badDates: 'Die Ankunft muss nach dem Start liegen.',
     noTrip: 'Für diese beiden Tage gibt es keine eindeutige Bahn (Erde und Planet stehen sich genau gegenüber). Versuch einen anderen Tag.',
     mapTitle: 'Karte der Starttermine',
@@ -1683,7 +1691,10 @@ const EN: Strings = {
     exactIntro: 'Here the real orbits are used (stretched and tilted): choose the day to leave and the day to arrive, and we find the path round the Sun that joins Earth on the first day to the planet on the second (Lambert’s problem).',
     departDate: 'Leave',
     arriveDate: 'Arrive',
-    way: (deg, type) => `The path goes ${deg} round the Sun: ${type === 1 ? 'type I (less than half a turn)' : 'type II (more than half a turn)'}.`,
+    way: (deg, type, revs) => (revs
+      ? `The path goes ${revs === 1 ? 'once' : revs === 2 ? 'twice' : `${revs} times`} all the way round the Sun and then ${deg} more, as that needs less at launch than the direct way. `
+      : `The path goes ${deg} round the Sun: `)
+      + `${type === 1 ? 'type I (less than half a turn)' : 'type II (more than half a turn)'}${revs ? ' in the last turn' : ''}.`,
     badDates: 'The arrival must come after the departure.',
     noTrip: 'There is no single path for these two days (Earth and the planet are exactly opposite each other). Try another day.',
     mapTitle: 'Map of launch dates',

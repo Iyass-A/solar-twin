@@ -11,7 +11,7 @@
 
 import { propagate } from '../physics/orbit';
 import { SUN_GM } from '../physics/bodies';
-import { planetState, type RealTrip, type Vec } from './lambert';
+import { planetState, type Flight, type Vec } from './lambert';
 
 /** The speed of light [km/s] (exact, by the definition of the metre). */
 export const LIGHT_KM_S = 299_792.458;
@@ -60,12 +60,12 @@ export function sunAngle(earth: Vec, r: Vec): number {
 }
 
 /** Where the craft is round the Sun at jd [km], on its path from launch (Lambert's orbit, so it ends at the target). */
-export function craftAt(trip: RealTrip, jd: number): Vec {
+export function craftAt(trip: Flight, jd: number): Vec {
   return propagate(SUN_GM, trip.r1, trip.v1, (jd - trip.departJd) * DAY_S).r as Vec;
 }
 
 /** The signal at jd (any time; meant for launch to arrival). */
-export function signalAt(trip: RealTrip, jd: number): Signal {
+export function signalAt(trip: Flight, jd: number): Signal {
   const e = planetState('earth', jd).r, c = craftAt(trip, jd);
   const km = Math.hypot(c[0] - e[0], c[1] - e[1], c[2] - e[2]);
   return { jd, day: jd - trip.departJd, km, seconds: km / LIGHT_KM_S, sepDeg: km > 1e-6 ? sunAngle(e, c) : NaN };
@@ -92,7 +92,7 @@ function edge(g: (x: number) => number, a: number, b: number, tol: number): numb
 }
 
 /** The delay and the Sun's angle along a whole trip, with its longest delay and the stretches near the Sun. */
-export function signalProfile(trip: RealTrip): SignalProfile {
+export function signalProfile(trip: Flight): SignalProfile {
   const n = Math.min(MAX_SAMPLES, Math.max(MIN_SAMPLES, Math.ceil(trip.tofDays)));
   const t0 = trip.departJd, t1 = trip.arriveJd, dt = trip.tofDays / n;
   const samples: Signal[] = [];

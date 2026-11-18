@@ -303,7 +303,7 @@ export class TripCard {
     else {
       const r = x.trip;
       facts = factsHtml(tripFacts(r.tofDays, r.leave, r.c3, r.arrive, r.vInfArrive, r.total, x.target));
-      lines = [s.way(ltr(`${num(r.angleDeg, 0)}°`), r.type)];
+      lines = [s.way(ltr(`${num(r.angleDeg, 0)}°`), r.type, r.revs)];
       if (nearHalfTurn(r.angleDeg)) lines.push(s.nearHalf);
     }
     // The trip can be run from its launch day if that day is on the time bar

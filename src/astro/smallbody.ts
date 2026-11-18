@@ -4,6 +4,7 @@
 // npm run check measures how well, against JPL Horizons.
 
 import { positionAtAnomaly, type Vec3 } from './kepler';
+import { AU_KM } from '../physics/bodies';
 
 const DEG = Math.PI / 180;
 
@@ -52,6 +53,20 @@ export function smallBodyPosition(o: SmallBodyOrbit, jd: number): Vec3 {
   const E = solveKeplerAnyE(n * ((jd - o.tp) - (o.dtp ?? 0)), o.e); // radians
   return positionAtAnomaly({ a, e: o.e, I: o.i, O: o.node, omega: o.peri, M: 0 }, E / DEG);
 }
+
+/**
+ * Position [km] and velocity [km/s] round the Sun, J2000 ecliptic frame, at Julian date `jd`: what a trip
+ * planned to the body needs. The velocity is the position's change over ±H_DAYS (a part in 10⁸ or better).
+ */
+export function smallBodyState(o: SmallBodyOrbit, jd: number): { r: [number, number, number]; v: [number, number, number] } {
+  const p = smallBodyPosition(o, jd), a = smallBodyPosition(o, jd - H_DAYS), b = smallBodyPosition(o, jd + H_DAYS);
+  const k = AU_KM / (2 * H_DAYS * 86400);
+  return {
+    r: [p.x * AU_KM, p.y * AU_KM, p.z * AU_KM],
+    v: [(b.x - a.x) * k, (b.y - a.y) * k, (b.z - a.z) * k],
+  };
+}
+const H_DAYS = 0.01;
 
 /** The whole orbit as `points` positions, evenly spaced in eccentric anomaly. */
 export function smallBodyOrbitPath(o: SmallBodyOrbit, points = 256): Vec3[] {
