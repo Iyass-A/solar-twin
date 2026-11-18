@@ -1,0 +1,35 @@
+# Fetches reference trips from JPL's Small-Body Mission Design tool (phase 6, step 6): for a few asteroids and
+# a comet, the ballistic trips from Earth that JPL picked and a grid of launch dates and times of flight, to
+# check the trip planner against. See scripts/fetch-mission-design.ts.
+#
+# Runs only when started by hand (Actions tab -> "Fetch mission design reference" -> Run workflow). It commits
+# nothing and only reads the repository: the file is printed in the log (between BEGIN and END), to be
+# reviewed and committed from there. To remove it, delete this file.
+name: Fetch mission design reference
+
+on:
+  workflow_dispatch:
+    inputs:
+      bodies:
+        description: "Designations separated by commas. Empty: the default list."
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20 # about 16 requests, one at a time
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Fetch from JPL's mission design API
+        env:
+          BODIES: ${{ inputs.bodies }}
+        run: npx tsx scripts/fetch-mission-design.ts "$BODIES" .
