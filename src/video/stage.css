@@ -1,0 +1,118 @@
+/* The video stage (phase 8): the picture is drawn at half its pixel size in CSS (960 × 540, or 540 × 960) and
+   recorded at device pixel ratio 2, so everything the site draws in CSS pixels comes out twice as large. */
+
+body {
+  margin: 0;
+  display: block;
+  background: #000;
+  color: #e8e8f0;
+  font-family: "Noto Sans Arabic", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+#viewport { overflow: hidden; }
+
+#stage {
+  position: relative;
+  overflow: hidden;
+  background: #070912;
+  transform-origin: 0 0;
+}
+#stage.f16x9 { width: 960px; height: 540px; }
+#stage.f9x16 { width: 540px; height: 960px; }
+
+#stage .layer { position: absolute; inset: 0; }
+#stage .space > div { position: absolute; inset: 0; }
+#stage canvas.sky { width: 100%; height: 100%; display: block; }
+#stage .space canvas { display: block; width: 100%; height: 100%; }
+/* The 3D view's buttons are for people, not for the video */
+#stage .reset3d, #stage .follow3d, #stage .stars3d { display: none !important; }
+
+#stage .shade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to top, rgba(5, 7, 15, 0.85) 0%, rgba(5, 7, 15, 0) 42%),
+              linear-gradient(to bottom, rgba(5, 7, 15, 0.6) 0%, rgba(5, 7, 15, 0) 22%);
+}
+
+#stage .brand {
+  position: absolute;
+  top: 22px;
+  inset-inline-start: 32px;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+#stage .brand span { display: block; font-size: 11px; font-weight: 400; color: #9aa0b4; direction: ltr; text-align: start; }
+
+#stage .clock {
+  position: absolute;
+  top: 22px;
+  inset-inline-end: 32px;
+  text-align: end;
+  font-size: 15px;
+  font-weight: 600;
+}
+#stage .clock div + div { font-size: 11px; font-weight: 400; color: #9aa0b4; margin-top: 2px; }
+
+#stage .caption {
+  position: absolute;
+  inset-inline-start: 32px;
+  bottom: 30px;
+  max-width: 62%;
+  padding: 14px 18px 16px;
+  border-radius: 10px;
+  background: rgba(7, 9, 18, 0.78);
+  border-inline-start: 3px solid #4f9dff;
+}
+#stage .caption.eclipse { border-color: #d9a441; }
+#stage .cap-title { margin: 0 0 4px; font-size: 26px; font-weight: 700; line-height: 1.25; color: #fff; }
+#stage .cap-when { margin: 0 0 8px; font-size: 14px; color: #9fc3ff; }
+#stage .cap-note { margin: 0; font-size: 14px; line-height: 1.55; color: #d0d4e4; }
+#stage .cap-note .nowrap { white-space: nowrap; }
+
+/* Opening and closing scenes: the title in the middle */
+#stage .caption.card {
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  width: fit-content;
+  bottom: auto;
+  top: 50%;
+  transform: translateY(-50%);
+  max-width: 76%;
+  text-align: center;
+  border-inline-start: 0;
+  border-bottom: 3px solid #4f9dff;
+  padding: 22px 34px;
+  background: rgba(7, 9, 18, 0.88);
+}
+#stage .caption.card .cap-title { font-size: 40px; }
+#stage .caption.card .cap-when { font-size: 18px; }
+#stage .caption.card .cap-note { font-size: 15px; }
+#stage .caption.card .url { direction: ltr; display: block; margin-top: 8px; font-size: 18px; color: #9fc3ff; font-weight: 600; }
+
+/* Upright: the caption across the bottom, larger */
+#stage.f9x16 .caption:not(.card) { inset-inline: 22px; bottom: 60px; max-width: none; }
+#stage.f9x16 .cap-title { font-size: 28px; }
+#stage.f9x16 .cap-when, #stage.f9x16 .cap-note { font-size: 15px; }
+#stage.f9x16 .brand { top: 40px; inset-inline-start: 22px; }
+#stage.f9x16 .clock { top: 40px; inset-inline-end: 22px; }
+
+/* Preview controls (left out when recording) */
+#controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  padding: 10px 14px;
+  background: #0b0d17;
+  font-size: 14px;
+}
+#controls[hidden] { display: none; }
+#controls button, #controls select {
+  font: inherit; color: #e8e8f0; background: #262c45; border: 1px solid #3a4166; border-radius: 8px; padding: 5px 10px;
+}
+#controls input[type="range"] { flex: 1 1 260px; }
+#controls a { color: #8f9bd0; }
+#controls .t { font-variant-numeric: tabular-nums; direction: ltr; }

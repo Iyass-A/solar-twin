@@ -28,6 +28,7 @@ import { checkStartingState, checkIntegrator, checkEngine, checkLongRange, check
 import { SCENARIOS } from '../src/physics/scenarios';
 import { checkHohmann, checkLambert, checkPorkchop, checkTripPath, checkSignal, checkMissionDesign, checkSmallTrips } from './check-transfer';
 import { checkEvents, checkEventTexts } from './check-events';
+import { checkVideo } from './check-video';
 
 const MAX_ERROR_DEG = 1;
 const DAY_MS = 86_400_000;
@@ -731,6 +732,7 @@ failed = !checkSmallTrips() || failed;
 // Sky events (phase 8), see scripts/check-events.ts
 failed = !checkEvents() || failed;
 failed = !checkEventTexts() || failed;
+failed = !checkVideo() || failed;
 
 console.log(failed ? '\nRESULT: FAIL' : '\nRESULT: OK');
 if (failed) process.exitCode = 1;

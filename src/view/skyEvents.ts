@@ -22,7 +22,7 @@ const deg = (d: number, digits = 1) => ltr(`${num(d, digits)}°`);
 const mag = (m: number) => ltr(num(m, 1).replace('-', '−'));
 const millionKm = (au: number) => `<span class="nowrap">${ltr(numGrouped(au * AU_KM / 1e6))} ${t().millionKm}</span>`;
 
-function latLon(lat: number, lon: number): string {
+export function latLon(lat: number, lon: number): string {
   const e = t().events;
   return `<span class="nowrap">${deg(Math.abs(lat))} ${lat >= 0 ? e.north : e.south}</span>${t().comma}`
     + `<span class="nowrap">${deg(Math.abs(lon))} ${lon >= 0 ? e.east : e.west}</span>`;
@@ -76,7 +76,7 @@ export function eventNote(e: SkyEvent): string {
 }
 
 /** Perihelion and aphelion are touchy to the minute (see scripts/check-events.ts): to the hour only. */
-const approximate = (e: SkyEvent) => e.kind === 'perihelion' || e.kind === 'aphelion';
+export const approximate = (e: SkyEvent) => e.kind === 'perihelion' || e.kind === 'aphelion';
 
 export class SkyEventsCard {
   /** Takes the views to an event's moment, and picks its planet; set by the page. */

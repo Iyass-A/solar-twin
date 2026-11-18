@@ -283,6 +283,24 @@ export interface Strings {
     east: string;
     west: string;
   };
+  // The weekly video (phase 8): its own texts, on top of the sky events'
+  video: {
+    weekTitle: string;
+    weekCount: (count: number) => string;
+    outroLine: string;
+    sources: string;
+    /** A time and its time zone */
+    when: (time: string, zone: string) => string;
+    /** How fast the clock runs: one second of video is this long (from duration()) */
+    speed: (d: string) => string;
+    sunName: string;
+    ecliptic: string;
+    earthShadow: string;
+    fromPlace: (where: string) => string;
+    fromCentre: string;
+    lunarDistance: string;
+    scaleNote: string;
+  };
   // "Branch reality" (phase 5): a copy of the solar system, changed, run by the physics engine
   branch: {
     title: string;
@@ -904,6 +922,21 @@ const AR: Strings = {
     neoClosest: 'الأقرب بالشهر الجاي.',
     north: 'شمال', south: 'جنوب', east: 'شرق', west: 'غرب',
   },
+  video: {
+    weekTitle: 'السما هالأسبوع',
+    weekCount: (n) => eventsAr(n),
+    outroLine: 'شوف السما بأي يوم، والكواكب بثلاثي الأبعاد، ببلاش وبمتصفحك:',
+    sources: 'الحساب: Astronomy Engine · الكويكبات: CNEOS (ناسا/JPL)',
+    when: (x, zone) => `${x} (${zone})`,
+    speed: (d) => `كل ثانية بالفيديو = ${d}`,
+    sunName: 'الشمس',
+    ecliptic: 'مسار الشمس',
+    earthShadow: 'ضل الأرض',
+    fromPlace: (where) => `متل ما بيبيّن من ${where}`,
+    fromCentre: 'من مركز الأرض',
+    lunarDistance: 'بعد القمر',
+    scaleNote: 'المسافات على السلّم، والأحجام مكبّرة.',
+  },
   branch: {
     title: 'فرّع الواقع',
     badge: 'تجريبي',
@@ -1414,6 +1447,21 @@ const DE: Strings = {
     neoCloser: 'Näher als der Mond!',
     neoClosest: 'Der nächste in den kommenden 30 Tagen.',
     north: 'N', south: 'S', east: 'O', west: 'W',
+  },
+  video: {
+    weekTitle: 'Der Himmel diese Woche',
+    weekCount: (n) => (n === 0 ? 'keine großen Ereignisse' : plural(n, 'Ereignis', 'Ereignisse')),
+    outroLine: 'Den Himmel an jedem Tag und die Planeten in 3D, kostenlos in deinem Browser:',
+    sources: 'Berechnet mit Astronomy Engine · Asteroiden: CNEOS (NASA/JPL)',
+    when: (x, zone) => `${x} (${zone})`,
+    speed: (d) => `1 Sekunde im Video = ${d}`,
+    sunName: 'Sonne',
+    ecliptic: 'Ekliptik',
+    earthShadow: 'Erdschatten',
+    fromPlace: (where) => `so wie von ${where} aus gesehen`,
+    fromCentre: 'vom Erdmittelpunkt aus',
+    lunarDistance: 'Mondabstand',
+    scaleNote: 'Abstände maßstabsgetreu, Größen vergrößert.',
   },
   branch: {
     title: 'Wirklichkeit verzweigen',
@@ -1927,6 +1975,21 @@ const EN: Strings = {
     neoCloser: 'Closer than the Moon!',
     neoClosest: 'The closest in the next 30 days.',
     north: 'N', south: 'S', east: 'E', west: 'W',
+  },
+  video: {
+    weekTitle: 'The sky this week',
+    weekCount: (n) => (n === 0 ? 'no major events' : plural(n, 'event', 'events')),
+    outroLine: 'The sky on any day, and the planets in 3D, free in your browser:',
+    sources: 'Worked out with Astronomy Engine · Asteroids: CNEOS (NASA/JPL)',
+    when: (x, zone) => `${x} (${zone})`,
+    speed: (d) => `1 second of video = ${d}`,
+    sunName: 'Sun',
+    ecliptic: 'ecliptic',
+    earthShadow: 'Earth’s shadow',
+    fromPlace: (where) => `as seen from ${where}`,
+    fromCentre: 'from the Earth’s centre',
+    lunarDistance: 'the Moon’s distance',
+    scaleNote: 'Distances to scale, sizes enlarged.',
   },
   branch: {
     title: 'Branch reality',

@@ -73,6 +73,9 @@ interface Planet {
 
 interface Label { el: HTMLSpanElement; w: number; h: number; }
 
+/** A video shot's camera (src/video/scenes.ts): direction from the Sun [deg, ecliptic], distance (1 = the starting one), the body drawn bigger. */
+export interface CameraShot { az: number; el: number; zoom: number; focus: string | null; lift?: number }
+
 export class Scene3D {
   mode: ViewMode = 'compressed';
   /** Called on a tap or click that was not a drag: the planet under it, or null. */
@@ -124,6 +127,10 @@ export class Scene3D {
   private tripObj: { done: THREE.Line; rest: THREE.Line; depart: THREE.Sprite; arrive: THREE.Sprite; craft: THREE.Sprite; label: Label } | null = null;
   private tripCraft: THREE.Vector3 | null = null;
   private edgeMarker!: HTMLSpanElement;
+  // Videos (phase 8): the camera from fixed numbers, set before each frame
+  private shot: CameraShot | null = null;
+  /** The star catalogue has loaded (a video waits for it before its first frame) */
+  starsReady = false;
 
   get selected(): string | null { return this.sel; }
 
@@ -255,6 +262,7 @@ export class Scene3D {
         this.stars = makeStars(m.default as StarData, this.renderer.getPixelRatio());
         this.stars.visible = this.starsOn;
         this.scene.add(this.stars);
+        this.starsReady = true;
       })
       .catch((err) => console.error('Stars not loaded', err));
   }
@@ -281,6 +289,33 @@ export class Scene3D {
     this.camera.position.set(0, dist * Math.cos(TILT * DEG), dist * Math.sin(TILT * DEG));
     this.controls.target.set(0, 0, 0);
     this.controls.update();
+  }
+
+  /**
+   * For videos: put the camera at a fixed place before each frame (no dragging, no glide, no damping), with the
+   * stars at full strength, so a frame depends only on what is drawn. null gives the camera back to the user.
+   */
+  direct(shot: CameraShot | null) {
+    this.shot = shot;
+    this.controls.enabled = !shot;
+    this.controls.enableDamping = !shot;
+    if (shot) { this.following = null; this.fly = null; this.focusId = shot.focus; this.focusK = shot.focus ? 1 : 0; }
+  }
+
+  /** The camera for a video shot: from a direction in the ecliptic frame, at a distance in units of the starting one. */
+  private placeCamera(shot: CameraShot) {
+    const az = shot.az * DEG, el = shot.el * DEG;
+    const [x, y, z] = sceneAxes({ x: Math.cos(el) * Math.cos(az), y: Math.cos(el) * Math.sin(az), z: Math.sin(el) });
+    const dist = shot.zoom * this.homeDist;
+    this.controls.target.copy(ORIGIN);
+    this.camera.position.set(x * dist, y * dist, z * dist);
+    this.camera.lookAt(ORIGIN);
+    // Lift the picture: look a little below the Sun, so it sits above the middle (room for a caption)
+    if (shot.lift) {
+      const down = this.tmp.set(0, 1, 0).applyQuaternion(this.camera.quaternion).multiplyScalar(-dist * Math.tan(shot.lift * (FOV / 2) * DEG));
+      this.camera.lookAt(down);
+    }
+    this.camera.updateMatrixWorld();
   }
 
   /** Glide to a planet and keep it in the middle. Turning and zooming still work around it. */
@@ -404,12 +439,12 @@ export class Scene3D {
     this.syncSmall(smalls, selectedOrbit, view3);
 
     // Camera after the bodies have moved, then the sizes on screen from the new camera
-    this.updateFollow(dt);
-    this.controls.update();
+    if (this.shot) this.placeCamera(this.shot);
+    else { this.updateFollow(dt); this.controls.update(); }
     if (this.stars) {
       this.stars.position.copy(this.camera.position); // always the same distance away: "at infinity"
       const fade = (this.stars.material as THREE.ShaderMaterial).uniforms.opacity;
-      fade.value = Math.min(1, fade.value + dt / 0.8);
+      fade.value = this.shot ? 1 : Math.min(1, fade.value + dt / 0.8);
     }
     for (const [id, p] of this.planets) {
       p.grow = id === this.focusId ? 1 + (FOCUS_GROW - 1) * this.focusK : 1;
