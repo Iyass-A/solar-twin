@@ -30,7 +30,8 @@ import { SkyChart } from '../view/skyChart';
 import { approximate, eventNote, eventTitle, latLon } from '../view/skyEvents';
 import type { BodyFrame } from '../view/views';
 import {
-  along, eventScene, framePlan, hoursPerSecond, sceneAt, shotAt, shotOpacity, simTime, totalDuration, weekScenes, type Scene, type Shot,
+  along, eventScene, framePlan, hoursPerSecond, planetsOfWeek, sceneAt, shotAt, shotOpacity, simTime, totalDuration, weekScenes, zoneMidnight,
+  type PlanetSky, type Scene, type Shot,
 } from './scenes';
 
 const HOUR_MS = 3_600_000;
@@ -46,9 +47,11 @@ const format = params.get('format') === '9x16' ? '9x16' : '16x9';
 const tz = params.get('tz') ?? 'UTC';
 const record = params.has('record');
 const fromParam = params.get('from');
-const fromMs = fromParam ? Date.parse(/T/.test(fromParam) ? fromParam : `${fromParam}T00:00:00Z`) : Math.floor(Date.now() / HOUR_MS) * HOUR_MS;
 const days = Math.min(31, Math.max(1, Number(params.get('days') ?? 7) || 7));
-const toMs = fromMs + days * DAY_MS;
+// A day's stretch runs from midnight to midnight in the video's time zone (a week from Monday 00:00 there)
+const dayParam = fromParam !== null && /^\d{4}-\d{2}-\d{2}$/.test(fromParam);
+const fromMs = dayParam ? zoneMidnight(fromParam!, tz) : fromParam ? Date.parse(fromParam) : Math.floor(Date.now() / HOUR_MS) * HOUR_MS;
+const toMs = dayParam ? zoneMidnight(fromParam!, tz, days) : fromMs + days * DAY_MS;
 
 /** "UTC", or the zone's offset ("GMT+3"). */
 function zoneName(): string {
@@ -115,26 +118,43 @@ let lastCaption = '';
 const isWeek = () => scenes.length > 1 && scenes[0].kind === 'intro';
 const eventScenes = () => scenes.filter((x) => x.kind === 'event');
 
+/** Where the bright planets are this week, as lines "In the evening: Venus, Jupiter" (HTML), and as plain text. */
+function planetLines(week: { from: number; to: number }): { sky: PlanetSky; label: string; names: string }[] {
+  const s = t();
+  const all = planetsOfWeek(week.from, week.to);
+  return (['evening', 'night', 'morning', 'glare'] as PlanetSky[]).flatMap((sky) => {
+    const list = all.filter((p) => p.sky === sky).map((p) => s.planets[p.body]);
+    if (!list.length) return [];
+    const label = sky === 'glare' ? s.video.planetsSky.glare(list.length) : s.video.planetsSky[sky];
+    return [{ sky, label, names: list.join(s.comma) }];
+  });
+}
+
 function captionFor(scene: Scene, index: number): { html: string; cls: string } {
   const s = t();
   const card = (title: string, when: string, note: string, kicker = '') =>
     `${kicker ? `<p class="cap-kicker">${kicker}</p>` : ''}<h1 class="cap-title">${title}</h1><p class="cap-when">${when}</p><p class="cap-note">${note}</p>`;
   if (scene.kind === 'intro') {
-    // The week's events, numbered as their scenes are, with their day
+    // The week's events, numbered as their scenes are, with their day; then the planets
     const list = eventScenes().map((x, i) => `<li><span class="n">${i + 1}</span><span class="what">${eventTitle(x.event!)}</span>`
-      + `<span class="day">${dayMonth(x.event!.ms, l, tz)}</span></li>`).join('');
+      + `<span class="day">${dayMonth(x.event!.ms, l, tz)}</span></li>`).join('')
+      + `<li class="extra"><span class="n">✦</span><span class="what">${s.video.planetsTitle}</span><span class="day"></span></li>`;
     const title = days === 7 ? s.video.weekTitle : s.video.daysTitle;
     return { cls: 'caption side', html: `${card(title, dayMonthYearRange(scene.week!.from, scene.week!.to - 1, l, tz), s.video.weekCount(eventScenes().length))}<ol class="agenda">${list}</ol>` };
   }
   if (scene.kind === 'outro') {
     return { cls: 'caption side', html: card('Solar Twin', s.video.outroLine, `<span class="url">${SITE}</span>${s.video.sources}`) };
   }
+  if (scene.kind === 'planets') {
+    const lines = planetLines(scene.week!).map((x) => `<span class="pl-line pl-${x.sky}"><b>${x.label}:</b> ${x.names}</span>`).join('');
+    return { cls: 'caption planets', html: card(s.video.planetsTitle, dayMonthYearRange(scene.week!.from, scene.week!.to - 1, l, tz), lines) };
+  }
   const e = scene.event!;
   const ms = approximate(e) ? Math.round(e.ms / HOUR_MS) * HOUR_MS : e.ms;
   const when = s.video.when(approximate(e) ? s.events.about(dateTime(ms, l, tz)) : dateTime(ms, l, tz), zoneName());
   const eclipse = e.kind === 'solarEclipse' || e.kind === 'lunarEclipse';
   const kicker = isWeek() ? s.video.eventNo(index, eventScenes().length) : '';
-  return { cls: `caption${eclipse ? ' eclipse' : ''}`, html: card(eventTitle(e), when, eventNote(e), kicker) };
+  return { cls: `caption${eclipse ? ' eclipse' : ''}`, html: card(eventTitle(e), when, eventNote(e, s.video.neoClosest(days === 7)), kicker) };
 }
 
 function drawShot(shot: Shot, local: number, scene: Scene) {
@@ -146,7 +166,7 @@ function drawShot(shot: Shot, local: number, scene: Scene) {
     scene3d.mode = shot.mode;
     scene3d.selected = shot.select;
     // The opening and closing cards sit beside the solar system (wide) or under it (upright): move the picture away
-    const side = scene.kind !== 'event';
+    const side = scene.kind === 'intro' || scene.kind === 'outro';
     const tall = format === '9x16';
     scene3d.direct({
       az: along(shot.az, shot, local), el: along(shot.el, shot, local),
@@ -157,8 +177,10 @@ function drawShot(shot: Shot, local: number, scene: Scene) {
     scene3d.draw(bodiesAt(ms));
   } else if (shot.kind === 'sky') {
     sky.draw(shot, ms, along(shot.fov, shot, local));
-  } else {
+  } else if (shot.kind === 'distance') {
     sky.drawDistance(shot, (local - shot.from) / (shot.to - shot.from), shot.name);
+  } else {
+    sky.drawPlanets(shot, ms);
   }
   return ms;
 }
@@ -184,15 +206,41 @@ function render(time: number) {
   progress.style.width = `${(100 * Math.min(1, time / duration)).toFixed(3)}%`;
 
   // The clock, when time runs during an event's shot
-  const running = scene.kind === 'event' && shot.kind !== 'distance';
+  const running = (scene.kind === 'event' || scene.kind === 'planets') && shot.kind !== 'distance';
   clock.style.opacity = running ? String(shotOpacity(shot, local)) : '0';
   if (running) {
     clock.children[0].textContent = s.video.when(dateTime(ms, l, tz), zoneName());
-    clock.children[1].textContent = s.video.speed(s.duration(hoursPerSecond(shot) * 60));
+    // (round the peak of an eclipse the clock slows down: the speed shown follows it, in whole minutes)
+    const rate = hoursPerSecond(shot, local) * 60;
+    clock.children[1].textContent = s.video.speed(s.duration(rate < 60 ? Math.max(1, Math.round(rate)) : rate));
     clock.children[2].innerHTML = shot.kind === 'sky'
       ? (shot.place ? s.video.fromPlace(latLon(shot.place.lat, shot.place.lon)) : s.video.fromCentre)
       : '';
   }
+}
+
+// ---------- A text for publishing ----------
+
+const plain = (html: string) => {
+  const d = document.createElement('div');
+  d.innerHTML = html;
+  return (d.textContent ?? '').replace(/\s+/g, ' ').trim();
+};
+
+/** Title, the week's events (in the video's time zone), where the planets are, the site and the sources: plain text. */
+function description(): string {
+  const s = t();
+  const week = { from: fromMs, to: toMs };
+  const title = `${days === 7 ? s.video.weekTitle : s.video.daysTitle} · ${plain(dayMonthYearRange(fromMs, toMs - 1, l, tz))}`;
+  const lines = eventScenes().map((x) => {
+    const e = x.event!;
+    const ms = approximate(e) ? Math.round(e.ms / HOUR_MS) * HOUR_MS : e.ms;
+    const when = s.video.when(approximate(e) ? s.events.about(dateTime(ms, l, tz)) : dateTime(ms, l, tz), zoneName());
+    return `• ${plain(eventTitle(e))} · ${plain(when)}\n  ${plain(eventNote(e, s.video.neoClosest(days === 7)))}`;
+  });
+  const planets = planetLines(week).map((x) => `• ${x.label}: ${x.names}`);
+  return [title, '', ...(lines.length ? lines : [s.video.weekCount(0)]), '', `${s.video.planetsTitle}:`, ...planets, '',
+    `${s.video.outroLine} https://${SITE}/`, s.video.sources].join('\n') + '\n';
 }
 
 // ---------- Preview controls ----------
@@ -288,6 +336,8 @@ declare global {
       /** The frames to record, scene by scene (scripts/record-video.mjs) */
       plan: (fps: number) => { start: number; frames: number; name: string }[];
       lang: () => Lang;
+      /** A text to go with the video when it is published: title, the events with their times, the planets, the site */
+      description: () => string;
     };
   }
 }
@@ -298,4 +348,5 @@ window.stage = {
   scenes: () => scenes.length,
   plan: (fps) => framePlan(scenes, fps).map((p, i) => ({ ...p, name: scenes[i].event?.kind ?? scenes[i].kind })),
   lang,
+  description,
 };

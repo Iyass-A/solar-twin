@@ -6,6 +6,7 @@
 // Options: --lang ar|de|en, --format 16x9|9x16, --from YYYY-MM-DD (default: today, UTC), --days 7, --tz UTC,
 // --event n (one event's scene only), --out file.mp4, --dist dist (the built site), --chrome path (or CHROME_PATH),
 // --only 2,5 (record these scenes again and keep the others' files), --fps 30.
+// Next to the video: a .txt file with a title and a description for publishing it (the events, the planets, the site).
 //
 // How: a small web server serves the built site; Chrome (without a window) opens video.html?...&record at half the
 // video's size with device pixel ratio 2; for each frame the page draws exactly that moment (window.stage.seek)
@@ -75,6 +76,8 @@ const url = `${origin}/solar-twin/video.html?${query}&record`;
 await page.goto(url, { waitUntil: 'load' });
 await page.evaluate(() => window.stage.ready);
 const plan = await page.evaluate((f) => window.stage.plan(f), fps);
+// A text to go with the video when publishing it (title, events, planets, site), next to it as .txt
+const description = await page.evaluate(() => window.stage.description());
 const total = plan.reduce((n, s) => n + s.frames, 0);
 console.log(`${url}\n${plan.length} scenes, ${total} frames (${(total / fps).toFixed(1)} s at ${fps} fps), ${cssW * 2}×${cssH * 2}`);
 
@@ -117,6 +120,8 @@ if (!process.exitCode) {
     fs.renameSync(part, out);
     const probe = spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration:stream=width,height,nb_frames', '-of', 'csv=p=0', out], { encoding: 'utf8' });
     console.log(`VIDEO: ${out} (${(fs.statSync(out).size / 1e6).toFixed(1)} MB, ${probe.stdout.trim().replace(/\n/g, ', ')}) in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
+    fs.writeFileSync(out.replace(/\.mp4$/, '.txt'), description);
+    console.log(`TEXT: ${out.replace(/\.mp4$/, '.txt')}\n${description}`);
   }
 }
 if (problems.length) console.log(`Page problems: ${problems.slice(0, 5).join(' | ')}`);

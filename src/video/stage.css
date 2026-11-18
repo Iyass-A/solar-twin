@@ -67,8 +67,8 @@ body {
 }
 #stage .caption.eclipse { border-color: #d9a441; }
 #stage .cap-title { margin: 0 0 4px; font-size: 26px; font-weight: 700; line-height: 1.25; color: #fff; }
-#stage .cap-when { margin: 0 0 8px; font-size: 14px; color: #9fc3ff; }
-#stage .cap-note { margin: 0; font-size: 14px; line-height: 1.55; color: #d0d4e4; }
+#stage .cap-when { margin: 0 0 8px; font-size: 15px; color: #9fc3ff; }
+#stage .cap-note { margin: 0; font-size: 15px; line-height: 1.55; color: #d0d4e4; }
 #stage .cap-note .nowrap { white-space: nowrap; }
 
 /* A small line above an event's title: its number in the week */
@@ -115,18 +115,37 @@ body {
   font-size: 11px; font-weight: 700; line-height: 20px; text-align: center;
 }
 #stage .agenda .day { color: #9aa0b4; white-space: nowrap; font-size: 11.5px; }
+/* The last line of the list: the planets scene, not a numbered event */
+#stage .agenda li.extra .n { background: rgba(255, 214, 90, 0.16); color: #ffe7a6; font-size: 10px; }
+
+/* The planets scene: one line per part of the night; narrower when wide, as the dial is beside it */
+#stage.f16x9 .caption.planets { max-width: 46%; }
+#stage .caption.planets .pl-line { display: block; }
+#stage .caption.planets .pl-line + .pl-line { margin-top: 3px; }
+#stage .caption.planets .pl-line b { color: #fff; font-weight: 600; }
+#stage .caption.planets .pl-glare { color: #9aa0b4; }
+#stage .caption.planets .pl-glare b { color: #b8bdcc; }
 
 /* How far the video is: a thin line along the bottom */
 #stage .progress { position: absolute; inset-inline: 0; bottom: 0; height: 3px; background: rgba(255, 255, 255, 0.06); }
 #stage .progress i { position: absolute; inset-block: 0; inset-inline-start: 0; width: 0; background: #4f9dff; }
 
-/* Upright: the caption across the bottom, larger */
-#stage.f9x16 .caption { inset-inline: 22px; bottom: 60px; max-width: none; }
+/* Upright (watched on a phone): the caption across the bottom, and everything larger */
+#stage.f9x16 .caption { inset-inline: 22px; bottom: 60px; max-width: none; padding: 16px 20px 18px; }
 #stage.f9x16 .caption.side { top: auto; bottom: 70px; transform: none; }
-#stage.f9x16 .cap-title { font-size: 28px; }
-#stage.f9x16 .cap-when, #stage.f9x16 .cap-note { font-size: 15px; }
-#stage.f9x16 .brand { top: 40px; inset-inline-start: 22px; }
-#stage.f9x16 .clock { top: 40px; inset-inline-end: 22px; }
+#stage.f9x16 .cap-title { font-size: 32px; }
+#stage.f9x16 .caption.side .cap-title { font-size: 36px; }
+#stage.f9x16 .cap-when { font-size: 17px; }
+#stage.f9x16 .cap-note, #stage.f9x16 .caption.side .cap-note { font-size: 17.5px; }
+#stage.f9x16 .cap-kicker { font-size: 13px; }
+#stage.f9x16 .agenda li { font-size: 15.5px; grid-template-columns: 24px 1fr auto; padding: 6px 0; }
+#stage.f9x16 .agenda .n { width: 24px; height: 24px; line-height: 24px; font-size: 13px; }
+#stage.f9x16 .agenda .day { font-size: 14px; }
+#stage.f9x16 .caption.side .url { font-size: 21px; }
+#stage.f9x16 .brand { top: 40px; inset-inline-start: 22px; font-size: 19px; }
+#stage.f9x16 .brand span { font-size: 12.5px; }
+#stage.f9x16 .clock { top: 40px; inset-inline-end: 22px; font-size: 17px; }
+#stage.f9x16 .clock div + div { font-size: 13px; }
 
 /* Preview controls (left out when recording) */
 #controls {

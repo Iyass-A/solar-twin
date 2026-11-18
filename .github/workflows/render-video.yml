@@ -1,24 +1,33 @@
-# Records the sky events of a week into an MP4 video (phase 8, step 3), by hand only:
-# builds the site, films video.html frame by frame with Chrome (no window), joins the frames with ffmpeg,
-# and keeps the video as a downloadable artifact of this run for 14 days ("sky-video" on the run's page).
-# Read-only: it changes nothing in the repository and publishes nothing. To remove it: delete this file.
+# Records the sky events of a week into MP4 videos (phase 8): builds the site, films video.html frame by frame
+# with Chrome (no window), joins the frames with ffmpeg, and keeps the videos (with a .txt for each: title and
+# description for publishing) as a downloadable artifact of this run for 14 days ("sky-video-<date>" on the run's page).
+# Read-only: it changes nothing in the repository and publishes nothing; publishing stays by hand.
+# To remove it: delete this file.
+#
+# Weekly (step 6): every Saturday it records the coming week (Monday to Sunday) in all three languages, wide and
+# upright (6 videos). The schedule is off until the owner of the repository switches it on by hand on GitHub:
+# remove the "# " in front of the two lines "schedule:" and "- cron: ...". GitHub runs a schedule in the name of
+# whoever last changed its cron line, so that line is only ever changed by the owner. To switch it off again:
+# put the "# " back. (GitHub may start a scheduled run some hours late.)
 name: Render sky video
 
 on:
+  # schedule:
+  #   - cron: '37 8 * * 6'
   workflow_dispatch:
     inputs:
       lang:
-        description: 'Language'
+        description: 'Language (all = ar, de and en)'
         type: choice
-        options: [ar, de, en]
+        options: [ar, de, en, all]
         default: ar
       format:
-        description: 'Shape: 16x9 (wide) or 9x16 (upright)'
+        description: 'Shape: 16x9 (wide), 9x16 (upright) or both'
         type: choice
-        options: ['16x9', '9x16']
+        options: ['16x9', '9x16', both]
         default: '16x9'
       from:
-        description: 'First day, YYYY-MM-DD (UTC); empty = today'
+        description: 'First day, YYYY-MM-DD; empty = today (UTC)'
         required: false
         default: ''
       days:
@@ -27,6 +36,10 @@ on:
         default: '7'
       event:
         description: 'Only this event (its number in those days, from 0); empty = the whole week'
+        required: false
+        default: ''
+      tz:
+        description: 'Time zone for the times shown (e.g. Europe/Berlin); empty = by language (ar Asia/Damascus, de Europe/Berlin, en UTC)'
         required: false
         default: ''
 
@@ -40,7 +53,7 @@ concurrency:
 jobs:
   render:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -63,27 +76,50 @@ jobs:
         run: command -v ffmpeg || (sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends ffmpeg)
 
       - name: Record
+        id: record
         env:
+          EVENT_NAME: ${{ github.event_name }}
           IN_LANG: ${{ inputs.lang }}
           IN_FORMAT: ${{ inputs.format }}
           IN_FROM: ${{ inputs.from }}
           IN_DAYS: ${{ inputs.days }}
           IN_EVENT: ${{ inputs.event }}
+          IN_TZ: ${{ inputs.tz }}
         run: |
-          FROM="${IN_FROM:-$(date -u +%F)}"
-          [[ "$FROM" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { echo "::error::from must be YYYY-MM-DD"; exit 1; }
-          [[ "$IN_DAYS" =~ ^[0-9]{1,2}$ ]] || { echo "::error::days must be a number"; exit 1; }
-          args=(--lang "$IN_LANG" --format "$IN_FORMAT" --from "$FROM" --days "$IN_DAYS" --out "video/sky-$FROM-$IN_LANG-$IN_FORMAT.mp4")
-          if [ -n "$IN_EVENT" ]; then
-            [[ "$IN_EVENT" =~ ^[0-9]{1,3}$ ]] || { echo "::error::event must be a number"; exit 1; }
-            args+=(--event "$IN_EVENT")
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            # Saturday: the coming week, Monday to Sunday, every language and both shapes
+            LANGS="ar de en"; FORMATS="16x9 9x16"; FROM="$(date -u -d 'next monday' +%F)"; DAYS=7; EVENT=""; TZ_IN=""
+          else
+            LANGS="$IN_LANG"; [ "$LANGS" = "all" ] && LANGS="ar de en"
+            FORMATS="$IN_FORMAT"; [ "$FORMATS" = "both" ] && FORMATS="16x9 9x16"
+            FROM="${IN_FROM:-$(date -u +%F)}"; DAYS="$IN_DAYS"; EVENT="$IN_EVENT"; TZ_IN="$IN_TZ"
           fi
+          [[ "$FROM" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { echo "::error::from must be YYYY-MM-DD"; exit 1; }
+          [[ "$DAYS" =~ ^[0-9]{1,2}$ ]] || { echo "::error::days must be a number"; exit 1; }
+          [ -z "$EVENT" ] || [[ "$EVENT" =~ ^[0-9]{1,3}$ ]] || { echo "::error::event must be a number"; exit 1; }
+          [ -z "$TZ_IN" ] || [[ "$TZ_IN" =~ ^[A-Za-z_]+(/[A-Za-z_+-]+)*$ ]] || { echo "::error::tz must look like Europe/Berlin"; exit 1; }
+          echo "from=$FROM" >> "$GITHUB_OUTPUT"
           mkdir -p video
-          node scripts/record-video.mjs "${args[@]}"
+          for L in $LANGS; do
+            case "$L" in ar) ZONE="Asia/Damascus" ;; de) ZONE="Europe/Berlin" ;; *) ZONE="UTC" ;; esac
+            [ -n "$TZ_IN" ] && ZONE="$TZ_IN"
+            for F in $FORMATS; do
+              args=(--lang "$L" --format "$F" --from "$FROM" --days "$DAYS" --tz "$ZONE" --out "video/sky-$FROM-$L-$F.mp4")
+              [ -n "$EVENT" ] && args+=(--event "$EVENT")
+              echo "::group::$L $F ($ZONE)"
+              node scripts/record-video.mjs "${args[@]}"
+              echo "::endgroup::"
+            done
+          done
+          ls -la video
 
+      # Also after a failed recording: the videos that were made are kept
       - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
         with:
-          name: sky-video
-          path: video/*.mp4
+          name: sky-video-${{ steps.record.outputs.from }}
+          path: |
+            video/*.mp4
+            video/*.txt
           retention-days: 14
           if-no-files-found: error

@@ -304,6 +304,12 @@ export interface Strings {
     fromCentre: string;
     lunarDistance: string;
     scaleNote: string;
+    /** The asteroid passing closest in the video's stretch: a week or some other number of days */
+    neoClosest: (week: boolean) => string;
+    /** The planets scene: its title, where each planet can be seen (with how many there are), and the chart's labels */
+    planetsTitle: string;
+    planetsSky: { evening: string; night: string; morning: string; glare: (count: number) => string };
+    planetsAxis: { evening: string; morning: string; night: string };
   };
   // "Branch reality" (phase 5): a copy of the solar system, changed, run by the physics engine
   branch: {
@@ -942,6 +948,10 @@ const AR: Strings = {
     fromCentre: 'من مركز الأرض',
     lunarDistance: 'بعد القمر',
     scaleNote: 'المسافات على السلّم، والأحجام مكبّرة.',
+    neoClosest: (week) => (week ? 'الأقرب بهالأسبوع.' : 'الأقرب بهالأيام.'),
+    planetsTitle: 'الكواكب هالأسبوع',
+    planetsSky: { evening: 'بالمسا بعد غياب الشمس', night: 'طول الليل', morning: 'بالصبح قبل طلوع الشمس', glare: (n) => (n === 1 ? 'ضايع بضو الشمس' : 'ضايعين بضو الشمس') },
+    planetsAxis: { evening: 'المسا', morning: 'الصبح', night: 'طول الليل' },
   },
   branch: {
     title: 'فرّع الواقع',
@@ -1470,6 +1480,10 @@ const DE: Strings = {
     fromCentre: 'vom Erdmittelpunkt aus',
     lunarDistance: 'Mondabstand',
     scaleNote: 'Abstände maßstabsgetreu, Größen vergrößert.',
+    neoClosest: (week) => (week ? 'Der nächste in dieser Woche.' : 'Der nächste in diesen Tagen.'),
+    planetsTitle: 'Die Planeten diese Woche',
+    planetsSky: { evening: 'Abends nach Sonnenuntergang', night: 'Die ganze Nacht', morning: 'Morgens vor Sonnenaufgang', glare: () => 'Zu nah an der Sonne' },
+    planetsAxis: { evening: 'Abends', morning: 'Morgens', night: 'Ganze Nacht' },
   },
   branch: {
     title: 'Wirklichkeit verzweigen',
@@ -2000,6 +2014,10 @@ const EN: Strings = {
     fromCentre: 'from the Earth’s centre',
     lunarDistance: 'the Moon’s distance',
     scaleNote: 'Distances to scale, sizes enlarged.',
+    neoClosest: (week) => (week ? 'The closest this week.' : 'The closest in these days.'),
+    planetsTitle: 'The planets this week',
+    planetsSky: { evening: 'In the evening, after sunset', night: 'All night', morning: 'In the morning, before sunrise', glare: () => 'Too close to the Sun' },
+    planetsAxis: { evening: 'Evening', morning: 'Morning', night: 'All night' },
   },
   branch: {
     title: 'Branch reality',

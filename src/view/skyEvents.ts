@@ -51,8 +51,11 @@ export function eventTitle(e: SkyEvent): string {
   }
 }
 
-/** One or two sentences about it: how to see it, how close, how bright (HTML). */
-export function eventNote(e: SkyEvent): string {
+/**
+ * One or two sentences about it: how to see it, how close, how bright (HTML). For an asteroid, closestText says
+ * over which stretch it is the closest (the card: the next 30 days; the video gives its own week).
+ */
+export function eventNote(e: SkyEvent, closestText = t().events.neoClosest): string {
   const s = t().events;
   switch (e.kind) {
     case 'moon': return s.moonNotes[e.phase];
@@ -70,7 +73,7 @@ export function eventNote(e: SkyEvent): string {
     case 'neo': {
       const km = e.distAu * AU_KM;
       const dist = `${t().lunar(ltr(num(e.distAu / LD_AU, e.distAu < LD_AU ? 2 : 1)))} (${km < 1e6 ? `${ltr(numGrouped(Number(km.toPrecision(2))))} ${t().km}` : millionKm(e.distAu)})`;
-      return `${s.neoNote(dist)} ${e.closerThanMoon ? s.neoCloser : s.neoClosest}`;
+      return `${s.neoNote(dist)} ${e.closerThanMoon ? s.neoCloser : closestText}`;
     }
   }
 }
